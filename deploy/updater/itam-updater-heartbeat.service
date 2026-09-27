@@ -1,0 +1,6 @@
+[Unit]
+Description=ITAM Portal updater heartbeat
+
+[Service]
+Type=oneshot
+ExecStart=/opt/itam/itam-heartbeat.sh

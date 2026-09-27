@@ -1,0 +1,51 @@
+# ITAM Portal image. Build from the PROJECT ROOT (the folder that contains tools/ and portal/):
+#
+#     podman build -f deploy/Containerfile -t localhost/itam-portal:latest .
+#
+# The build needs internet once (base image, Python packages, PostgreSQL 18 client tools). The finished image is self-contained:
+# save it (podman save) and carry it to the offline server - nothing is downloaded at run time.
+FROM docker.io/library/python:3.14-slim
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 TZ=Asia/Kolkata HOME=/data/home \
+    PORTAL_HOST=0.0.0.0 PORTAL_PORT=8443 PORTAL_REDIRECT_PORT=8080 \
+    PORTAL_BACKUP_DIR=/data/backups PORTAL_UPLOAD_DIR=/data/uploads PG_BIN=/usr/lib/postgresql/18/bin
+
+# PostgreSQL 18 client tools: backups (pg_dump) and restores (pg_restore) must be the same major version as the server.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl openssl tzdata \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && . /etc/os-release \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-18 \
+ && apt-get purge -y curl && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/requirements-container.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Run as an ordinary user (numeric id, no login), not root. /data is the one persistent volume (home, TLS certificate, backups, uploads, masters).
+RUN mkdir -p /app /data && chown -R 10001:10001 /data
+
+WORKDIR /app
+COPY tools/ /app/tools/
+COPY portal/app/ /app/portal/app/
+COPY portal/db/ /app/portal/db/
+COPY portal/static/ /app/portal/static/
+COPY portal/serve.py /app/portal/serve.py
+COPY ongc-logo.png /app/ongc-logo.png
+COPY deploy/entrypoint.sh /usr/local/bin/itam-entrypoint
+RUN chmod 0755 /usr/local/bin/itam-entrypoint \
+ && ln -s /data/masters /app/masters && ln -s /data/uploads /app/uploads
+
+USER 10001
+VOLUME ["/data"]
+EXPOSE 8443 8080
+ENTRYPOINT ["/usr/local/bin/itam-entrypoint"]
+
+# Which build this is (set by deploy/build-release.ps1); shown by:  podman inspect --format '{{index .Config.Labels "itam.version"}}' localhost/itam-portal
+ARG ITAM_VERSION=dev
+LABEL itam.version=$ITAM_VERSION
+# the portal shows this on the Software update page
+ENV ITAM_VERSION=$ITAM_VERSION

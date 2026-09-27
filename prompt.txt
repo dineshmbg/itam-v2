@@ -1,0 +1,138 @@
+act as you are a sr software engineer and assign a task to develop a web based, fully functional, removing to maintain any other file source to maintain actual inventory.  Develope a IT Asset Management web based portal.
+
+create a web based portal for IT Asset Management
+
+Ank-manpower-01.09.2026.xlsx - this file is a raw hr/sap-style export.  every month this file is exported shared. use only relevant fields which is actually required to maintain employee history and information. create a standard template. this template will be used for bulk upload. save a template with a proper name.  always upload the raw hr/sap style and you will extract and upload data as per template.  put your input, comparsion, suggestion to make this much better version.
+
+IT-IMMDSS ASSET INVENTORY 2026 -Q2.xlsx - this is the actual file where all the inventory is maintain.  this contains different sheets per asset class. this file hold my actual inventory one per asset class.  study this file deeply and with clear understanding, and create a single sheet file which hold all the information. create a sample file with meaning full name. use your suggestion to make this version better.  
+
+CIPL Employee Details 2026.xlsx - this is the roaster of cipl contractor staff deployed at ongc ankleshwar.
+
+
+
+create a standard template.  this template will be used for bulk upload. save a template with a proper name. bulk upload have data described in this excel file structure IT-IMMDSS ASSET INVENTORY 2026 -Q2.xlsx. dont focus on file name it will change as and when needed.  it is your job to to extract and load data to the template. 
+
+
+
+everything must work offline
+a bug found on asset, apply filter for make, screen goes blank, look into it
+login screen, use ongc-logo.png
+screen must be dynamic to fit all screen size.
+data import utility for call, cipl employee, employee master, asset master and oem_rma.  use all rules we decided while developing this templates.
+use quarter sanpshots
+custom report builder with all possible options for assets, engineers.
+report and export must have option to download in excel, csv and pdf.
+log each activity performed by user
+add email notification setup
+automatically send email notification for pm kick off at 60 days after quarter starts.
+newly added asset or remove asset or amc expired email notification automatically send to assigned engineer.
+rules to send automatic email notification to engineers on events
+data backup tool - automatic and manual
+data restore tool
+people group shows engineer and employee, hovering over cpf no or ecode shows floating windows with all available details related to engineer/employee
+hovering over asset shows floating windows with all available details
+hovering over sr id shows floating windows with all available details
+user management page, apply password policy, two factor authentication, ideal timeout/logout, first login change password - on floating windows. 
+group each tool
+system wide text must look same uppercase only. 
+while saving or modifying data all data must follow text rule.
+all dashboards must be live and will share to management
+asset and call tracker dashboard are vital so add more details and will be shared to management.  
+standard rule for dashboard - must have option to share via email, download as excel or pdf
+extreme bottom align center Dinesh Gadaria embossed into side panel
+full functional preventive maintenance module needs to be added with live dashboard with all required details.
+new asset can be added by admin group only
+status, cover, pm non-admin group can change.
+systemwide any text added/change/modify will save to database in uppercase only.
+user management have two user group admin and users.
+user intensive checking, robustness, dry run for entire portal. 
+
+
+create users using cipl employee master.  pull required details from this only.  user name would be ecode and for now set default password to *ongc123.  no login created whose designation is office boy.  always remember site incharge/si, sr server engineer will be added to admin group, rest to users group. also provide a button to sync all users from the sheet in future and create new user as new engineer is added.  when adding using new users using sync button the default password would be as user name
+
+
+add a demouser whose default password is demouser.  password neverchanged or no password. no first login password change. this have all the admin roles with read only permission.
+remove add user button.  new user added or created only sync from roster button only.
+
+
+
+login engineers only can updated/change/modify his/her details only.  admin users have full access to change details of all users.
+
+employees list will be displayed according to engineer logged in.
+new assets can be added,  display full list of employee master for admin users. users group see the list of asset assigned to them as per login and they only change/modify the information assets related/assigned to them only. also filters options will be updated dynamically as the record, class, type, location user group as per login.
+
+call tracker dashboard need more deep kpi details for asset, part, engineer. engineers dashboard have options to show more details.
+
+systemwide provide options to show/hide column to fit the required information on the screen, provide option to save current view, current view can be set as default and reset to original view. user can move field around for his convenience.
+
+new asset: selecting calss -> type will be pulled automatically according to class -> hostname same as asset -> make pulled automatically with unique items -> model pulled according to make -> os family set to Microsoft windows, Microsoft server, macos, Linux, other -> operating system will be pulled and display as per os family. user cpf no will be pull automatically and displayed dynamically by tname or cpf no. same will be engineer.  once the record is saved a notification email sent to engineer on his email.
+
+asset: check/uncheck make like hp, cisco, juniper and so on, blank page and no data, need refresh to see effect/data. 
+
+report builder: generating a report for engineer there must be a option to add a blank column with custome heading option.
+
+engineers: hovering over name will display their details in a floating window.  edit will pull all the information and display. while editing mobile no is blank, personal e-mail an so on.
+
+demouser can perform add/modify/change/delete operations. demouser is for demonstration purpose and available in readonly mode.
+
+after login default call tracker dashboard will be displayed default for admin users. and assets dashboard for as per user login.
+
+filter bar text size should reduce by 2 pt. rename fiters 1 with proper heading. 
+
+
+
+change calls from the live PostgreSQL register to proper naming for systemwide.
+
+
+new call: logged by cipl will have today's date by default and can be changed.
+systemwide asset(ci) will be pulled out dynamically as typing, according to asset (ci), user cpf no and engineer will pulled out and filled. user cpf no and engineer data will be pulled automatically using cpf no, ename, ecode, name.  default: zone west, site: ongc ankleshwar, site in-charge: Team Leader/SI.
+
+
+part received renamed to inward and faulty parts sent renamed to outward. 
+
+call details page provide inward button to extreme right if status is open, and pull all the required data by parts received will be fetched and filled automatically.  once the data is saved button will be removed.
+call details page provide outward button to extreme right if status is closed, and pull all the required data by faulty parts sent will be fetched and filled automatically.  once the data is saved button will be removed.
+once the inward/outward button is removed. data is only editable by using parts received and faulty parts sent respectively.
+
+login engineer can see other engineers details in floating windows, it should not happen.  also highlight current login user in engineers.
+dashboard: asset dashboard will be generated to current login user only. this will apply to systemwide who belongs to user group.
+editing a asset must pull all the required information dynamically. make this change systemwide.
+call tracker dashboard will be prepared as using engineer login refereeing calls logged on his account.
+users group not have access to engineers dashboard, calls, parts received, faulty parts sent, oem rma, new asset button, change log, cycles and snapshots.
+
+
+changes made by you, not reflect after login but need to refresh page to see the changes made.
+filter bar -> type will be displayed automatically according to class selected for all.
+new call: user cpf no and engineer will fetch and filled automatically as per asset (ci).
+site in-charge name will be fetch automatically from engineers whose designation is team lead/si
+pull the part no. list as a dropdown list according to asset (ci) 
+new inward will pull required details from the call with reference to sr id. received by fetch and fill automatically from engineers whose designation is team lead/si. received on date would be system current date.
+new outward will pull required details from the call with reference to sr id, sent on current system date, sent to: cipl ware house, location: Noida
+link call with inward and outward to keep proper, detailed track of call analysis.
+
+
+systemwide hard refresh page, so last login session can be started from 0. when login into portal for all group.
+pm dashboard will be updated as per engineer login and his/her assets.
+data integrity is not visible to users group.
+login engineer only can edit/change/modify his/her all details.
+
+
+
+
+describe the engineer table, before doing anything show me proper preview and fields are added will make any impact and so on.
+add engineer button to add a new engineer for admin users.
+add engineer add banking card, epfo, esic, uniform (shirt, trouser, jacket)
+
+some of users group engineer need to have access to modules such calls, inward, outward, oem rma in read only or full access.
+
+
+
+new asset:  type pulled & fill as class, hostname as asset (ci), make and model will be pulled from the list or manual entry, os family default to windows, operating system to Windows 11 Pro, installed on current system date.
+systemwide asset (ci) = hostname and will be filled automatically.
+systemwide change os family pull windows, windows server, Linux, macos, others
+systemwide changes to operating system on selection of os family pull windows edition, windows server editions, Linux editions, macos editions from internet for now and use offline.  operating system will be selected according to os family. default selection will be windows 11 pro
+
+steps to setup this project on my production server which is a part of office lan and this machine do not have access to it.  production server is offline no internet.  list or download all the required package to install on that server to work correctly.  also on restart itam portal service start automatically.
+create a claude.md for this entire project
+i'm approaching weekly usage limit complete it in this.
+

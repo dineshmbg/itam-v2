@@ -1,0 +1,143 @@
+nobody is able to sign as admin on production server
+
+The content works, but my layout container is a multi-column grid, so everything is squeezed into narrow strips. Switching to a simple vertical stack.
+
+
+Ran a command, used 2 tools
+The page renders properly now. Checking the install dialog and how a running update looks.
+
+
+Used 2 tools
+The dialog reads clearly. Now simulating an update in progress by writing a status file, to see the progress view.
+
+
+Ran a command, used 2 tools
+The in-progress view works. Now I'll flip the status to "success" while the page is open, to confirm it updates by itself.
+
+
+Ran a command, used a tool
+The page auto-updated to "Updated" with all five steps checked off — the earlier "packages panel" failure was just a false alarm from the menu text being capitalized. Now cleaning up the test instance and running the full test suite.
+
+Ran
+a command
+215 tests pass. Now rewriting the update section of the README for the new flow, including the one-time step needed to switch your existing VM over.
+
+
+Recalled a memory
+Nothing ran (shell quoting problem again). I'll put this documentation patch in a script file.
+
+
+Created patch_docs2.py, ran a command
++79
+-0
+The release package I built earlier still has the old squeezed page layout, so I'm rebuilding it with the fixed front end and removing the stale version.
+
+Ran
+a command
+The rebuilt package (version 20260925-2325) contains the corrected page. Final housekeeping: fix the version noted in my memory, restart the live portal here, and stop Docker.
+
+
+Ran 2 commands
+Yes, I've built this: a Software update page under Data tools, next to Data import. I tested the page and every step of the updater. The Podman and systemd pieces on your real VM are untested, because I can't reach it.
+
+How you'll use it:
+
+On your PC: run .\deploy\build-release.ps1. It runs the tests, builds the image and signs it, producing deploy\releases\itam-release-<version>.itamrel.
+In the portal, as an administrator: open Data tools → Software update, choose that file and press Upload. The page checks it and lists it. You can also copy the file into /var/lib/itam-updates/incoming/ on the VM and it appears in the same list.
+Press Install…, read what will happen, and type UPDATE. Progress shows live on the same page, and the page reconnects by itself while the portal restarts.
+Go back later: the page also has a Go back to <previous version> button.
+What runs after you confirm:
+
+It checks the signature and the image checksum again.
+It backs up the database.
+It loads the new image and restarts the portal.
+It waits until the new version is healthy.
+If it isn't healthy, it puts the old version back on its own, and the page says "Rolled back".
+Why nobody can push the wrong thing: only files signed with your private key are ever installed. I created that key on this PC at C:\Users\dines\.itam-release\release-private.pem. Copy it to a USB stick and keep it safe. If you lose it, no new package can be signed until a new key is installed on the VM. Your portal admin logins can't install anything unsigned either.
+
+Why there's a separate service on the VM: the portal runs inside a container and can't restart itself. A small service on the VM, running outside the container, does the risky steps. It re-checks everything and doesn't trust the portal.
+
+Database changes: new tables and columns are applied automatically when the new version starts. Your data is never replaced.
+
+One-time switch-over for your existing VM:
+
+Copy the deploy folder to the VM.
+Run sudo DB_HOST=10.205.64.46 ./vm-install.sh once. It installs the update service, your public key and the first new image.
+After that, every update is done from the page. The page shows "Update service running" when the VM side is alive.
+What I tested
+
+Updater: 35 checks, all passed, run against a simulated Podman with real signed packages. They cover:
+a good update
+an unhealthy new version being rolled back
+a wrong signature
+a tampered image
+the same version again
+a failing backup
+an image that won't load
+a path trick in the request
+rollback
+an interrupted run
+Portal: 11 new tests, and the full suite is at 215 passing.
+Page in the browser: I checked the page, the install dialog, and a live "in progress" then "Updated" view.
+Real package: it verifies with both Windows and Linux OpenSSL, and an altered copy is rejected.
+The first release is deploy\releases\itam-release-20260925-2325.itamrel. The full procedure is in deploy/README.md, section "Updating". I stopped Docker Desktop again, and the ADMIN reset on this PC is still unresolved.
+
+
+Edited 13 files
++1318
+-16
+
+update.py
++269
+-0
+
+routes_update.py
++90
+-0
+
+test_update.py
++195
+-0
+
+Show 10 more
+create a detailed step by step guide to perform the activity. which activity and command will be run on physical server and which on vm.
+
+I'll write the guide as a file in deploy/. First, files I didn't touch were changed on disk (permissions-related, e.g. a new "full administrator" notion), so I'll check whether the release I built still matches the current code before I point the guide at it.
+
+Ran
+grep…
+Tests still pass (218), but files changed after my 23:25 release build, so a release must be rebuilt fresh before deploying. The guide's first step does exactly that. Writing the guide now.
+
+Created
+STEP-BY-STEP-GUIDE.md
++320
+-0
+Two accuracy fixes in the guide: the version-check command should ask Podman about the image (not any object with that name), and I should explain that an existing certificate is kept.
+
+
+Ran 2 commands, edited STEP-BY-STEP-GUIDE.md
++1
+-0
+I wrote the guide as deploy/STEP-BY-STEP-GUIDE.md. Every step is tagged with where to run it: [DEV PC], [SERVER] (Windows Server 2019, 10.205.64.46), [VM] (Ubuntu, 10.205.64.25), or [BROWSER]. I have not run any of it on your real servers.
+
+The parts, in order
+
+Part 1, [DEV PC]: run .\deploy\build-release.ps1. It builds a fresh signed release.
+Part 2, [SERVER]: back up the database, then run Prepare-Database.ps1 -VmAddress 10.205.64.25 -ConfigureNetwork to confirm the VM may connect. It is safe to repeat and never touches your data. Then check PostgreSQL and set the VM to start with the server.
+Part 3, [DEV PC] to [VM]: copy the deploy folder across with scp.
+Part 4, [VM]: run sudo DB_HOST=10.205.64.46 TLS_NAMES=10.205.64.25 bash ./vm-install.sh once. This installs the update service and switches the VM to the new version. It has pre-flight checks and verification commands.
+Part 5, [BROWSER] and [VM]: trust the certificate, first sign-in, and the commands to recover administrator access.
+Part 6, [DEV PC] and [BROWSER]: every later update, done from the portal. Build the release, upload it in the browser, press Install, and type UPDATE.
+Part 7: going back to the previous version, from the portal or from the VM if the portal is down.
+Part 8: a routine schedule of what to keep running.
+Part 9: troubleshooting, by symptom, with which machine to look on.
+Appendices: a command cheat sheet per machine, and a from-scratch variant for a brand-new server.
+Also to know:
+
+Rebuild before deploying. The .itamrel I built earlier (version 20260925-2325) is already out of date. Someone changed permission-related files after I built it, adding a "full administrator" notion. The tests still pass (218), and I left those changes alone. Part 1 builds from the current files, so follow it rather than reusing my earlier file.
+Keep your signing key safe. The private key is at C:\Users\dines\.itam-release\release-private.pem. Copy it to a USB stick. Without it you can't sign new updates.
+Run Part 4 during a quiet moment. The portal is unavailable for about a minute.
+
+STEP-BY-STEP-GUIDE.md
++321
+-0

@@ -1,0 +1,122 @@
+import { h, icon, clear } from '../core/dom.js';
+import { clock } from '../core/format.js';
+import { getTheme, setTheme } from '../core/theme.js';
+import * as live from '../core/live.js';
+import * as session from '../core/session.js';
+import { createSearch } from './search.js';
+import { accountDialog } from '../views/login.js';
+
+// [path, label, icon, adminOnly] - adminOnly: true = admins (and Users with extended access); 'strict' = real administrators only;
+// 'parts' = admins, plus a User individually granted
+// Calls/Inward/Outward/OEM RMA access (session.hasCallPartsAccess()) - see Manage user -> Module access.
+const NAV = [
+  ['Dashboards', [
+    ['dashboard/assets', 'Assets', 'devices'], ['dashboard/calls', 'Call tracker', 'phone'], ['dashboard/engineers', 'Engineers', 'user--multiple', true],
+  ]],
+  ['Registers', [
+    ['registers/assets', 'Assets', 'data-table'], ['registers/calls', 'Calls', 'catalog', 'parts'], ['registers/inward', 'Inward', 'package', 'parts'],
+    ['registers/outward', 'Outward', 'box', 'parts'], ['registers/rma', 'OEM RMA', 'tools', 'parts'],
+  ]],
+  ['People', [['registers/engineers', 'Engineers', 'user--avatar'], ['registers/employees', 'Employees', 'user']]],
+  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics'], ['registers/pm', 'PM worklist', 'checkmark--outline'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true]]],
+  ['Reports', [['reports', 'Report builder', 'report']]],
+  ['Control', [['integrity', 'Data integrity', 'security', 'strict'], ['audit', 'Change log', 'catalog', 'strict']]],
+  ['Data tools', [['admin/import', 'Data import', 'upload', 'strict'], ['admin/backup', 'Backup and restore', 'data--base', 'strict'], ['admin/update', 'Software update', 'restart', 'strict']]],
+  ['Administration', [['admin/users', 'Users and security', 'user--multiple', 'strict'], ['admin/email', 'E-mail and alerts', 'email', 'strict'], ['admin/activity', 'Activity log', 'time', 'strict']]],
+];
+
+const THEMES = [['light', 'Light', 'light'], ['dark', 'Dark', 'asleep'], ['auto', 'Automatic (follows system)', 'screen']];
+
+export function buildShell(app) {
+  const shell = app;
+  const oldHdr = shell.querySelector('.hdr');
+  const nav = shell.querySelector('.nav');
+  if (localStorage.getItem('itam.nav') === 'min') shell.classList.add('nav-min');
+
+  const menuBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': 'Toggle navigation', 'aria-expanded': 'true' }, icon('menu', 'lg'));
+  menuBtn.addEventListener('click', () => {
+    if (window.matchMedia('(max-width: 900px)').matches) { shell.classList.toggle('nav-open'); return; }
+    const min = shell.classList.toggle('nav-min');
+    try { localStorage.setItem('itam.nav', min ? 'min' : 'max'); } catch (_) { /* ignore */ }
+    menuBtn.setAttribute('aria-expanded', String(!min));
+  });
+
+  const search = createSearch();
+
+  const liveDot = h('span', { class: 'live', role: 'status', 'data-state': live.getState() === 'on' ? 'on' : 'connecting' }, h('span', { class: 'dot' }), h('span', { class: 'lt' }, 'Connecting…'));
+  const setLive = () => {
+    const s = live.getState();
+    liveDot.dataset.state = s;
+    liveDot.querySelector('.lt').textContent = s === 'on' ? (live.getLast() ? `Live · updated ${clock(live.getLast())}` : 'Live') : s === 'off' ? 'Offline' : 'Reconnecting…';
+  };
+  live.onState(setLive);
+  live.onChange(() => { setLive(); liveDot.classList.add('flash'); setTimeout(() => liveDot.classList.remove('flash'), 900); });
+  setLive();
+
+  const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Colour theme' },
+    THEMES.map(([v, label, ic]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(getTheme() === v), 'aria-label': label, title: label, 'data-theme-v': v }, icon(ic))));
+  seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-theme-v]');
+    if (!b) return;
+    setTheme(b.dataset.themeV);
+    seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+  });
+  seg.addEventListener('keydown', (e) => {
+    const bs = [...seg.querySelectorAll('button')];
+    const i = bs.indexOf(document.activeElement);
+    if (i < 0 || !['ArrowRight', 'ArrowLeft'].includes(e.key)) return;
+    e.preventDefault();
+    const n = bs[(i + (e.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length];
+    n.focus(); n.click();
+  });
+
+  const helpBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': 'Keyboard shortcuts', title: 'Keyboard shortcuts' }, icon('keyboard', 'lg'));
+  helpBtn.addEventListener('click', showHelp);
+
+  // signed-in user menu
+  const me = session.user();
+  const userBtn = h('button', { class: 'btn ghost usr', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', title: 'Account' }, icon('user--avatar', 'lg'),
+    h('span', { class: 'usr-t' }, h('span', { class: 'usr-n' }, me?.display_name || ''), h('span', { class: 'usr-r' }, (me?.role === 'ADMIN' ? 'Administrator' : me?.extended_access ? 'User · Extended access' : 'User') + (me?.read_only ? ' · Read-only' : ''))));
+  const menu = h('div', { class: 'menu', role: 'menu', hidden: true },
+    h('button', { role: 'menuitem', type: 'button', onClick: () => { closeMenu(); accountDialog(); } }, icon('user'), 'My account'),
+    h('button', { role: 'menuitem', type: 'button', onClick: () => { closeMenu(); session.signOut(); } }, icon('logout'), 'Sign out'));
+  const closeMenu = () => { menu.hidden = true; userBtn.setAttribute('aria-expanded', 'false'); };
+  userBtn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; userBtn.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) menu.querySelector('button').focus(); });
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); userBtn.focus(); } });
+
+  const hdr = h('header', { class: 'hdr', role: 'banner' },
+    menuBtn,
+    h('a', { class: 'brand', href: '#/dashboard/calls', 'aria-label': 'ITAM Portal home' }, h('span', { class: 'brand-mark' }),
+      h('span', { class: 'brand-text' }, h('span', { class: 'brand-line' }, h('strong', null, 'ITAM'), h('span', { class: 'brand-sub' }, 'Portal')), h('span', { class: 'brand-sig' }, 'Dinesh Gadaria'))),
+    search.el, h('span', { class: 'hdr-spacer' }),
+    h('div', { class: 'hdr-tools' }, liveDot, seg, helpBtn, h('div', { class: 'usr-wrap' }, userBtn, menu)));
+  oldHdr.replaceWith(hdr);
+
+  clear(nav);
+  NAV.forEach(([title, items]) => {
+    const shown = items.filter(([, , , adminOnly]) => !adminOnly || (adminOnly === 'strict' ? session.isFullAdmin() : session.isAdmin()) || (adminOnly === 'parts' && session.hasCallPartsAccess()));
+    if (!shown.length) return;
+    nav.append(h('div', { class: 'nav-group' }, h('h2', null, title), shown.map(([path, label, ic]) =>
+      h('a', { class: 'nav-item', href: '#/' + path, 'data-path': path, title: label }, h('span', { class: 'ico-wrap' }, icon(ic, 'lg')), h('span', null, label)))));
+  });
+  nav.append(h('div', { class: 'nav-foot' }, h('div', null, 'Live view of the IT asset inventory.')));
+
+  nav.addEventListener('click', () => shell.classList.remove('nav-open'));
+  return {
+    setActive(path) {
+      const items = [...nav.querySelectorAll('a.nav-item')];
+      const hit = items.filter((a) => path === a.dataset.path || path.startsWith(a.dataset.path + '/')).sort((x, y) => y.dataset.path.length - x.dataset.path.length)[0];
+      items.forEach((a) => { if (a === hit) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+    },
+  };
+}
+
+function showHelp() {
+  import('./drawer.js').then(({ openDrawer }) => {
+    const d = openDrawer({ title: 'Keyboard shortcuts', subtitle: 'Everything is reachable without a mouse.' });
+    const rows = [['/  or  Ctrl + K', 'Search everything'], ['↑ ↓', 'Move through search results or table rows'], ['Enter', 'Open the selected result / row'],
+      ['Esc', 'Close search, details or a floating window'], ['Tab', 'Move between filters, table and controls'], ['Space', 'Toggle a focused filter option']];
+    d.body.append(h('div', { class: 'dsec' }, h('div', { class: 'help-grid' }, rows.flatMap(([k, t]) => [h('kbd', null, k), h('span', null, t)]))));
+  });
+}

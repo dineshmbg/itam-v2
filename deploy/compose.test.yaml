@@ -1,0 +1,38 @@
+# Local trial of the portal image against a database that lives OUTSIDE the portal container, like the real setup (PostgreSQL installed on the
+# physical server, portal in the VM). The "standin-db" service only plays the part of that server's fresh PostgreSQL (postgres password set,
+# nothing else). NOT how production is run - production uses quadlet/itam-portal.container.
+#
+#   ITAM_STANDIN_PW=... docker compose -f deploy/compose.test.yaml -p itamtest up -d standin-db
+#   (prepare it with host/Prepare-Database.ps1 -PgHost 127.0.0.1 -Port 5544 ..., then:)
+#   ITAM_STANDIN_PW=... ITAM_APP_PW=... docker compose -f deploy/compose.test.yaml -p itamtest up -d portal
+services:
+  standin-db:
+    image: docker.io/library/postgres:18
+    container_name: itam-standin-db
+    environment:
+      POSTGRES_PASSWORD: ${ITAM_STANDIN_PW:?set ITAM_STANDIN_PW}
+      TZ: Asia/Kolkata
+    ports:
+      - "5544:5432"
+  portal:
+    image: localhost/itam-portal:latest
+    container_name: itam-portal
+    ports:
+      - "9443:8443"
+      - "9080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PGHOST: host.docker.internal
+      PGPORT: "5544"
+      PGDATABASE: ongc_ank
+      PGUSER: ank_app
+      PGPASSWORD: ${ITAM_APP_PW:-}
+      TZ: Asia/Kolkata
+      PORTAL_PUBLIC_HTTPS_PORT: "9443"
+      PORTAL_TLS_NAMES: localhost,127.0.0.1
+      PORTAL_DEMO_USER: ${PORTAL_DEMO_USER:-}
+    volumes:
+      - data:/data
+volumes:
+  data: {}

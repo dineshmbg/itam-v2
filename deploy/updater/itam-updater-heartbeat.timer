@@ -1,0 +1,10 @@
+[Unit]
+Description=ITAM Portal updater heartbeat every 30 seconds
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

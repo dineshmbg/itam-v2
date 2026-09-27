@@ -1,0 +1,41 @@
+[Unit]
+Description=ITAM Portal (HTTPS) - talks to the PostgreSQL installed on the physical server
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/itam-portal:latest
+ContainerName=itam-portal
+PublishPort=443:8443
+PublishPort=80:8080
+Volume=itam-data.volume:/data
+# Shared folder with the update service that runs on the VM (Software update page in the portal) - see updater/
+Volume=/var/lib/itam-updates:/updates:Z,U
+Environment=PORTAL_UPDATE_DIR=/updates
+# Optional second backup location: a folder on ANOTHER disk or a network share, so one failed disk cannot take the database and its backups.
+Volume=/var/backups/itam-second-copy:/second-copy:Z,U
+# The password of the database role (Podman secret itam-db-password) - never written into this file.
+Secret=itam-db-password,type=env,target=PGPASSWORD
+Environment=PGHOST=@DB_HOST@
+Environment=PGPORT=@DB_PORT@
+Environment=PGDATABASE=@DB_NAME@
+Environment=PGUSER=@DB_USER@
+Environment=PGSSLMODE=@DB_SSLMODE@
+Environment=TZ=Asia/Kolkata
+Environment=PORTAL_PUBLIC_HTTPS_PORT=443
+# The built-in DEMOUSER login has a public password and administrator-level read access: keep it off on a production server.
+Environment=PORTAL_DEMO_USER=off
+Environment=PORTAL_BACKUP_COPY_DIR=/second-copy
+Environment=PORTAL_TLS_NAMES=@TLS_NAMES@
+HealthCmd=python -c "import ssl,urllib.request as u; u.urlopen('https://127.0.0.1:8443/api/health', context=ssl._create_unverified_context(), timeout=5)"
+HealthInterval=30s
+HealthRetries=3
+HealthStartPeriod=90s
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

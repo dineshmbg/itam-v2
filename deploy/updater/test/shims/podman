@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Fake podman for testing itam-updater.sh: images are tags in /sim/images (id, label, healthy), the container is /sim/container/image."""
+import os
+import sys
+
+SIM = os.environ.get("SIM", "/sim")
+IMG = f"{SIM}/images"
+CTR = f"{SIM}/container/image"
+os.makedirs(IMG, exist_ok=True)
+
+
+def key(ref):
+    return ref.replace("/", "_")
+
+
+def get(ref):
+    try:
+        return dict(line.split("=", 1) for line in open(f"{IMG}/{key(ref)}").read().split())
+    except OSError:
+        return None
+
+
+def put(ref, d):
+    open(f"{IMG}/{key(ref)}", "w").write("".join(f"{k}={v}\n" for k, v in d.items()))
+
+
+a = sys.argv[1:]
+if a[:2] == ["image", "inspect"]:
+    fmt = a[a.index("--format") + 1]
+    d = get(a[-1])
+    if not d:
+        sys.exit(1)
+    print(d["label"] if "itam.version" in fmt else d["id"])
+    sys.exit(0)
+if a[:2] == ["image", "exists"]:
+    sys.exit(0 if get(a[2]) else 1)
+if a[0] == "tag":
+    d = get(a[1])
+    if not d:
+        sys.exit(1)
+    put(a[2], d)
+    sys.exit(0)
+if a[0] == "rmi":
+    try:
+        os.remove(f"{IMG}/{key(a[1])}")
+    except OSError:
+        pass
+    sys.exit(0)
+if a[0] == "load":
+    text = open(a[a.index("-i") + 1], "rb").read().decode("latin1")
+    txt = dict(line.split("=", 1) for line in text.split("\n") if "=" in line and line.split("=")[0].isupper())
+    if txt.get("BAD") == "load":
+        sys.exit(1)
+    put("localhost/itam-portal:latest", {"id": txt["ID"], "label": txt["LABEL"], "healthy": txt["HEALTHY"]})
+    print("Loaded image")
+    sys.exit(0)
+if a[:2] == ["container", "exists"]:
+    sys.exit(0 if os.path.exists(CTR) else 1)
+if a[0] == "inspect":
+    print(open(CTR).read().strip())
+    sys.exit(0)
+if a[0] == "healthcheck":
+    if not os.path.exists(CTR):
+        sys.exit(1)
+    cid = open(CTR).read().strip()
+    for f in os.listdir(IMG):
+        d = dict(line.split("=", 1) for line in open(f"{IMG}/{f}").read().split())
+        if d["id"] == cid:
+            sys.exit(0 if d["healthy"] == "yes" else 1)
+    sys.exit(1)
+if a[0] == "exec":
+    if os.path.exists(f"{SIM}/backup_fail"):
+        print("backup failed: cannot reach the database")
+        sys.exit(1)
+    print("backup made: ongc_ank_test.dump 1234 bytes")
+    sys.exit(0)
+if a[:2] == ["image", "prune"]:
+    sys.exit(0)
+print("fake podman: unsupported", a, file=sys.stderr)
+sys.exit(99)

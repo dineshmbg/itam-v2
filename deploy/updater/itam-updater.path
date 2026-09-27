@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for an ITAM Portal update request from the Software update page
+
+[Path]
+PathExists=/var/lib/itam-updates/request.json
+Unit=itam-updater.service
+
+[Install]
+WantedBy=multi-user.target

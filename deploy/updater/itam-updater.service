@@ -1,0 +1,7 @@
+[Unit]
+Description=ITAM Portal updater (verify, back up, install, health-check, roll back)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/itam/itam-updater.sh --from-request
+TimeoutStartSec=2400

@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Fake systemctl: "restart" makes the container run whatever image :latest points to now."""
+import os
+import sys
+
+SIM = os.environ.get("SIM", "/sim")
+if sys.argv[1:2] == ["restart"]:
+    d = dict(line.split("=", 1) for line in open(f"{SIM}/images/localhost_itam-portal:latest").read().split())
+    os.makedirs(f"{SIM}/container", exist_ok=True)
+    open(f"{SIM}/container/image", "w").write(d["id"])
+sys.exit(0)

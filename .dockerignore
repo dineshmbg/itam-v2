@@ -1,0 +1,14 @@
+# Container build context: only what the image needs. Data, backups, spreadsheets, virtual environments and secrets never enter an image.
+*
+!deploy/Containerfile
+!deploy/requirements-container.txt
+!deploy/entrypoint.sh
+!tools
+!portal/app
+!portal/db
+!portal/static
+!portal/serve.py
+!ongc-logo.png
+**/__pycache__
+**/*.pyc
+**/*.map

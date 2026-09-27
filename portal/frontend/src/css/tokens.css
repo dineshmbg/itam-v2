@@ -1,0 +1,73 @@
+/* Design tokens. Light is the default; dark applies for data-theme="dark" or, in "auto", when the OS prefers dark.
+   Contrast targets: body text >= 7:1, secondary >= 4.5:1, UI boundaries >= 3:1 (WCAG 2.2 AA). Status is never conveyed by colour alone (icon + label). */
+:root {
+  color-scheme: light;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --c-bg: #f1f3f5;
+  --c-surface: #ffffff;
+  --c-surface-2: #f7f8f9;
+  --c-surface-3: #eceff2;
+  --c-border: #dde1e6;
+  --c-border-strong: #a9b3bf;
+  --c-text: #161a1f;
+  --c-text-2: #4b5563;
+  --c-text-3: #5f6b7a;
+  --c-accent: #0b5cad;
+  --c-accent-hover: #084a8c;
+  --c-accent-bg: #e6f0fa;
+  --c-on-accent: #ffffff;
+  --c-focus: #0b5cad;
+  --c-scrim: rgba(22, 26, 31, 0.45);
+
+  --c-ok: #146c2e;    --c-ok-bg: #e3f4e8;
+  --c-warn: #8a5a00;  --c-warn-bg: #fbf0d3;
+  --c-bad: #b42318;   --c-bad-bg: #fbe4e1;
+  --c-info: #0b5cad;  --c-info-bg: #e6f0fa;
+  --c-mute: #4b5563;  --c-mute-bg: #eceff2;
+
+  --chart-1: #0b5cad; --chart-2: #c25e00; --chart-3: #12806f; --chart-4: #a23b7a;
+  --chart-5: #8a6d00; --chart-6: #5b4bb5; --chart-7: #5f6b7a; --chart-8: #b42318;
+  --chart-grid: #e3e7ec;
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --r-1: 2px; --r-2: 4px;
+  --hdr-h: 56px; --nav-w: 232px; --nav-w-min: 48px; --facet-w: 272px;
+  --shadow-pop: 0 4px 16px rgba(22, 26, 31, 0.16), 0 0 0 1px var(--c-border);
+  --ease: cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] { color-scheme: dark; }
+}
+
+:root[data-theme="dark"] {
+  --c-bg: #0e1116; --c-surface: #151a21; --c-surface-2: #1a2028; --c-surface-3: #222a34;
+  --c-border: #27303b; --c-border-strong: #56626f;
+  --c-text: #e8ebef; --c-text-2: #b3bcc8; --c-text-3: #98a3b1;
+  --c-accent: #6cb0f7; --c-accent-hover: #8cc2fa; --c-accent-bg: #14263a; --c-on-accent: #0e1116; --c-focus: #8cc2fa;
+  --c-scrim: rgba(0, 0, 0, 0.6);
+  --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
+  --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
+  --chart-1: #6cb0f7; --chart-2: #e08a3c; --chart-3: #43b8a4; --chart-4: #d977b3; --chart-5: #d1ad3a; --chart-6: #9d8cf0; --chart-7: #98a3b1; --chart-8: #f0827a;
+  --chart-grid: #26303b;
+  --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --c-bg: #0e1116; --c-surface: #151a21; --c-surface-2: #1a2028; --c-surface-3: #222a34;
+    --c-border: #27303b; --c-border-strong: #56626f;
+    --c-text: #e8ebef; --c-text-2: #b3bcc8; --c-text-3: #98a3b1;
+    --c-accent: #6cb0f7; --c-accent-hover: #8cc2fa; --c-accent-bg: #14263a; --c-on-accent: #0e1116; --c-focus: #8cc2fa;
+    --c-scrim: rgba(0, 0, 0, 0.6);
+    --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
+    --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
+    --chart-1: #6cb0f7; --chart-2: #e08a3c; --chart-3: #43b8a4; --chart-4: #d977b3; --chart-5: #d1ad3a; --chart-6: #9d8cf0; --chart-7: #98a3b1; --chart-8: #f0827a;
+    --chart-grid: #26303b;
+    --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
+  }
+}
