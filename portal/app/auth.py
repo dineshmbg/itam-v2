@@ -738,6 +738,14 @@ def check_verify(user, key):
         raise AuthError("You can only verify assets assigned to you.", 403, code="forbidden")
 
 
+def check_imac(user, asset_row):
+    """Filling an IMAC form for an asset: an administrator any asset, an engineer only one assigned to them - same rule as a physical check."""
+    if is_admin(user):
+        return
+    if not asset_row or asset_row.get("engineer_name") != user.get("engineer_key"):
+        raise AuthError("You can only fill an IMAC form for an asset assigned to you.", 403, code="forbidden")
+
+
 def check_create(user, dataset):
     if dataset == "engineers":
         if not is_admin(user):

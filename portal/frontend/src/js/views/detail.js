@@ -4,7 +4,7 @@ import { href } from '../core/router.js';
 import { badge } from '../ui/badge.js';
 import { entity } from '../ui/hovercard.js';
 
-const REF = { asset_key: 'asset', parent_asset_key: 'asset', sr_id: 'call', call_sr_id: 'call', cpf_no: 'cpf', engineer: 'engineer', engineer_name: 'engineer', pm_done_by: 'engineer' };
+const REF = { asset_key: 'asset', parent_asset_key: 'asset', prev_asset_key: 'asset', sr_id: 'call', call_sr_id: 'call', cpf_no: 'cpf', engineer: 'engineer', engineer_name: 'engineer', pm_done_by: 'engineer' };
 
 const BADGE_KEYS = new Set(['asset_status', 'cover_status', 'pm_status', 'call_status', 'priority', 'spare_status', 'return_status', 'faulty_spare_status']);
 const NAME_KEYS = new Set(['user_name', 'engineer', 'engineer_name', 'site_incharge', 'pm_done_by', 'pm_signed_by', 'received_by', 'user_designation']);
@@ -25,7 +25,8 @@ const RELATED = {
   assets: [['components', 'Components', 'assets', ['id', 'asset_type', 'model', 'serial_no', 'asset_status']], ['calls', 'Calls', 'calls', ['id', 'cipl_call_date', 'problem_description', 'engineer', 'call_status']],
     ['inward', 'Inward', 'inward', ['id', 'inward_date', 'part_description', 'received_date']], ['outward', 'Outward', 'outward', ['id', 'outward_date', 'part_description', 'gatepass_no', 'sent_date']],
     ['rma', 'OEM RMA', 'rma', ['id', 'rma_no', 'fault_item', 'call_log_date', 'return_status']], ['verifications', 'Physical checks', null, ['verified_on', 'result', 'verified_by', 'note']], ['serial_history', 'Serial history (RMA swaps)', null, ['old_serial', 'new_serial', 'rma_no', 'change_date']],
-    ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']]],
+    ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']],
+    ['imac', 'IMAC history', null, ['imac_date', 'change_type', 'ticket_no', 'prev_asset_key', 'requester_name', 'created_by']]],
   calls: [['inward', 'Inward', 'inward', ['id', 'inward_date', 'part_description', 'received_date']], ['outward', 'Outward', 'outward', ['id', 'outward_date', 'part_description', 'gatepass_no', 'sent_date']],
     ['rma', 'OEM RMA', 'rma', ['id', 'rma_no', 'fault_item', 'return_status']], ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']]],
   rma: [['serial_history', 'Serial history (RMA swaps)', null, ['old_serial', 'new_serial', 'rma_no', 'change_date']]],

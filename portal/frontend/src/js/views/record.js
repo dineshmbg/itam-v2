@@ -7,6 +7,7 @@ import { isAdmin, user as sessionUser } from '../core/session.js';
 import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';
 import { renderDetail } from './detail.js';
+import { imacDialog } from './imac-dialog.js';
 import { recordPmDialog } from './pm-record.js';
 
 const ACTIONS = { UPDATE: ['edit', 'Changed'], CREATE: ['add', 'Created'], ARCHIVE: ['archive', 'Archived'], RESTORE: ['renew', 'Restored'], RESET: ['undo', 'Override removed'], CASCADE: ['link', 'Follow-on update'], EVENT: ['user', 'Event'], VERIFY: ['checkmark--outline', 'Physical check'] };
@@ -52,6 +53,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange }) {
       const last = (p.related.verifications || [])[0];
       if (!spec.readonly && (admin || sessionUser()?.engineer_key === p.row.engineer_name)) {
         bar.append(h('button', { class: 'btn', type: 'button', title: last ? `Last checked ${date(last.verified_on)} by ${last.verified_by}` : 'Never physically checked', onClick: verifyDialog }, icon('checkmark--outline'), 'Verify'));
+        bar.append(h('button', { class: 'btn', type: 'button', title: 'Record Install / Add / Change work done on this asset and print the form', onClick: fillImac }, icon('document'), 'Fill IMAC'));
       }
       bar.append(h('button', { class: 'btn', type: 'button', title: 'Print a QR label for this asset', onClick: labelDialog }, icon('qr-code'), 'Label'));
     }
@@ -144,6 +146,11 @@ export async function mountRecord({ drawer, name, payload, schema, onChange }) {
         p = r.detail; toast('Check recorded'); show(); onChange?.();
       } }],
     });
+  }
+
+  /** Fill IMAC: a documentary record of Install/Add/Change work against this asset, with a printable PDF. */
+  function fillImac() {
+    imacDialog({ assetKey: p.id, row: p.row, onDone: (detail) => { p = detail; show(); onChange?.(); } });
   }
 
   /** QR label: scanning it opens this asset's record. Printed through a temporary copy that is the only thing the print stylesheet shows. */
