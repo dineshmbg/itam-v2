@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import itam_locks  # noqa: E402
-from portal.app import auth, backup, db, imac, importer, mailer, pm, reports, views_pref  # noqa: E402
+from portal.app import auth, backup, db, importer, mailer, pm, reports, views_pref  # noqa: E402
 from portal.app.datasets import ASSET_SEARCH, CALL_SEARCH, INWARD_SEARCH, OUTWARD_SEARCH, RMA_SEARCH, search_expr  # noqa: E402
 
 # Roster name (cipl_employee.ecode) <-> working name used in asset / call data. Verified by hand against both name lists.
@@ -112,7 +112,7 @@ def main():
         for stmt in DDL:
             con.execute(stmt)
         auth.ensure_tables(con)
-        for stmt in backup.DDL + pm.DDL + mailer.DDL + importer.DDL + reports.DDL + views_pref.DDL + imac.DDL:
+        for stmt in backup.DDL + pm.DDL + mailer.DDL + importer.DDL + reports.DDL + views_pref.DDL:
             con.execute(stmt)
         pm.ensure_cycle(con, by="setup")
         con.execute(UPPER_FN)
