@@ -62,6 +62,11 @@ input[type="password"], #lg-code, #tf-code, #td-code, #lg-user { letter-spacing:
 .ropt:has(input:checked) .glyph.off { display: none; }
 .ropt:has(input:focus-visible) { outline: 2px solid var(--c-focus); outline-offset: 2px; }
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: 0; padding: 12px 0; background: var(--c-surface); border-top: 1px solid var(--c-border); margin-top: 12px; }
+.imac-form { display: grid; gap: 4px; }
+.imac-form h3 { font-size: 12px; letter-spacing: 0.06em; color: var(--c-text-3); font-weight: 600; margin: 12px 0 2px; padding-bottom: 4px; border-bottom: 1px solid var(--c-border); }
+.frow4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 12px; }
+.frow3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+@media (max-width: 620px) { .frow4, .frow3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .rules { list-style: none; padding: 0; margin: 4px 0 12px; display: grid; gap: 4px; font-size: 12.5px; color: var(--c-text-2); }
 .rules li { display: flex; align-items: center; gap: 8px; }
 .rules li.ok { color: var(--c-ok); }

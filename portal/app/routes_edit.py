@@ -3,9 +3,10 @@ import logging
 from urllib.parse import quote
 
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, db, edit, mailer, queries, views_pref
+from . import auth, db, edit, imac, mailer, queries, views_pref
 from .datasets import ADMIN_ONLY_DATASETS
 from .web import client_ip, json_response, read, write
 
@@ -117,6 +118,36 @@ async def verify(request):
     r = await run_in_threadpool(edit.verify_asset, key, b.get("result"), b.get("note"), u["username"], ip)
     await run_in_threadpool(_act, u, ip, "VERIFY", f"assets:{key}", {"result": r["result"]})
     return json_response({**r, "detail": await run_in_threadpool(queries.detail, "assets", key, False, u)})
+
+
+async def imac_context(request):
+    key, u = request.path_params["key"], request.state.user
+    return json_response(await run_in_threadpool(imac.context, u, key))
+
+
+async def imac_person(request):
+    key, u = request.path_params["key"], request.state.user
+    auth.check_imac(u, key)   # only someone allowed to fill IMAC for this asset may resolve a requester's mobile number through it
+    cpf = (request.query_params.get("cpf") or "").strip().upper()
+    return json_response({"person": await run_in_threadpool(imac.person, cpf)})
+
+
+async def imac_create(request):
+    """Fill IMAC: a documentary record of Install/Add/Change work, started from an asset's detail page. Permission
+    (an administrator, or the engineer assigned to that asset) is checked inside imac.create."""
+    b, u, ip = request.state.body, request.state.user, client_ip(request)
+    key = _key(b)
+    def run():
+        r = imac.create(u, key, b, ip)
+        _act(u, ip, "IMAC", f"assets:{key}", {"imac_id": r["id"]})
+        return {**r, "detail": queries.detail("assets", key, False, u)}
+    return json_response(await run_in_threadpool(run))
+
+
+async def imac_pdf(request):
+    imac_id = int(request.path_params["imac_id"])
+    data, name = await run_in_threadpool(imac.get_pdf, request.state.user, imac_id)
+    return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 async def qr_label(request):
@@ -245,6 +276,10 @@ routes = [
     Route("/api/edit/schema", read(schema)),
     Route("/api/edit/assets/rates", read(rates)),
     Route("/api/edit/assets/verify", write(verify), methods=["POST"]),
+    Route("/api/edit/assets/imac", write(imac_create), methods=["POST"]),
+    Route("/api/imac/{imac_id:int}/pdf", read(imac_pdf)),
+    Route("/api/assets/{key:path}/imac/context", read(imac_context)),
+    Route("/api/assets/{key:path}/imac/person", read(imac_person)),
     Route("/api/assets/{key:path}/qr", read(qr_label)),
     Route("/api/edit/assets/lookup", read(lookup)),
     Route("/api/edit/{name}/update", write(update), methods=["POST"]),

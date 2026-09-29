@@ -1,7 +1,7 @@
 """Generic, whitelist-driven query engine for the registers (list + live facets + detail + global search)."""
 import re
 
-from . import auth, config, db
+from . import auth, config, db, imac
 from .datasets import ADMIN_ONLY_DATASETS, DATASETS, HIDDEN_DETAIL, NEVER_EXPOSE, search_expr
 
 BLANK = "~blank"
@@ -207,6 +207,7 @@ def detail(name, ident, include_archived=False, user=None):
         rel["serial_history"] = db.query("SELECT old_serial, new_serial, rma_no, change_date FROM oem_serial_history WHERE asset_key=%s ORDER BY change_date", [ident])
         rel["history"] = db.query("SELECT snapshot_date, change_type, field, old_value, new_value FROM asset_change_log WHERE asset_key=%s ORDER BY snapshot_date DESC LIMIT 50", [ident])
         rel["verifications"] = db.query("SELECT verified_on, result, verified_by, note FROM asset_verification WHERE asset_key=%s ORDER BY verified_on DESC, verification_id DESC LIMIT 20", [ident])
+        rel["imac"] = imac.for_asset(ident)
     elif name == "calls":
         rel["asset"] = db.one("SELECT asset_key AS id, asset_class, asset_type, make, model, serial_no, location_code, room, user_name, engineer_name FROM asset WHERE asset_key=%s AND is_current=1", [row["asset_key"]]) if row["asset_key"] else None
         rel["inward"] = db.query("SELECT inward_id AS id, inward_date, part_description, part_no, received_date FROM spare_inward WHERE sr_id=%s AND is_current=1 ORDER BY inward_date", [ident])
