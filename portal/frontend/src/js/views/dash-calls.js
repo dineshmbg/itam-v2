@@ -13,7 +13,7 @@ export function mountCallsDash(root) {
   let strip, ch = {}, dead = false, extra;
   const sub = h('span', null, '');
   const body = h('div', { class: 'grid' });
-  root.append(h('div', { class: 'page' }, pageHead('Call tracker', sub, shareMenu({ pack: 'calls' })), h('div', { id: 'kpis' }), body));
+  root.append(h('div', { class: 'page', 'data-mod': 'calls' }, pageHead('Call tracker', sub, shareMenu({ pack: 'calls' })), h('div', { id: 'kpis' }), body));
   body.append(loading());
 
   const kpis = (d) => {
@@ -44,7 +44,7 @@ export function mountCallsDash(root) {
         legend([{ label: 'Closed', n: m.reduce((a, r) => a + r.closed, 0), color: 'var(--chart-3)' }, { label: 'Open', n: m.reduce((a, r) => a + r.open, 0), color: 'var(--chart-2)' }, { label: 'Average days to close', n: null, color: 'var(--c-text)' }])),
       panel('Open calls by age', { cls: 'span-4', hint: 'days since logged' }, cAge, h('div', { class: 'faint', style: { marginTop: '8px', fontSize: '12px' } }, 'Select a bar to list those calls.')),
       panel('Most frequent problems', { cls: 'span-6' }, cProb),
-      panel('Asset class', { cls: 'span-3' }, cClass, legend(d.by_class.map((c, i) => ({ label: humanize(c.label), n: c.n, color: `var(--chart-${(i % 8) + 1})` })), (it, i) => regHref('calls', { 'f.asset_class': d.by_class[i].label }))),
+      panel('Asset class', { cls: 'span-3' }, cClass, legend(d.by_class.map((c, i) => ({ label: humanize(c.label), n: c.n, color: `var(--chart-${(i % 10) + 1})` })), (it, i) => regHref('calls', { 'f.asset_class': d.by_class[i].label }))),
       panel('Priority', { cls: 'span-3' }, cPri, legend(d.priority.map((p, i) => ({ label: p.label, n: p.n, color: `var(--chart-${(i % 8) + 1})` })), (it, i) => regHref('calls', { 'f.priority': d.priority[i].label }))),
       panel('Oldest open calls', { cls: 'span-8', flush: true, hint: 'select a row to open the call' }, oldest(d)),
       panel('Repeat failures', { cls: 'span-4', hint: 'assets with 3+ calls' }, d.repeat.length ? barRows(d.repeat.map((r) => ({ label: r.id, n: r.n, href: regHref('calls', { q: r.id }) }))) : h('div', { class: 'muted' }, 'No repeat failures.')),

@@ -17,7 +17,7 @@ const ICONS = `menu search close chevron--down chevron--up chevron--right chevro
 chevron--sort--down filter filter--reset restart launch information warning help keyboard settings light asleep screen checkmark--filled checkmark--outline
 close--filled close--outline error--filled warning--filled warning--alt--filled information--filled radio-button radio-button--checked checkbox checkbox--checked
 checkbox--checked--filled circle-dash pending in-progress time timer hourglass gender--male gender--female user user--avatar user--multiple laptop devices printer
-qr-code network--3 server--dns battery--full scan data--base tools package box archive tag location calendar report chart--bar chart--column chart--line security wifi cube
+qr-code barcode network--3 server--dns battery--full scan data--base tools package box archive tag location calendar report chart--bar chart--column chart--line security wifi cube
 document catalog data-table dashboard analytics renew copy download phone
 edit add save undo camera arrow--left trash-can locked unlocked reset view view--off logout link email send upload folder play pause stop email--new alarm calendar--heat-map notification checkmark`.split(/\s+/).filter(Boolean);
 

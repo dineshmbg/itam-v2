@@ -6,23 +6,24 @@ import * as session from '../core/session.js';
 import { createSearch } from './search.js';
 import { accountDialog } from '../views/login.js';
 
-// [path, label, icon, adminOnly] - adminOnly: true = admins (and Users with extended access); 'strict' = real administrators only;
+// [path, label, icon, adminOnly, mod] - adminOnly: true = admins (and Users with extended access); 'strict' = real administrators only;
 // 'parts' = admins, plus a User individually granted
 // Calls/Inward/Outward/OEM RMA access (session.hasCallPartsAccess()) - see Manage user -> Module access.
+// mod: which --mod-* accent tints this item's icon (see tokens.css) - purely decorative wayfinding, never the only signal for anything.
 const NAV = [
   ['Dashboards', [
-    ['dashboard/assets', 'Assets', 'devices'], ['dashboard/calls', 'Call tracker', 'phone'], ['dashboard/engineers', 'Engineers', 'user--multiple', true],
+    ['dashboard/assets', 'Assets', 'devices', false, 'assets'], ['dashboard/calls', 'Call tracker', 'phone', false, 'calls'], ['dashboard/engineers', 'Engineers', 'user--multiple', true, 'eng'],
   ]],
   ['Registers', [
-    ['registers/assets', 'Assets', 'data-table'], ['registers/calls', 'Calls', 'catalog', 'parts'], ['registers/inward', 'Inward', 'package', 'parts'],
-    ['registers/outward', 'Outward', 'box', 'parts'], ['registers/rma', 'OEM RMA', 'tools', 'parts'],
+    ['registers/assets', 'Assets', 'data-table', false, 'assets'], ['registers/calls', 'Calls', 'catalog', 'parts', 'calls'], ['registers/inward', 'Inward', 'package', 'parts', 'spr'],
+    ['registers/outward', 'Outward', 'box', 'parts', 'spr'], ['registers/rma', 'OEM RMA', 'tools', 'parts', 'spr'],
   ]],
-  ['People', [['registers/engineers', 'Engineers', 'user--avatar'], ['registers/employees', 'Employees', 'user']]],
-  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics'], ['registers/pm', 'PM worklist', 'checkmark--outline'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true]]],
-  ['Reports', [['reports', 'Report builder', 'report']]],
-  ['Control', [['integrity', 'Data integrity', 'security', 'strict'], ['audit', 'Change log', 'catalog', 'strict']]],
-  ['Data tools', [['admin/import', 'Data import', 'upload', 'strict'], ['admin/backup', 'Backup and restore', 'data--base', 'strict'], ['admin/update', 'Software update', 'restart', 'strict']]],
-  ['Administration', [['admin/users', 'Users and security', 'user--multiple', 'strict'], ['admin/email', 'E-mail and alerts', 'email', 'strict'], ['admin/activity', 'Activity log', 'time', 'strict']]],
+  ['People', [['registers/engineers', 'Engineers', 'user--avatar', false, 'eng']]],
+  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true, 'pm']]],
+  ['Reports', [['reports', 'Report builder', 'report', false, 'rep']]],
+  ['Control', [['integrity', 'Data integrity', 'security', 'strict', 'adm'], ['audit', 'Change log', 'catalog', 'strict', 'adm']]],
+  ['Data tools', [['admin/import', 'Data import', 'upload', 'strict', 'data'], ['admin/backup', 'Backup and restore', 'data--base', 'strict', 'data'], ['admin/update', 'Software update', 'restart', 'strict', 'data']]],
+  ['Administration', [['admin/users', 'Users and security', 'user--multiple', 'strict', 'adm'], ['admin/email', 'E-mail and alerts', 'email', 'strict', 'adm'], ['admin/activity', 'Activity log', 'time', 'strict', 'adm']]],
 ];
 
 const THEMES = [['light', 'Light', 'light'], ['dark', 'Dark', 'asleep'], ['auto', 'Automatic (follows system)', 'screen']];
@@ -97,8 +98,8 @@ export function buildShell(app) {
   NAV.forEach(([title, items]) => {
     const shown = items.filter(([, , , adminOnly]) => !adminOnly || (adminOnly === 'strict' ? session.isFullAdmin() : session.isAdmin()) || (adminOnly === 'parts' && session.hasCallPartsAccess()));
     if (!shown.length) return;
-    nav.append(h('div', { class: 'nav-group' }, h('h2', null, title), shown.map(([path, label, ic]) =>
-      h('a', { class: 'nav-item', href: '#/' + path, 'data-path': path, title: label }, h('span', { class: 'ico-wrap' }, icon(ic, 'lg')), h('span', null, label)))));
+    nav.append(h('div', { class: 'nav-group' }, h('h2', null, title), shown.map(([path, label, ic, , mod]) =>
+      h('a', { class: 'nav-item', href: '#/' + path, 'data-path': path, title: label, style: mod ? { '--mod-c': `var(--mod-${mod})` } : null }, h('span', { class: 'ico-wrap' }, icon(ic, 'lg')), h('span', null, label)))));
   });
   nav.append(h('div', { class: 'nav-foot' }, h('div', null, 'Live view of the IT asset inventory.')));
 

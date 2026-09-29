@@ -60,7 +60,7 @@ async def report_export(request):
     def run():
         table, total = reports.table_for_export(defn, admin, title)
         data, mime, ext = export.render(fmt, title.upper(), f"{total:,} rows - {dt.date.today():%d %b %Y} - {request.state.user['display_name']}", [table],
-                                        footer=f"Generated {dt.datetime.now():%d %b %Y %H:%M} by {request.state.user['username']}")
+                                        footer=request.state.user["username"])
         return data, mime, f"{reports.filename(defn)}.{ext}", total
     data, mime, name, total = await run_in_threadpool(run)
     await _log(request, "EXPORT_REPORT", name, {"format": fmt, "rows": total, "dataset": defn.get("dataset")})
@@ -88,7 +88,7 @@ def _pack(name):
 
 
 def _render_pack(p, fmt, user):
-    return export.render(fmt, p["title"], p["subtitle"], p["tables"], p["kpis"], p["charts"], footer=f"Generated {dt.datetime.now():%d %b %Y %H:%M} by {user['username']}")
+    return export.render(fmt, p["title"], p["subtitle"], p["tables"], p["kpis"], p["charts"], footer=user["username"])
 
 
 async def dash_export(request):

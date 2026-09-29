@@ -39,26 +39,103 @@ def csv_bytes(table):
     return ("﻿" + buf.getvalue()).encode("utf-8")       # BOM so Excel opens the file as UTF-8
 
 
+# ---------------------------------------------------------------- asset barcode labels
+def asset_barcode_svg(value):
+    """Compact Code128 barcode (bars only, no text - the caller already shows the value as text) for the asset hover card."""
+    from reportlab.graphics import renderSVG
+    from reportlab.graphics.barcode import createBarcodeDrawing
+    d = createBarcodeDrawing("Code128", value=str(value), barHeight=26, humanReadable=False, quiet=True)
+    return renderSVG.drawToString(d)
+
+
+def asset_labels_pdf(rows):
+    """One Code128 barcode sticker per asset - the same Asset (CI) number already on the record, plus the class/type, make/model and
+    serial in plain text so a technician can read it without scanning. Rows: export_table("assets", ...)'s rows (already scoped: a
+    non-admin only gets the assets assigned to them, same as the CSV export). Sheet: 4 columns x 12 rows of ~45x22mm labels on A4,
+    with dashed cut lines - close to a standard sheet of adhesive asset tags."""
+    from reportlab.graphics import renderPDF
+    from reportlab.graphics.barcode import createBarcodeDrawing
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas as pdfcanvas
+
+    page_w, page_h = A4
+    cols, rows_per_page = 4, 12
+    lw, lh = 45 * mm, 22 * mm
+    margin_x, margin_y = (page_w - cols * lw) / 2, (page_h - rows_per_page * lh) / 2
+
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=A4)
+    per_page = cols * rows_per_page
+    for i, r in enumerate(rows):
+        pos = i % per_page
+        if i and pos == 0:
+            c.showPage()
+        col, row = pos % cols, pos // cols
+        x0, y0 = margin_x + col * lw, page_h - margin_y - (row + 1) * lh
+
+        c.setDash(1, 2)
+        c.setStrokeColor(colors.HexColor("#b0b0b0"))
+        c.rect(x0, y0, lw, lh)
+        c.setDash()
+
+        key = str(r.get("asset_key") or "")
+        if not key:
+            continue
+        bc = createBarcodeDrawing("Code128", value=key, barHeight=8 * mm, humanReadable=False, quiet=True)
+        scale = min(1.0, (lw - 6 * mm) / bc.width) if bc.width else 1.0
+        bw, bh = bc.width * scale, bc.height * scale
+        renderPDF.draw(bc, c, x0 + (lw - bw) / 2, y0 + lh - bh - 3 * mm, showBoundary=False)
+
+        c.setFillColor(colors.black)
+        c.setFont("Courier-Bold", 8)
+        c.drawCentredString(x0 + lw / 2, y0 + lh - bh - 8 * mm, key[:26])
+        c.setFont("Helvetica", 5.6)
+        line2 = " / ".join(filter(None, [r.get("asset_class"), r.get("asset_type")]))
+        c.drawCentredString(x0 + lw / 2, y0 + lh - bh - 12.2 * mm, line2[:46])
+        line3 = " · ".join(filter(None, [r.get("make_model"), f"SN {r['serial_no']}" if r.get("serial_no") else None]))
+        c.drawCentredString(x0 + lw / 2, y0 + lh - bh - 15.8 * mm, line3[:50])
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------- Excel
-def xlsx_bytes(tables, title=None, kpis=None, meta=None):
+def xlsx_bytes(tables, title=None, kpis=None, meta=None, generated_by=None):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
     wb = Workbook()
     wb.remove(wb.active)
     head_fill = PatternFill("solid", fgColor="1F3864")
+
+    # Every workbook gets a SUMMARY sheet (even with no KPIs) so the generation stamp always has a home, not just dashboard exports.
+    # Format is fixed: "username - DD Mon YYYY hh:mm AM/PM" - same stamp on screen (this sheet) and when printed (the footer below).
+    stamp = dt.datetime.now().strftime("%d %b %Y %I:%M %p")
+    generated = f"{generated_by} - {stamp}" if generated_by else stamp
+    ws = wb.create_sheet("SUMMARY")
+    ws["A1"] = title or "REPORT"
+    ws["A1"].font = Font(bold=True, size=14)
+    row = 2
+    if meta:
+        ws.cell(row, 1, meta); row += 1
+    ws.cell(row, 1, generated).font = Font(italic=True, color="5F6B7A")
     if kpis:
-        ws = wb.create_sheet("SUMMARY")
-        ws["A1"] = title or "REPORT"
-        ws["A1"].font = Font(bold=True, size=14)
-        if meta:
-            ws["A2"] = meta
-        for i, (k, v) in enumerate(kpis, start=4):
+        for i, (k, v) in enumerate(kpis, start=row + 2):
             ws.cell(i, 1, k).font = Font(bold=True)
             ws.cell(i, 2, _plain(v))
-        ws.column_dimensions["A"].width = 38
-        ws.column_dimensions["B"].width = 18
-    used = set(["SUMMARY"] if kpis else [])
+    ws.column_dimensions["A"].width = 38
+    ws.column_dimensions["B"].width = 18
+
+    def _print_footer(sheet):
+        # Native Excel fields: &P/&N recompute to the real page count whenever it's actually printed. Excel has no field code to
+        # hide it conditionally on a single page (unlike the PDF path below, which we render ourselves and can suppress outright).
+        sheet.oddFooter.left.text = generated
+        sheet.oddFooter.center.text = "Page &P of &N"
+    _print_footer(ws)
+
+    used = {"SUMMARY"}
     for t in tables:
         name = re.sub(r"[\\/*?:\[\]]", " ", (t.get("title") or "DATA").upper())[:31] or "DATA"
         base, n = name, 2
@@ -89,6 +166,7 @@ def xlsx_bytes(tables, title=None, kpis=None, meta=None):
                         c.number_format = "DD-MMM-YYYY"
         ws.freeze_panes = "A2"
         ws.auto_filter.ref = ws.dimensions
+        _print_footer(ws)
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
@@ -114,6 +192,7 @@ def pdf_bytes(title, subtitle="", kpis=None, tables=None, charts=None, footer=""
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas as pdfcanvas
     from reportlab.platypus import Image, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     W, H = landscape(A4)
@@ -176,6 +255,11 @@ def pdf_bytes(title, subtitle="", kpis=None, tables=None, charts=None, footer=""
         if len(t["rows"]) > PDF_ROW_LIMIT:
             story.append(Paragraph(f"Showing the first {PDF_ROW_LIMIT:,} of {len(t['rows']):,} rows. Download Excel or CSV for the complete data.", st_sub))
 
+    # Computed here, not by the caller, so every PDF report carries it regardless of whether a caller remembers to ask. Fixed format:
+    # "username - DD Mon YYYY hh:mm AM/PM", printed flush left at the bottom of every page - same stamp `xlsx_bytes` puts on Excel.
+    stamp = dt.datetime.now().strftime("%d %b %Y %I:%M %p")
+    generated = f"{footer} - {stamp}" if footer else stamp
+
     def deco(canvas, doc):
         canvas.saveState()
         if LOGO.exists():
@@ -185,13 +269,36 @@ def pdf_bytes(title, subtitle="", kpis=None, tables=None, charts=None, footer=""
         canvas.drawString(30 * mm, H - 11 * mm, "ITAM PORTAL - ANKLESHWAR ASSET")
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(grey)
-        canvas.drawString(15 * mm, 8 * mm, _txt(footer))
-        canvas.drawRightString(W - 15 * mm, 8 * mm, f"PAGE {doc.page}")
+        canvas.drawString(15 * mm, 8 * mm, _txt(generated))
         canvas.restoreState()
+
+    class _NumberedCanvas(pdfcanvas.Canvas):
+        """Defers the page number until save(), once the true page count is known - draws it at all only when there is more than
+        one page, per the user's request. (SimpleDocTemplate's normal single-pass build only knows the page it's currently on.)"""
+        def __init__(self, *a, **kw):
+            pdfcanvas.Canvas.__init__(self, *a, **kw)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                if total > 1:
+                    self.saveState()
+                    self.setFont("Helvetica", 7)
+                    self.setFillColor(grey)
+                    self.drawCentredString(W / 2, 8 * mm, f"PAGE {self._pageNumber} OF {total}")
+                    self.restoreState()
+                pdfcanvas.Canvas.showPage(self)
+            pdfcanvas.Canvas.save(self)
 
     out = io.BytesIO()
     doc = SimpleDocTemplate(out, pagesize=landscape(A4), leftMargin=15 * mm, rightMargin=15 * mm, topMargin=20 * mm, bottomMargin=14 * mm, title=_txt(title), author="ITAM Portal")
-    doc.build(story, onFirstPage=deco, onLaterPages=deco)
+    doc.build(story, onFirstPage=deco, onLaterPages=deco, canvasmaker=_NumberedCanvas)
     return out.getvalue()
 
 
@@ -203,7 +310,7 @@ def render(fmt, title, subtitle, tables, kpis=None, charts=None, footer=""):
     if fmt == "csv":
         return csv_bytes(tables[0]), MIME["csv"], "csv"
     if fmt == "xlsx":
-        return xlsx_bytes(tables, title, kpis, subtitle), MIME["xlsx"], "xlsx"
+        return xlsx_bytes(tables, title, kpis, subtitle, generated_by=footer), MIME["xlsx"], "xlsx"
     if fmt == "pdf":
         return pdf_bytes(title, subtitle, kpis, tables, charts, footer), MIME["pdf"], "pdf"
     raise ValueError("format must be xlsx, csv or pdf")

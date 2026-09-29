@@ -18,7 +18,7 @@ export function mountAssetsDash(root) {
   const sub = h('span', null, '');
   const head = pageHead('Assets', sub, shareMenu({ pack: 'assets' }));
   const body = h('div', { class: 'grid' });
-  root.append(h('div', { class: 'page' }, head, h('div', { id: 'kpis' }), body));
+  root.append(h('div', { class: 'page', 'data-mod': 'assets' }, head, h('div', { id: 'kpis' }), body));
   body.append(loading());
 
   const kpis = (d) => {

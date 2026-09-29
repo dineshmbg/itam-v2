@@ -71,6 +71,18 @@ async def register_export(request):
     return Response(export.csv_bytes(table), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store"})
 
 
+async def asset_labels(request):
+    """Printable barcode stickers for the assets matching the current search and filters - same scoping as the CSV export (a User
+    only gets the assets assigned to them)."""
+    user = request.state.user
+    queries.check_access("assets", user)
+    table = await run_in_threadpool(queries.export_table, "assets", dict(request.query_params), user)
+    await run_in_threadpool(auth.log, user["username"], client_ip(request), "PRINT_LABELS", "register:assets", {"rows": len(table["rows"])})
+    fname = f"asset_labels_{dt.date.today():%Y-%m-%d}.pdf"
+    return Response(await run_in_threadpool(export.asset_labels_pdf, table["rows"]), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store"})
+
+
 async def register_detail(request):
     name, ident = request.path_params["name"], request.path_params["ident"]
     queries.dataset(name)
@@ -217,6 +229,7 @@ routes = [
     Route("/api/search", read(search)),
     Route("/api/registers/{name}", read(register_list)),
     Route("/api/registers/{name}/export", read(register_export)),
+    Route("/api/registers/assets/labels", read(asset_labels)),
     Route("/api/registers/{name}/{ident:path}", read(register_detail)),
     Route("/api/dash/assets", read(dash_assets)),
     Route("/api/dash/calls", read(dash_calls)),

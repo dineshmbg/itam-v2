@@ -27,6 +27,13 @@ function fmt(key, v) {
   return /email/.test(key) ? h('span', { class: 'email' }, v) : String(v);
 }
 
+/** The barcode is generated server-side (offline, no client-side library) - the SVG markup is trusted, it comes from this portal's own API. */
+function barcodeBlock(svg) {
+  const box = h('div', { class: 'hc-barcode' });
+  box.innerHTML = svg;
+  return box;
+}
+
 function build(d) {
   const rows = Object.entries(d.row || {});
   const x = d.extra || {};
@@ -38,6 +45,7 @@ function build(d) {
     h('div', { class: 'hc-b' }, h('div', { class: 'kv compact' }, rows.flatMap(([k, v]) => [h('div', { class: 'k' }, fieldLabel(k)), h('div', { class: 'v' }, fmt(k, v))]))),
     x.checklist?.length ? h('div', { class: 'hc-check' }, x.checklist.map((c) => h('span', { class: c.status === 'PENDING' ? 'cross' : 'tick', title: `${fieldLabel(c.item)}: ${c.status.toLowerCase()}` }, icon(c.status === 'PENDING' ? 'close--filled' : 'checkmark--filled'), fieldLabel(c.item)))) : null,
     x.asset ? h('div', { class: 'hc-check' }, h('span', { class: 'muted' }, 'Asset: '), h('a', { class: 'mono', href: href('registers/assets', { open: x.asset.asset_key }) }, x.asset.asset_key), ` · ${[x.asset.make, x.asset.model].filter(Boolean).join(' ')}`) : null,
+    d.kind === 'asset' && d.barcode_svg ? barcodeBlock(d.barcode_svg) : null,
     d.link ? h('div', { class: 'hc-f' }, h('a', { href: href(d.link.path, Object.fromEntries(Object.entries(d.link).filter(([k]) => k !== 'path'))) }, 'Open ', icon('arrow--right'))) : null);
   card.addEventListener('pointerenter', () => clearTimeout(hideTimer));
   card.addEventListener('pointerleave', scheduleHide);

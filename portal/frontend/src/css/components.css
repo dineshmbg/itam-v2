@@ -70,11 +70,12 @@ mark { background: color-mix(in srgb, var(--c-warn) 28%, transparent); color: in
 a.kpi:hover { background: var(--c-surface-2); text-decoration: none; }
 a.kpi:hover .kpi-l { color: var(--c-accent); }
 .kpi-l { font-size: 12px; color: var(--c-text-2); display: flex; align-items: center; gap: 6px; }
+.kpi-l .ico { color: var(--page-mod, var(--c-text-3)); }
 .kpi-v { font-size: 28px; line-height: 36px; font-weight: 400; letter-spacing: -0.01em; }
 .kpi-s { font-size: 12px; color: var(--c-text-3); min-height: 16px; }
-.kpi[data-tone="bad"] .kpi-v { color: var(--c-bad); }
-.kpi[data-tone="warn"] .kpi-v { color: var(--c-warn); }
-.kpi[data-tone="ok"] .kpi-v { color: var(--c-ok); }
+.kpi[data-tone="bad"] .kpi-v, .kpi[data-tone="bad"] .kpi-l .ico { color: var(--c-bad); }
+.kpi[data-tone="warn"] .kpi-v, .kpi[data-tone="warn"] .kpi-l .ico { color: var(--c-warn); }
+.kpi[data-tone="ok"] .kpi-v, .kpi[data-tone="ok"] .kpi-l .ico { color: var(--c-ok); }
 .kpi.changed { animation: kpiflash 1.2s var(--ease); }
 @keyframes kpiflash { 0% { background: var(--c-accent-bg); } 100% { background: transparent; } }
 
@@ -87,6 +88,7 @@ a.kpi:hover .kpi-l { color: var(--c-accent); }
 .badge.info { background: var(--c-info-bg); color: var(--c-info); }
 .badge.mute { background: var(--c-mute-bg); color: var(--c-mute); }
 .tick { color: var(--c-ok); } .cross { color: var(--c-bad); } .caution { color: var(--c-warn); }
+.cls-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; flex: none; vertical-align: middle; }
 .gender { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---------- toolbar / chips ---------- */

@@ -21,7 +21,7 @@ export function mountEngineersDash(root) {
   const filters = { q: '', open: false, roster: false, onboarding: false };
   const sub = h('span', null, '');
   const body = h('div', { class: 'grid' });
-  root.append(h('div', { class: 'page' }, pageHead('Engineers', sub, shareMenu({ pack: 'engineers' })), h('div', { id: 'kpis' }), body));
+  root.append(h('div', { class: 'page', 'data-mod': 'eng' }, pageHead('Engineers', sub, shareMenu({ pack: 'engineers' })), h('div', { id: 'kpis' }), body));
   body.append(loading());
 
   const kpis = (d) => {

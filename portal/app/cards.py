@@ -7,6 +7,7 @@ from starlette.routing import Route
 
 from . import db
 from .datasets import HIDDEN_DETAIL, NEVER_EXPOSE
+from .export import asset_barcode_svg
 from .web import json_response, read
 
 PERSONAL = NEVER_EXPOSE          # same set queries.py's _clean() protects - kept as one alias so cards.py's own history/comments still read naturally
@@ -26,7 +27,8 @@ def _asset(ident, admin):
                          (SELECT count(*) FROM oem_rma WHERE asset_key = %(k)s AND is_current = 1) AS rma,
                          (SELECT count(*) FROM asset WHERE parent_asset_key = %(k)s AND is_current = 1) AS components""", {"k": ident})
     return {"kind": "asset", "id": ident, "title": ident, "subtitle": " · ".join(filter(None, [row["asset_class"], row["make"], row["model"]])),
-            "archived": row["is_current"] == 0, "row": _clean(row, admin), "extra": x, "link": {"path": "registers/assets", "open": ident}}
+            "archived": row["is_current"] == 0, "row": _clean(row, admin), "extra": x, "link": {"path": "registers/assets", "open": ident},
+            "barcode_svg": asset_barcode_svg(ident)}
 
 
 def _call(ident, admin):

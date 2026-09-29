@@ -420,6 +420,30 @@ server) and checksum, backs the database up, loads the image, restarts the porta
 (`/var/lib/itam-updates` on the VM = `/updates` in the container: `incoming/`, `request.json`, `status.json`, `update.log`, `history.jsonl`, heartbeat). See `deploy/README.md`, "Updating".
 `build-release.ps1` makes the package; `make-release-key.ps1` makes the key pair once.
 
+## Barcode labels and activity-log hostname (2026-09-27)
+
+- **Barcode stickers**: *Print barcode labels* on the assets register downloads a PDF sticker sheet (Code128, one per asset matching the
+  current search/filters, 45×22mm, 4-across) for the Asset (CI) number - built server-side with `reportlab` (`app/export.py`), no new
+  dependency. The asset hover card also shows the same barcode (rendered as SVG, same code path) for every asset, always on.
+- **Activity log now records the client's hostname alongside its IP** (`app/netid.py`): addresses on this LAN are DHCP-assigned, so the IP
+  alone does not reliably identify a machine after the fact. Resolved via NetBIOS name service (works for any Windows PC with no DNS setup
+  needed) falling back to reverse DNS, both bounded to a few hundred milliseconds and cached; a lookup failure never costs the audit row
+  (`auth.log` never raises). Shown as a second line under the IP in *Activity log*, with its own filter and facet.
+
+## Colourway: module accents and a richer chart palette (2026-09-27)
+
+The portal read as flat gray-and-blue outside its charts. Recoloured deliberately, without adding any library, font or request:
+- **One accent colour per module** (`--mod-assets/calls/eng/pm/rep/spr/adm/data` in `tokens.css`, light + dark): tints a nav item's icon
+  (`shell.js`, `layout.css`) and, on each dashboard, any KPI tile that has no more specific tone (`.page[data-mod]` -> `--page-mod`,
+  `components.css`). A KPI with a real tone (`ok`/`warn`/`bad`) still wins over the module colour - status always outranks wayfinding.
+- **Chart palette extended from 8 to 10 hues** (`--chart-1`..`--chart-10`) and revalued to be more distinct; `ui/charts.js`'s `colorVar()`
+  cycles through all 10, so every dashboard chart, doughnut and legend picked up the richer set with no code change beyond the token values.
+- **Asset class gets a small colour dot** in the assets register's Class column (`ui/table.js`, `classDotVar()` in `ui/badge.js`) - a dot,
+  not a tinted chip, so it stays legible at thousands of rows. Status badges are unchanged: they were already tinted only when the tone is
+  `ok`/`warn`/`bad`/`info` (never for a plain `mute` status) - the same "colour only when it earns it" rule this batch extended elsewhere.
+- Previewed for approval first as a private, throwaway Claude Artifact (three side-by-side modes: current / recommended / full-colour) built
+  from real register data before any real file was touched. Adds ~1 KB to `app.css`, nothing to the JS bundle size worth noting (22.1 -> 22.3 KB).
+
 ## Design basis
 
-WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy).
+WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy). Colour: one accent per module plus a 10-hue categorical chart palette (`tokens.css`), status colour always paired with an icon and a text label.

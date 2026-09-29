@@ -27,12 +27,13 @@
   display: flex; flex-direction: column;
 }
 .nav-group { padding: var(--sp-3) 0 var(--sp-1); }
-.nav-group > h2 { padding: 0 var(--sp-4) var(--sp-1); font-size: 11px; line-height: 16px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text-3); font-weight: 600; white-space: nowrap; }
+.nav-group > h2 { padding: 0 var(--sp-4) var(--sp-1); font-size: 11px; line-height: 16px; letter-spacing: 0.08em; text-transform: none; color: var(--c-text-3); font-weight: 600; white-space: nowrap; }
 .nav a.nav-item {
   display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 var(--sp-4); color: var(--c-text-2); white-space: nowrap;
   border-left: 3px solid transparent; text-decoration: none; transition: background-color 120ms var(--ease);
 }
 .nav a.nav-item:hover { background: var(--c-surface-3); color: var(--c-text); }
+.nav a.nav-item .ico { color: var(--mod-c, var(--c-text-3)); }
 .nav a.nav-item[aria-current="page"] { background: var(--c-accent-bg); color: var(--c-text); border-left-color: var(--c-accent); font-weight: 500; }
 .nav a.nav-item[aria-current="page"] .ico { color: var(--c-accent); }
 .nav-item .count { margin-left: auto; font-size: 12px; color: var(--c-text-3); }
@@ -43,6 +44,11 @@
 
 .main { overflow: auto; overscroll-behavior: contain; padding: var(--sp-5); outline: none; scroll-padding-top: 16px; }
 .page { max-width: 1760px; margin: 0 auto; }
+/* one accent per dashboard, used only for the KPI icons above (see .kpi-l .ico in components.css) */
+.page[data-mod="assets"] { --page-mod: var(--mod-assets); }
+.page[data-mod="calls"] { --page-mod: var(--mod-calls); }
+.page[data-mod="eng"] { --page-mod: var(--mod-eng); }
+.page[data-mod="pm"] { --page-mod: var(--mod-pm); }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); flex-wrap: wrap; }
 .page-head .sub { color: var(--c-text-2); margin-top: 2px; }
 .page-tools { display: flex; align-items: center; gap: var(--sp-3); }

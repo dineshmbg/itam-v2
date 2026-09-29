@@ -12,13 +12,14 @@ const STEPS = [['verifying', 'Check the package'], ['backup', 'Back up the datab
 const RESULT = { success: ['ok', 'checkmark--filled', 'Updated'], rolled_back: ['warn', 'warning--alt--filled', 'Rolled back'], failed: ['bad', 'error--filled', 'Failed'], running: ['info', 'time', 'In progress'], queued: ['info', 'time', 'Waiting'] };
 
 export function mountUpdate(root) {
-  let dead = false, data = null, timer = null, offline = 0, uploading = false;
+  let dead = false, data = null, timer = null, offline = 0, uploading = false, pendingFile = false;
   const holder = h('div', { class: 'page' });
   root.append(holder);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '16px' } });
   holder.append(pageHead('Software update', 'Install a new version of the portal from a release package. Your data is never replaced: the database is backed up first, and the previous version stays available to go back to.', []), body);
 
   async function load() {
+    if (pendingFile) { schedule(); return; }   // a file is chosen but not yet uploaded - do not rebuild the page (and its empty file input) under the user
     try {
       data = await get('/api/admin/update');
       offline = 0;
@@ -87,6 +88,7 @@ export function mountUpdate(root) {
 
   function packagesPanel() {
     const file = h('input', { type: 'file', accept: '.itamrel', id: 'up-file', 'aria-label': 'Release package' });
+    file.addEventListener('change', () => { pendingFile = file.files.length > 0; });
     const bar = h('progress', { max: '100', value: '0', hidden: true, style: { width: '100%' } });
     const msg = h('div', { class: 'muted small', role: 'status' }, '');
     const go = h('button', { class: 'btn primary', type: 'button', onClick: () => upload(file, go, bar, msg) }, icon('upload'), 'Upload package');
@@ -114,6 +116,7 @@ export function mountUpdate(root) {
     const f = fileInput.files?.[0];
     if (!f) { toast('Choose the release package first.', 'bad'); return; }
     if (!/^itam-release-.+\.itamrel$/.test(f.name)) { toast('That is not a release package (itam-release-….itamrel).', 'bad'); return; }
+    pendingFile = false;   // the selection is being used now - safe to let the page refresh again
     uploading = true; btn.disabled = true; bar.hidden = false; bar.value = 0; msg.textContent = 'Uploading…';
     const x = new XMLHttpRequest();
     x.open('POST', '/api/admin/update/upload');
@@ -135,7 +138,7 @@ export function mountUpdate(root) {
 
   function installDialog(p) {
     const older = p.version < data.current_version;
-    const c = h('input', { id: 'up-c', type: 'text', autocomplete: 'off', placeholder: 'UPDATE' });
+    const c = h('input', { id: 'up-c', class: 'no-upper', type: 'text', autocomplete: 'off', placeholder: 'UPDATE' });
     const ol = h('input', { type: 'checkbox', id: 'up-old' });
     openModal({
       title: `Install version ${p.version}`, lead: 'The portal will be unavailable for about a minute while it restarts. Everyone stays signed in.',
@@ -152,7 +155,7 @@ export function mountUpdate(root) {
   }
 
   function rollbackDialog() {
-    const c = h('input', { id: 'rb-c', type: 'text', autocomplete: 'off', placeholder: 'ROLLBACK' });
+    const c = h('input', { id: 'rb-c', class: 'no-upper', type: 'text', autocomplete: 'off', placeholder: 'ROLLBACK' });
     openModal({
       title: `Go back to version ${data.previous_version}`, lead: 'Use this if the current version misbehaves. The database is backed up first; your data is kept (new columns added by the newer version are simply ignored).',
       body: h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'rb-c' }, 'Type ROLLBACK to confirm'), c),

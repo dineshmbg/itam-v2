@@ -55,6 +55,13 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
     key.c.node.addEventListener('input', () => { keyTouched = true; });
     host.c.node.addEventListener('input', () => { if (!keyTouched) key.c.write(host.c.read()); });
   }
+  // Editing an existing asset whose Hostname was never recorded (true for most of them): default the field to the asset's own
+  // CI number rather than leaving it blank to type from scratch. A plain save then fills it in for real, a natural backfill one
+  // edit at a time instead of a one-off bulk update. Only fires once, at form open - unlike the create-mode listener above,
+  // the CI here is already fixed, so there is nothing to keep tracking as the person types.
+  if (!create && items.has('hostname') && !values.hostname && values.asset_key) {
+    items.get('hostname').c.write(values.asset_key);
+  }
   // a new asset's Type suggests its Class, when every existing asset of that Type happens to share one - e.g. typing "LAPTOP"
   // fills Class = LAPTOP. Left alone (never overwritten once the person touches Class themselves) when it's ambiguous or unknown.
   if (create && items.has('asset_type') && items.has('asset_class') && items.get('asset_type').c.input) {

@@ -78,7 +78,8 @@ def test_password_hash_and_policy(sandbox):
     assert auth.verify_password(STRONG, h) and not auth.verify_password(STRONG + "x", h) and not auth.verify_password("", "garbage")
     assert auth.policy_problems(STRONG, "TESTER1") == []
     bad = " ".join(auth.policy_problems("short", "TESTER1"))
-    assert "12 characters" in bad and "digit" in bad and "symbol" in bad and "upper-case" in bad
+    min_len = auth.settings(True)["pw_min_length"]   # read live, not hardcoded - an admin may have changed this setting on the real database
+    assert f"{min_len} characters" in bad and "digit" in bad and "symbol" in bad and "upper-case" in bad
     assert any("user name" in p for p in auth.policy_problems("Tester1-Abcd#123", "tester1"))
     assert any("common word" in p for p in auth.policy_problems("MyPassword#12345", "x"))
     assert any("differ" in p for p in auth.policy_problems(STRONG, "x", [h]))

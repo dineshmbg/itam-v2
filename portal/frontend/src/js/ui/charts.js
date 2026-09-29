@@ -10,7 +10,7 @@ export async function Chart() {
 }
 
 const U = (a) => a.map((x) => String(x).toUpperCase());   // text rule: chart labels are upper case like the rest of the page
-const PALETTE = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-7', '--chart-8'];
+const PALETTE = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-7', '--chart-8', '--chart-9', '--chart-10'];
 export const color = (i) => token(PALETTE[i % PALETTE.length]);
 export const colorVar = (i) => `var(${PALETTE[i % PALETTE.length]})`;
 

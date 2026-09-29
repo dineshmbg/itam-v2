@@ -139,7 +139,7 @@ async def activity_list(request):
     limit = max(1, min(int(a.get("limit", 100)), 200))
     offset = max(0, int(a.get("offset", 0)))
     parts, params = ["true"], []
-    for k, col in (("user", "username"), ("action", "action")):
+    for k, col in (("user", "username"), ("action", "action"), ("hostname", "hostname")):
         if a.get(k):
             parts.append(f"{col} = ANY(%s)")
             params.append([x for x in a[k].split("|") if x])
@@ -147,16 +147,17 @@ async def activity_list(request):
         parts.append("ok = %s")
         params.append(a["ok"] == "1")
     for tok in re.findall(r"\S+", (a.get("q") or "").lower())[:6]:
-        parts.append("lower(coalesce(username,'') || ' ' || action || ' ' || coalesce(target,'') || ' ' || coalesce(ip,'') || ' ' || coalesce(detail::text,'')) LIKE %s")
+        parts.append("lower(coalesce(username,'') || ' ' || action || ' ' || coalesce(target,'') || ' ' || coalesce(ip,'') || ' ' || coalesce(hostname,'') || ' ' || coalesce(detail::text,'')) LIKE %s")
         params.append("%" + tok.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
     w = " AND ".join(parts)
 
     def run():
-        rows = db.query(f"SELECT activity_id AS id, at, username, ip, action, target, detail, ok FROM portal_activity WHERE {w} ORDER BY activity_id DESC LIMIT %s OFFSET %s", params + [limit, offset])
+        rows = db.query(f"SELECT activity_id AS id, at, username, ip, hostname, action, target, detail, ok FROM portal_activity WHERE {w} ORDER BY activity_id DESC LIMIT %s OFFSET %s", params + [limit, offset])
         out = {"rows": rows, "total": db.one(f"SELECT count(*) AS n FROM portal_activity WHERE {w}", params)["n"]}
         if a.get("facets") == "1":
             out["facets"] = {"user": db.query("SELECT username AS v, count(*) AS n FROM portal_activity WHERE username IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 30"),
-                             "action": db.query("SELECT action AS v, count(*) AS n FROM portal_activity GROUP BY 1 ORDER BY 2 DESC LIMIT 30")}
+                             "action": db.query("SELECT action AS v, count(*) AS n FROM portal_activity GROUP BY 1 ORDER BY 2 DESC LIMIT 30"),
+                             "hostname": db.query("SELECT hostname AS v, count(*) AS n FROM portal_activity WHERE hostname IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 30")}
         return out
     return json_response(await run_in_threadpool(run))
 

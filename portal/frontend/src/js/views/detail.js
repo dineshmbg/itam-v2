@@ -33,6 +33,9 @@ const RELATED = {
 const SINGLE = { assets: [], calls: [['asset', 'Asset', 'assets']], inward: [['asset', 'Asset', 'assets'], ['call', 'Call', 'calls']], outward: [['asset', 'Asset', 'assets'], ['call', 'Call', 'calls']], rma: [['asset', 'Asset', 'assets'], ['call', 'Call', 'calls']] };
 
 export function value(key, v, self) {
+  // Hostname is blank on most assets in the source data - show the asset's own CI number in its place rather than a bare dash,
+  // so the field always reads as something. `self` is the asset's own key wherever this is used (see renderDetail below).
+  if (key === 'hostname' && (v == null || v === '') && self) return h('span', { class: 'mono faint', title: 'No hostname recorded - showing the Asset (CI) number' }, self);
   if (v == null || v === '') return h('span', { class: 'faint' }, '—');
   if (REF[key] && !(self && v === self)) return entity(REF[key], v, NAME_KEYS.has(key) ? person(String(v)) : String(v), { mono: !NAME_KEYS.has(key) });
   if (BADGE_KEYS.has(key)) return badge(v);

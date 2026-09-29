@@ -42,3 +42,11 @@ export function genderGlyph(g) {
 export const TONE_VAR = { ok: '--c-ok', warn: '--c-warn', bad: '--c-bad', info: '--c-info', mute: '--c-text-3' };
 export const toneOf = (value) => (MAP[value] ? MAP[value][0] : 'mute');
 export const labelOf = (value) => (MAP[value] ? MAP[value][2] : humanize(value));
+
+// asset_class -> --chart-N: a stable colour per class (see edit.py CLASSES), used only as a small identifying dot next to the
+// class name (register table, hover card) - never as the badge's own background, so it stays legible at hundreds of rows.
+const CLASS_VAR = {
+  LAPTOP: '--chart-1', DESKTOP: '--chart-9', WORKSTATION: '--chart-6', SWITCH: '--chart-3', ROUTER: '--chart-10',
+  MEDIA_CONVERTER: '--chart-7', PRINTER: '--chart-2', SCANNER: '--chart-4', UPS: '--chart-5', SERVER: '--chart-8',
+};
+export const classDotVar = (value) => CLASS_VAR[value] || null;

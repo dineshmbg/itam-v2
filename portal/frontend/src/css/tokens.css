@@ -27,9 +27,14 @@
   --c-info: #0b5cad;  --c-info-bg: #e6f0fa;
   --c-mute: #4b5563;  --c-mute-bg: #eceff2;
 
-  --chart-1: #0b5cad; --chart-2: #c25e00; --chart-3: #12806f; --chart-4: #a23b7a;
-  --chart-5: #8a6d00; --chart-6: #5b4bb5; --chart-7: #5f6b7a; --chart-8: #b42318;
+  --chart-1: #0b5cad; --chart-2: #c2410c; --chart-3: #0e7490; --chart-4: #a3195b;
+  --chart-5: #b45309; --chart-6: #6d28d9; --chart-7: #15803d; --chart-8: #9f1239;
+  --chart-9: #4338ca; --chart-10: #0f766e;
   --chart-grid: #e3e7ec;
+
+  /* module accents: one hue per area of the app, used sparingly (a nav icon, a KPI accent) - never the only signal for status */
+  --mod-assets: #0b5cad; --mod-calls: #c2410c; --mod-eng: #6d28d9; --mod-pm: #15803d;
+  --mod-rep: #4338ca; --mod-spr: #a3195b; --mod-adm: #92400e; --mod-data: #0e7490;
 
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
   --r-1: 2px; --r-2: 4px;
@@ -52,9 +57,12 @@
   --c-scrim: rgba(0, 0, 0, 0.6);
   --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
   --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
-  --chart-1: #6cb0f7; --chart-2: #e08a3c; --chart-3: #43b8a4; --chart-4: #d977b3; --chart-5: #d1ad3a; --chart-6: #9d8cf0; --chart-7: #98a3b1; --chart-8: #f0827a;
+  --chart-1: #6cb0f7; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
+  --chart-9: #a5b4fc; --chart-10: #2dd4bf;
   --chart-grid: #26303b;
   --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
+  --mod-assets: #6cb0f7; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
+  --mod-rep: #a5b4fc; --mod-spr: #f472b6; --mod-adm: #d9a441; --mod-data: #22d3ee;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -66,8 +74,11 @@
     --c-scrim: rgba(0, 0, 0, 0.6);
     --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
     --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
-    --chart-1: #6cb0f7; --chart-2: #e08a3c; --chart-3: #43b8a4; --chart-4: #d977b3; --chart-5: #d1ad3a; --chart-6: #9d8cf0; --chart-7: #98a3b1; --chart-8: #f0827a;
+    --chart-1: #6cb0f7; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
+    --chart-9: #a5b4fc; --chart-10: #2dd4bf;
     --chart-grid: #26303b;
     --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
+    --mod-assets: #6cb0f7; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
+    --mod-rep: #a5b4fc; --mod-spr: #f472b6; --mod-adm: #d9a441; --mod-data: #22d3ee;
   }
 }

@@ -21,7 +21,7 @@ import struct
 import threading
 import time
 
-from . import db
+from . import db, netid
 from .datasets import ADMIN_ONLY_DATASETS
 
 ROLES = ("ADMIN", "USER")
@@ -56,6 +56,9 @@ DDL = [
     "CREATE TABLE IF NOT EXISTS portal_setting (key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_by TEXT)",
     """CREATE TABLE IF NOT EXISTS portal_activity (
          activity_id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), username TEXT, ip TEXT, action TEXT NOT NULL, target TEXT, detail JSONB, ok BOOLEAN NOT NULL DEFAULT TRUE)""",
+    # the DHCP-assigned IP alone does not reliably identify a PC over time; the hostname (NetBIOS name service, or reverse DNS - see
+    # netid.py) is captured at the same moment for exactly that reason.
+    "ALTER TABLE portal_activity ADD COLUMN IF NOT EXISTS hostname TEXT",
     "CREATE INDEX IF NOT EXISTS ix_portal_activity_at ON portal_activity (at DESC)",
     "CREATE INDEX IF NOT EXISTS ix_portal_activity_user ON portal_activity (username, at DESC)",
     "CREATE INDEX IF NOT EXISTS ix_portal_session_user ON portal_session (user_id)",
@@ -228,9 +231,13 @@ def new_recovery_codes():
 def log(username, ip, action, target=None, detail=None, ok=True):
     """Never raises - logging must not break the action being logged."""
     try:
+        hostname = netid.resolve_hostname(ip)
+    except Exception:  # noqa: BLE001 - resolve_hostname already guards itself; this is a second layer so a lookup failure never costs the whole audit row
+        hostname = None
+    try:
         with db.write() as con:
-            con.execute("INSERT INTO portal_activity (username, ip, action, target, detail, ok) VALUES (%s,%s,%s,%s,%s::jsonb,%s)",
-                        (username, ip, action, target, json.dumps(detail, default=str) if detail is not None else None, ok))
+            con.execute("INSERT INTO portal_activity (username, ip, hostname, action, target, detail, ok) VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s)",
+                        (username, ip, hostname, action, target, json.dumps(detail, default=str) if detail is not None else None, ok))
     except Exception:  # noqa: BLE001
         import logging
         logging.getLogger("itam").exception("activity log failed")

@@ -56,7 +56,7 @@ async def upload(request):
 
 async def start(request):
     b, u = request.state.body, request.state.user
-    if b.get("confirm") != "UPDATE":
+    if str(b.get("confirm") or "").strip().upper() != "UPDATE":
         return error(400, "Type UPDATE to confirm.")
     try:
         out = await run_in_threadpool(update.request_install, str(b.get("package") or ""), u["username"], bool(b.get("allow_older")))
@@ -68,7 +68,7 @@ async def start(request):
 
 async def rollback(request):
     b, u = request.state.body, request.state.user
-    if b.get("confirm") != "ROLLBACK":
+    if str(b.get("confirm") or "").strip().upper() != "ROLLBACK":
         return error(400, "Type ROLLBACK to confirm.")
     try:
         out = await run_in_threadpool(update.request_rollback, u["username"])

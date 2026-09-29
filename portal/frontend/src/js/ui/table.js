@@ -1,8 +1,8 @@
 // Virtualised data grid: only the visible rows exist in the DOM, pages of rows are fetched on demand, the header is sticky and sortable.
 // Handles tens of thousands of rows at constant cost; rows are absolutely positioned on a fixed grid (rowHeight).
 import { append, h, icon, hilite } from '../core/dom.js';
-import { date, int, person } from '../core/format.js';
-import { badge } from './badge.js';
+import { date, humanize, int, person } from '../core/format.js';
+import { badge, classDotVar } from './badge.js';
 import { entity } from './hovercard.js';
 
 const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['140px', '0.7fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
@@ -50,6 +50,10 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
   function cell(col, row) {
     const v = row[col.key];
     const td = h('div', { class: 'gt-td' + (col.align === 'right' ? ' right' : ''), role: 'gridcell' });
+    if (col.key === 'hostname' && (v == null || v === '')) {
+      const key = row.asset_key ?? row.id;
+      if (key) { td.title = 'No hostname recorded - showing the Asset (CI) number'; td.append(h('span', { class: 'mono faint' }, key)); return td; }
+    }
     if (v == null || v === '') { td.append(h('span', { class: 'faint' }, '—')); return td; }
     switch (col.kind) {
       case 'name': td.title = v; append(td, [col.ref ? entity(col.ref, row[col.key + '__ref'] ?? v, hilite(person(v), search()), { mono: false }) : hilite(person(v), search())]); break;
@@ -58,7 +62,12 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
       case 'int': td.append(int(v)); break;
       case 'money': td.append(Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })); break;
       case 'badge': td.append(badge(v)); break;
-      default: td.title = v; append(td, [hilite(v, search())]);
+      default:
+        td.title = v;
+        if (col.key === 'asset_class') {
+          const cv = classDotVar(v);
+          append(td, [cv ? h('i', { class: 'cls-dot', style: { background: `var(${cv})` } }) : null, hilite(humanize(v), search())]);
+        } else append(td, [hilite(v, search())]);
     }
     return td;
   }

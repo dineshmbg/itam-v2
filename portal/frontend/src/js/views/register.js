@@ -145,6 +145,8 @@ export function mountRegister(root, name, opts = {}) {
       tools.push(colsBtn);
       tools.push(h('button', { class: 'btn', type: 'button', title: 'Download everything matching the current search and filters as a CSV file (opens in Excel)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/' + name + '/export', paramsForServer(0, 0, false), name + '.csv'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('download'), 'Export CSV'));
+      if (name === 'assets') tools.push(h('button', { class: 'btn', type: 'button', title: 'Print Code128 barcode stickers for everything matching the current search and filters (one per asset, Asset (CI) number)',
+        onClick: async () => { try { const n = await downloadGet('/api/registers/assets/labels', paramsForServer(0, 0, false), 'asset_labels.pdf'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('barcode'), 'Print barcode labels'));
       if (!opts.embedded) holder.append(pageHead(ds.label, `${ds.label} — updates live as records change`, tools));
       facets = createFacets({ facets: ds.facets, onChange: (f, clearAll) => { filters = clearAll ? Object.fromEntries(ds.facets.map((x) => [x.key, []])) : f; applyFilters(); } });
       const myEngineerKey = name === 'engineers' ? sessionUser()?.engineer_key : null;

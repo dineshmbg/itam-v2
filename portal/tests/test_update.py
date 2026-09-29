@@ -193,3 +193,17 @@ def test_http_upload_start_and_permissions(sandbox, upd, tmp_path, monkeypatch):
         assert r.status_code == 200, r.text
         assert (upd / "request.json").exists()
         assert c.post("/api/admin/update/start", json={"package": pkg.name, "confirm": "UPDATE"}, headers=HDR).status_code == 409
+
+
+def test_confirm_word_is_forgiving_of_case_and_stray_whitespace(sandbox, upd, tmp_path, monkeypatch):
+    # the confirm box is styled upper-case on screen no matter what was actually typed (app-wide text-transform), so the check
+    # must not be case-sensitive - a user typing "update" sees "UPDATE" and has no way to tell the two apart.
+    heartbeat(upd)
+    pkg = make_package(tmp_path)
+    up = {"X-Requested-With": "itam-portal", "Content-Type": "application/octet-stream", "X-Filename": pkg.name}
+    as_user(monkeypatch, "ADMIN", username="UPD_CASE")
+    with TestClient(app) as c:
+        assert c.post("/api/admin/update/upload", content=pkg.read_bytes(), headers=up).status_code == 200
+        assert c.post("/api/admin/update/start", json={"package": pkg.name, "confirm": "not it"}, headers=HDR).status_code == 400
+        r = c.post("/api/admin/update/start", json={"package": pkg.name, "confirm": " update "}, headers=HDR)
+        assert r.status_code == 200, r.text
