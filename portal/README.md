@@ -60,7 +60,7 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Personal data on hover cards (mobile, personal e-mail, date of birth) | yes | only their own | no |
 | Data import, backup and restore, PM roll-over, roster events | yes | no | no |
 | Users, security policy, e-mail set-up, activity log | yes | no | no |
-| Create a portal account | never - roster sync only | never - roster sync only | never - roster sync only |
+| Create a portal account | yes, manually (Add user) or via roster sync (2026-09-30 - Add user restored) | never | never |
 
 **Calls/Inward/Outward/OEM RMA access for a User (`portal_user.call_parts_access`, 2026-09-23):** set from *Manage user* to `NONE`
 (default), `READ` or `FULL` - one setting covers all four registers together, not per-module. `READ` can view and search those
@@ -89,10 +89,14 @@ own data - never the whole table's. A User whose account has no `engineer_key` l
 forces a password change, never expires, and is excluded from the "last active administrator" safety count. Created idempotently by
 `auth.ensure_demo_user()`, called from `db/setup.py` on every run.
 
-**Account creation is roster-sync only.** The "Add user" button and its `/api/admin/users/create` route were removed entirely - the only way a
-new portal account comes into existence is `POST /api/admin/users/sync` (the "Sync from roster" button in Users and security), one login per
-active CIPL roster row. `auth.create_user()` still exists as the library function that sync calls; there is no longer an HTTP path to it for
-an arbitrary new username.
+**Account creation: roster sync, or manual (`Add user`, restored 2026-09-30).** `POST /api/admin/users/sync` (*Sync from roster*) remains the way
+to create a login for everyone on the active CIPL roster, one per row, username = ECODE. For anyone not on that roster - a general ONGC
+employee, say - *Add user* (`POST /api/admin/users/create`, `admin="strict"`) creates a single account by hand: username, full name, e-mail and
+group are typed in, an optional engineer link can be set the same as in *Manage user*, and a one-time temporary password is shown (the account
+must change it at first sign-in, same as any other new login). This route previously existed, was removed entirely (no HTTP path, `auth.create_user()`
+only reachable from roster sync), and was restored at the user's request - a manually created account with no `engineer_key` linked gets the same
+"sees nothing" row-scoping as any other engineer-less User account (`scope_for`'s `("false", [])` fallback), so it never has broader default access
+than a roster account would.
 
 **Read-only accounts still browse normally, extended 2026-09-22.** `app/web.py`'s `write()` takes a `mutates=False` flag for POST routes that
 carry a body but change no portal data: session keep-alive, page-view activity logging, running/exporting a report, and downloading a
@@ -443,6 +447,15 @@ The portal read as flat gray-and-blue outside its charts. Recoloured deliberatel
   `ok`/`warn`/`bad`/`info` (never for a plain `mute` status) - the same "colour only when it earns it" rule this batch extended elsewhere.
 - Previewed for approval first as a private, throwaway Claude Artifact (three side-by-side modes: current / recommended / full-colour) built
   from real register data before any real file was touched. Adds ~1 KB to `app.css`, nothing to the JS bundle size worth noting (22.1 -> 22.3 KB).
+
+## Add user restored (2026-09-30)
+
+*Add user* (button in *Users and security*, next to *Sync from roster*) is back: username, full name, e-mail, group and an optional
+engineer link, `admin="strict"`, `POST /api/admin/users/create`. It had been removed entirely with a regression test guarding against
+its return (`test_scoping.py`'s old `test_add_user_route_no_longer_exists`, now repurposed to check a manually created account gets no
+broader default access than a roster one) - re-added at the user's explicit request, specifically for logins that don't belong to
+anyone on the CIPL roster (a general ONGC employee, say). Uses the same `auth.create_user()` the roster sync already called; the only
+change is a new HTTP path to it. See "Account creation" above for the full behaviour.
 
 ## Design basis
 

@@ -200,9 +200,11 @@ def test_only_administrators_reach_administration(sandbox):
         post(a, "/api/auth/login", {"username": "TESTER2", "password": STRONG})
         for path in ("/api/admin/users", "/api/admin/activity"):
             assert u.get(path).status_code == 403 and a.get(path).status_code == 200
-        # accounts are only created by syncing the CIPL roster now - the create-user route was removed entirely, for anyone
-        assert post(u, "/api/admin/users/create", {"username": "X1X", "display_name": "x y", "role": "USER"}).status_code in (404, 405)
-        assert post(a, "/api/admin/users/create", {"username": "new.user", "display_name": "new person", "role": "USER"}).status_code in (404, 405)
+        # manual account creation (Add user) needs a real administrator - anyone not on the CIPL roster still needs a login somehow
+        assert post(u, "/api/admin/users/create", {"username": "X1X", "display_name": "x y", "role": "USER"}).status_code == 403
+        r = post(a, "/api/admin/users/create", {"username": "NEWMANUAL", "display_name": "new person", "role": "USER"})
+        assert r.status_code == 200, r.text
+        assert r.json()["username"] == "NEWMANUAL" and r.json()["temporary_password"]
         me = a.get("/api/auth/me").json()["user"]
         assert post(a, "/api/admin/users/update", {"user_id": me["user_id"], "active": False}).status_code == 409   # cannot lock yourself out
         assert post(a, "/api/admin/users/update", {"user_id": me["user_id"], "role": "USER"}).status_code == 409

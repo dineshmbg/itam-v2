@@ -302,12 +302,17 @@ def test_admin_count_excludes_read_only_demo_account(sandbox):
     assert n_incl > n, "DEMOUSER (read_only) must not be the only thing making this count non-zero, and must be excluded from it"
 
 
-# ---------------------------------------------------------------- "add user" is gone
-def test_add_user_route_no_longer_exists(sandbox, monkeypatch):
+# ---------------------------------------------------------------- manual "Add user" (2026-09-30: restored - see portal/README.md)
+def test_manually_created_user_with_no_engineer_link_is_scoped_to_nothing(sandbox, monkeypatch):
+    """A manual account (e.g. a general ONGC employee, not on the CIPL roster) has no engineer_key by default - scope_for's
+    ("false", []) fallback means it sees no rows in a row-scoped register until an administrator links one, same as any other
+    engineer-less USER account. Confirms Add user does not accidentally grant broader access than a roster account would have."""
     as_user(monkeypatch, "ADMIN")
     with TestClient(app) as c:
-        r = c.post("/api/admin/users/create", json={"username": "X", "display_name": "X", "role": "USER"}, headers=HDR)
-        assert r.status_code in (404, 405)
+        r = c.post("/api/admin/users/create", json={"username": "MANUALX", "display_name": "Manual Person", "role": "USER"}, headers=HDR)
+        assert r.status_code == 200, r.text
+    user = {"role": "USER", "engineer_key": None}
+    assert queries.scope_for("assets", queries.dataset("assets"), user) == ("false", [])
 
 
 # ---------------------------------------------------------------- per-user cache key

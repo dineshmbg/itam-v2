@@ -100,6 +100,15 @@ async def users_list(request):
                           "engineers": [r["engineer_key"] for r in await run_in_threadpool(db.query, "SELECT engineer_key FROM portal_engineer ORDER BY 1")]})
 
 
+async def user_create(request):
+    """A manual account for someone not on the CIPL roster (a general ONGC employee, say) - sync_from_roster covers
+    everyone who is. `engineer_key` is optional either way."""
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(auth.create_user, b.get("username"), b.get("display_name"), b.get("email"), b.get("role") or "USER", u["username"], b.get("engineer_key") or None)
+    await run_in_threadpool(auth.log, u["username"], client_ip(request), "USER_CREATED", out["username"])
+    return json_response({**out, "users": await run_in_threadpool(auth.list_users)})
+
+
 async def user_sync(request):
     u = request.state.user
     out = await run_in_threadpool(auth.sync_from_roster, u["username"])
@@ -175,6 +184,7 @@ routes = [
     Route("/api/auth/2fa/disable", write(totp_disable), methods=["POST"]),
     Route("/api/activity/view", write(view_log, mutates=False), methods=["POST"]),
     Route("/api/admin/users", read(users_list, admin="strict")),
+    Route("/api/admin/users/create", write(user_create, admin="strict"), methods=["POST"]),
     Route("/api/admin/users/sync", write(user_sync, admin="strict"), methods=["POST"]),
     Route("/api/admin/users/update", write(user_update, admin="strict"), methods=["POST"]),
     Route("/api/admin/users/reset-password", write(user_reset_password, admin="strict"), methods=["POST"]),

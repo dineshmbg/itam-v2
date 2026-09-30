@@ -20,10 +20,35 @@ export function mountUsers(root) {
   root.append(holder);
   const body = h('div', { class: 'panel-b flush' });
 
+  const addBtn = h('button', { class: 'btn', type: 'button', onClick: newUserDialog }, icon('add'), 'Add user');
   const syncBtn = h('button', { class: 'btn primary', type: 'button', onClick: syncRoster }, icon('renew'), 'Sync from roster');
   const setBtn = h('button', { class: 'btn', type: 'button', onClick: securityDialog }, icon('security'), 'Security settings');
-  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. New accounts are only created by syncing the CIPL roster.', [setBtn, syncBtn]),
+  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. Sync from roster covers everyone on the CIPL roster; Add user covers anyone else.', [setBtn, addBtn, syncBtn]),
     h('section', { class: 'panel' }, body));
+
+  function newUserDialog() {
+    const f = (id, label, el, hint) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el, hint ? h('div', { class: 'hint' }, hint) : null);
+    const username = h('input', { id: 'nu-name', type: 'text', maxlength: '30', autocomplete: 'off' });
+    const name = h('input', { id: 'nu-full', type: 'text', maxlength: '60', autocomplete: 'off' });
+    const email = h('input', { id: 'nu-mail', type: 'email', class: 'email', maxlength: '120', autocomplete: 'off' });
+    const role = h('div', { class: 'rgroup', role: 'radiogroup', 'aria-label': 'Group' }, [['USER', 'User'], ['ADMIN', 'Administrator']].map(([v, t], i) => {
+      const r = h('input', { type: 'radio', name: 'nu-role', value: v }); r.checked = i === 0;
+      return h('label', { class: 'ropt' }, r, icon('radio-button', 'glyph off'), icon('radio-button--checked', 'glyph on'), h('span', null, t));
+    }));
+    const eng = h('select', { id: 'nu-eng' }, [h('option', { value: '' }, '— none —'), ...data.engineers.map((k) => h('option', { value: k }, person(k)))]);
+    openModal({
+      title: 'Add user', lead: 'For anyone not on the CIPL roster - a general ONGC employee, say. They get a temporary password and must choose a real one at first sign-in.',
+      body: h('div', null,
+        f('nu-name', 'User name', username, 'e.g. their CPF number. Roster accounts use the ECODE, so pick something else to avoid a clash.'),
+        f('nu-full', 'Full name', name), f('nu-mail', 'E-mail (for notifications, optional)', email),
+        h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Group'), role), f('nu-eng', 'Linked engineer (optional)', eng)),
+      actions: [{ label: 'Cancel' }, { label: 'Add user', primary: true, onClick: async () => {
+        const r = await send('/api/admin/users/create', { username: username.value, display_name: name.value, email: email.value, role: role.querySelector('input:checked').value, engineer_key: eng.value });
+        data.users = r.users; draw();
+        tempPassword(r.username, r.temporary_password);
+      } }],
+    });
+  }
 
   async function syncRoster() {
     syncBtn.disabled = true;
