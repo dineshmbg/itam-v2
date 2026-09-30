@@ -7,7 +7,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from conftest import HDR, fake_user
-from portal.app import backup, export, importer, mailer, packs, pm, reports
+from portal.app import auth, backup, export, importer, mailer, packs, pm, reports
 from portal.app.main import app
 
 
@@ -26,28 +26,60 @@ def test_financial_year_quarters(day, label, start, end):
 
 
 # ---------------------------------------------------------------- reports
+ADMIN = {"username": "T", "role": "ADMIN"}
+PLAIN = {"username": "T", "role": "USER", "engineer_key": None, "call_parts_access": "NONE", "asset_access": "NONE"}
+
+
 def test_report_builder_filters_groups_and_rejects_bad_input(box):
-    d = reports.describe("assets", admin=False)
+    # personal-field gating is catalog metadata only - no rows involved, so a real non-admin user is fine here
+    d = reports.describe("assets", PLAIN)
     keys = {f["key"] for f in d["fields"]}
     assert {"asset_key", "make", "cover_expiry_date", "cpf_no"} <= keys and "user_mobile" not in keys and "is_current" not in keys
-    assert "mobile_no" in {f["key"] for f in reports.describe("employees", admin=True)["fields"]} and "mobile_no" not in {f["key"] for f in reports.describe("employees", admin=False)["fields"]}
+    assert "mobile_no" in {f["key"] for f in reports.describe("employees", ADMIN)["fields"]} and "mobile_no" not in {f["key"] for f in reports.describe("employees", PLAIN)["fields"]}
+    # everything below is about report-building correctness (filters, grouping, injection safety), not scoping - run unscoped as admin
     r = reports.run({"dataset": "assets", "columns": ["asset_key", "make", "model"], "filters": [{"field": "make", "op": "in", "values": ["hp"]}, {"field": "record_level", "op": "eq", "value": "asset"}],
-                     "sort": [{"field": "asset_key", "dir": "desc"}]}, admin=False, limit=5)
+                     "sort": [{"field": "asset_key", "dir": "desc"}]}, ADMIN, limit=5)
     assert r["total"] > 100 and len(r["rows"]) == 5 and all(x["make"] == "HP" for x in r["rows"]) and r["rows"][0]["asset_key"] >= r["rows"][1]["asset_key"]
-    g = reports.run({"dataset": "assets", "group_by": ["asset_class", "install_date:year"], "metrics": [{"fn": "count_distinct", "field": "make"}]}, admin=False, limit=50)
+    g = reports.run({"dataset": "assets", "group_by": ["asset_class", "install_date:year"], "metrics": [{"fn": "count_distinct", "field": "make"}]}, ADMIN, limit=50)
     assert [c["key"] for c in g["columns"]] == ["asset_class", "install_date_year", "n", "m0"] and g["rows"][0]["n"] >= g["rows"][-1]["n"]
-    any_ = reports.run({"dataset": "assets", "match": "any", "columns": ["asset_key"], "filters": [{"field": "make", "op": "eq", "value": "DELL"}, {"field": "make", "op": "eq", "value": "APPLE"}]}, admin=False)
-    only = {reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "make", "op": "eq", "value": m}]}, admin=False)["total"] for m in ("DELL", "APPLE")}
+    any_ = reports.run({"dataset": "assets", "match": "any", "columns": ["asset_key"], "filters": [{"field": "make", "op": "eq", "value": "DELL"}, {"field": "make", "op": "eq", "value": "APPLE"}]}, ADMIN)
+    only = {reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "make", "op": "eq", "value": m}]}, ADMIN)["total"] for m in ("DELL", "APPLE")}
     assert any_["total"] == sum(only)
-    dated = reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "cover_expiry_date", "op": "between", "value": "2020-01-01", "value2": "2099-01-01"}]}, admin=False)
+    dated = reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "cover_expiry_date", "op": "between", "value": "2020-01-01", "value2": "2099-01-01"}]}, ADMIN)
     assert dated["total"] > 0
     for bad in ({"dataset": "nope"}, {"dataset": "assets", "columns": ["password_hash"]}, {"dataset": "assets", "filters": [{"field": "make", "op": "gt", "value": 1}]},
                 {"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "make; DROP TABLE asset", "op": "eq", "value": "x"}]}, {"dataset": "assets", "group_by": ["make:month"]},
-                {"dataset": "assets", "group_by": ["make"], "metrics": [{"fn": "sum", "field": "make"}]}, {"dataset": "employees", "columns": ["mobile_no"]}):
+                {"dataset": "assets", "group_by": ["make"], "metrics": [{"fn": "sum", "field": "make"}]}):
         with pytest.raises(reports.ReportError):
-            reports.run(bad, admin=False)
-    hostile = reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "asset_key", "op": "contains", "value": "'; DROP TABLE asset; --"}]}, admin=False)
+            reports.run(bad, ADMIN)
+    with pytest.raises(reports.ReportError):     # a non-admin cannot select a personal field as a report column, same as catalog() hides it
+        reports.run({"dataset": "employees", "columns": ["mobile_no"]}, PLAIN)
+    hostile = reports.run({"dataset": "assets", "columns": ["asset_key"], "filters": [{"field": "asset_key", "op": "contains", "value": "'; DROP TABLE asset; --"}]}, ADMIN)
     assert hostile["total"] == 0 and one(box, "SELECT count(*) FROM asset")[0] > 4000        # values are parameters, never SQL
+
+
+def test_reports_apply_the_same_access_policy_as_the_registers(box):
+    """The permissions fix (2026-09-30): reports used to see everything regardless of role - closing that so a report can never
+    show more than the equivalent register/dashboard would."""
+    # a User with no engineer_key and no grant sees nothing in an Assets report, same as the Assets register would show them
+    empty = reports.run({"dataset": "assets", "columns": ["asset_key"]}, PLAIN)
+    assert empty["total"] == 0
+    # Calls (call_parts_access=NONE) is not even an openable dataset for reports, same as the register
+    with pytest.raises(auth.AuthError):
+        reports.describe("calls", PLAIN)
+    with pytest.raises(auth.AuthError):
+        reports.run({"dataset": "calls", "columns": ["sr_id"]}, PLAIN)
+    # asset_access=READ or FULL un-scopes Assets for reports, same as it does for the register and dashboard
+    for grant in ("READ", "FULL"):
+        r = reports.run({"dataset": "assets", "columns": ["asset_key"]}, {**PLAIN, "asset_access": grant})
+        assert r["total"] > 100
+    # a real engineer with assigned assets only ever sees their own rows through a report, exactly like the register - the
+    # comparison query matches reports.SETS["assets"]'s own base condition (is_current = 1, no record_level filter: components included)
+    eng = one(box, "SELECT engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL LIMIT 1")[0]
+    scoped_user = {**PLAIN, "engineer_key": eng}
+    from_report = reports.run({"dataset": "assets", "columns": ["asset_key"]}, scoped_user, limit=10000)["total"]
+    from_table = one(box, "SELECT count(*) FROM asset WHERE is_current = 1 AND engineer_name = %s", (eng,))[0]
+    assert from_report == from_table > 0
 
 
 def test_report_save_share_and_delete(box):
@@ -65,7 +97,7 @@ def test_report_save_share_and_delete(box):
 
 # ---------------------------------------------------------------- files
 def test_export_formats_are_real_files(box):
-    t, total = reports.table_for_export({"dataset": "assets", "columns": ["asset_key", "make", "cover_expiry_date"], "filters": [{"field": "make", "op": "eq", "value": "HP"}]}, False, "Assets")
+    t, total = reports.table_for_export({"dataset": "assets", "columns": ["asset_key", "make", "cover_expiry_date"], "filters": [{"field": "make", "op": "eq", "value": "HP"}]}, ADMIN, "Assets")
     x, _, ext = export.render("xlsx", "Assets", "test", [t])
     assert ext == "xlsx" and zipfile.ZipFile(io.BytesIO(x)).testzip() is None
     from openpyxl import load_workbook
@@ -178,6 +210,23 @@ def test_notification_rules_detect_and_send_once(box, monkeypatch):
     assert one(box, "SELECT count(*) FROM notify_log WHERE rule_key = 'CALL_OVERDUE' AND status = 'SENT'")[0] == n
 
 
+def test_pm_close_quarter_reminder_only_fires_while_overdue_and_open(box):
+    """Finds the quarter by pm_cycle.status/end_date, not by pm.quarter(today) - the label of the quarter *containing* today is
+    the wrong question once today has already rolled past the boundary. Never closes the quarter itself - detect() only ever
+    produces a reminder, nothing in this rule calls pm.rollover()."""
+    today = dt.date(2026, 10, 3)      # a few days into Q3, Q2 (ends 2026-09-30) never rolled over
+    box.execute("INSERT INTO pm_cycle (quarter_label, start_date, end_date, kickoff_date, status) VALUES ('Q2 JUL-SEP 2026', '2026-07-01', '2026-09-30', '2026-08-30', 'OPEN') "
+                "ON CONFLICT (quarter_label) DO UPDATE SET status = 'OPEN', end_date = '2026-09-30'")
+    d = mailer.detect("PM_CLOSE_QUARTER", {}, today=today)
+    admin_keys = {r[0] for r in box.execute("SELECT engineer_key FROM portal_user WHERE role = 'ADMIN' AND active AND engineer_key IS NOT NULL").fetchall()}
+    assert admin_keys, "need at least one active administrator with a linked engineer for this test to mean anything"
+    assert set(d.keys()) == admin_keys
+    assert all(v["event_key"] == f"Q2 JUL-SEP 2026:{today.isoformat()}" and "Q2 JUL-SEP 2026" in v["subject"] for v in d.values())
+    assert mailer.detect("PM_CLOSE_QUARTER", {}, today=dt.date(2026, 9, 15)) == {}       # well before the quarter even ends
+    box.execute("UPDATE pm_cycle SET status = 'CLOSED' WHERE quarter_label = 'Q2 JUL-SEP 2026'")
+    assert mailer.detect("PM_CLOSE_QUARTER", {}, today=today) == {}                       # rolled over -> stops reminding
+
+
 def test_mail_failures_are_logged_and_retried(box, monkeypatch):
     box.execute("INSERT INTO portal_setting (key, value) VALUES ('smtp', %s::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", ('{"enabled": true, "host": "h", "from_addr": "p@example.com"}',))
     box.execute("UPDATE cipl_employee SET company_email = 'eng@example.com' WHERE company_email IS NOT NULL")
@@ -284,6 +333,18 @@ def test_import_endpoints_need_an_administrator(box, monkeypatch):
         assert c.post("/api/admin/backups/restore", json={"file": "x.dump"}, headers=HDR).status_code == 400            # typed confirmation is required
         assert c.post("/api/pm/rollover", json={"confirm": "no"}, headers=HDR).status_code == 400
         assert c.post("/api/admin/import/upload", content=b"not a workbook", headers={**h, "X-Requested-With": "x"}).status_code == 403
+
+
+def test_pm_rollover_confirm_is_case_insensitive_and_trimmed(box, monkeypatch):
+    """Every text input on this page displays upper-case via CSS regardless of what was actually typed (app.css's
+    body { text-transform: uppercase }) - an exact-match confirm check would silently reject a correctly-typed
+    lower-case "roll over" that LOOKS right on screen. Only checking that this gets past the confirm gate itself -
+    whatever happens next (success, or a different PM error like "the quarter has not ended") is not what's under test."""
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        for typed in ("roll over", "  ROLL OVER  ", "Roll Over"):
+            r = c.post("/api/pm/rollover", json={"confirm": typed}, headers=HDR)
+            assert r.status_code != 400 or "type roll over" not in r.json().get("error", "").lower()
 
 
 # ---------------------------------------------------------------- cards

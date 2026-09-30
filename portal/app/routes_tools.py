@@ -35,32 +35,37 @@ def _log(request, action, target=None, detail=None):
 
 # ---------------------------------------------------------------- reports
 async def report_meta(request):
-    admin = request.state.user["role"] == "ADMIN"
-    return json_response({"datasets": {k: reports.describe(k, admin) for k in reports.SETS}, "saved": await run_in_threadpool(reports.list_saved, request.state.user)})
+    u = request.state.user
+    datasets = {}
+    for k in reports.SETS:
+        try:
+            datasets[k] = await run_in_threadpool(reports.describe, k, u)
+        except auth.AuthError:
+            pass    # a dataset this user cannot open at all (e.g. Calls with call_parts_access=NONE) is just left out, not a 403 for the whole page
+    return json_response({"datasets": datasets, "saved": await run_in_threadpool(reports.list_saved, u)})
 
 
 async def report_run(request):
     b = request.state.body
-    admin = request.state.user["role"] == "ADMIN"
-    return json_response(await run_in_threadpool(reports.run, b.get("definition") or {}, admin, int(b.get("limit") or 200)))
+    return json_response(await run_in_threadpool(reports.run, b.get("definition") or {}, request.state.user, int(b.get("limit") or 200)))
 
 
 async def report_values(request):
     b = request.state.body
-    return json_response({"values": await run_in_threadpool(reports.values, b.get("dataset"), b.get("field"), request.state.user["role"] == "ADMIN", str(b.get("q") or "")[:40])})
+    return json_response({"values": await run_in_threadpool(reports.values, b.get("dataset"), b.get("field"), request.state.user, str(b.get("q") or "")[:40])})
 
 
 async def report_export(request):
     b = request.state.body
     fmt = b.get("format", "xlsx")
     defn = b.get("definition") or {}
-    admin = request.state.user["role"] == "ADMIN"
+    u = request.state.user
     title = f"{reports.SETS[defn.get('dataset', 'assets')][2]} report" if defn.get("dataset") in reports.SETS else "Report"
 
     def run():
-        table, total = reports.table_for_export(defn, admin, title)
-        data, mime, ext = export.render(fmt, title.upper(), f"{total:,} rows - {dt.date.today():%d %b %Y} - {request.state.user['display_name']}", [table],
-                                        footer=request.state.user["username"])
+        table, total = reports.table_for_export(defn, u, title)
+        data, mime, ext = export.render(fmt, title.upper(), f"{total:,} rows - {dt.date.today():%d %b %Y} - {u['display_name']}", [table],
+                                        footer=u["username"])
         return data, mime, f"{reports.filename(defn)}.{ext}", total
     data, mime, name, total = await run_in_threadpool(run)
     await _log(request, "EXPORT_REPORT", name, {"format": fmt, "rows": total, "dataset": defn.get("dataset")})
@@ -159,7 +164,9 @@ async def pm_snapshot(request):
 
 async def pm_rollover(request):
     b, u = request.state.body, request.state.user
-    if b.get("confirm") != "ROLL OVER":
+    # Case-insensitive, trimmed: the confirm box (like every text input on this page) displays uppercase via CSS regardless of
+    # what was actually typed, so an exact-match check here would silently reject a correctly-typed lower-case "roll over".
+    if str(b.get("confirm") or "").strip().upper() != "ROLL OVER":
         raise pm.PmError('Type ROLL OVER to confirm.')
     await run_in_threadpool(backup.run_backup, "MANUAL", u["username"], "safety copy before PM roll-over")
     out = await run_in_threadpool(pm.rollover, u, client_ip(request), bool(b.get("early")))

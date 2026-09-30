@@ -3,7 +3,7 @@ from a whitelist (column names come from information_schema, never from the requ
 import datetime as dt
 import re
 
-from . import db
+from . import db, queries
 from .datasets import DATASETS, HIDDEN_DETAIL
 from .export import safe_name
 
@@ -30,9 +30,14 @@ class ReportError(Exception):
     http_error = True
 
 
-def catalog(dataset, admin):
+def catalog(dataset, user):
+    """`user` gates two independent things: a dataset a User has no access to at all (queries.check_access - e.g. Calls with
+    call_parts_access=NONE) raises here before anything else; personal fields (mobile, DOB) stay admin-only, same as every
+    other view of this data."""
     if dataset not in SETS:
         raise ReportError("Unknown register.")
+    queries.check_access(dataset, user)
+    admin = bool(user) and user.get("role") == "ADMIN"
     if dataset not in _catalog:
         table = SETS[dataset][0]
         cols = db.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s ORDER BY ordinal_position", [table])
@@ -46,23 +51,27 @@ def label_of(key):
     return " ".join(words).upper()
 
 
-def describe(dataset, admin):
-    cat = catalog(dataset, admin)
+def describe(dataset, user):
+    cat = catalog(dataset, user)
     return {"dataset": dataset, "label": SETS[dataset][2], "fields": [{**f, "label": label_of(f["key"]), "ops": OPS[f["type"]]} for f in cat]}
 
 
-def values(dataset, field, admin, q=""):
-    f = _field(dataset, field, admin)
+def values(dataset, field, user, q=""):
+    f = _field(dataset, field, user)
     table, base, _ = SETS[dataset]
     if f["type"] != "text":
         return []
-    rows = db.query(f'SELECT "{field}" AS v, count(*) AS n FROM {table} WHERE {base} AND "{field}" IS NOT NULL AND "{field}"::text ILIKE %s GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 40',
-                    ["%" + q.translate(LIKE_ESC) + "%"])
+    where, params = [base], []
+    scope = queries.scope_for(dataset, queries.dataset(dataset), user)
+    if scope:
+        where.append(f"({scope[0]})"); params += list(scope[1])
+    where.append(f'"{field}" IS NOT NULL'); where.append(f'"{field}"::text ILIKE %s'); params.append("%" + q.translate(LIKE_ESC) + "%")
+    rows = db.query(f'SELECT "{field}" AS v, count(*) AS n FROM {table} WHERE {" AND ".join(where)} GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 40', params)
     return [{"v": r["v"], "n": r["n"]} for r in rows]
 
 
-def _field(dataset, key, admin):
-    for f in catalog(dataset, admin):
+def _field(dataset, key, user):
+    for f in catalog(dataset, user):
         if f["key"] == key:
             return f
     raise ReportError(f"Unknown field '{key}'.")
@@ -127,16 +136,22 @@ def _blank_columns(defn):
     return out
 
 
-def build(defn, admin):
-    """-> (sql, params, columns[(key,label)]). `defn`: {dataset, columns[], filters[], match, group_by[], metrics[], sort[]}"""
+def build(defn, user):
+    """-> (sql, params, columns[(key,label)]). `defn`: {dataset, columns[], filters[], match, group_by[], metrics[], sort[]}.
+    `user` gates dataset access (queries.check_access) and applies the same row-level scope a register/dashboard would
+    (queries.scope_for) - a report can no longer see more than its other views of the same data."""
     ds = defn.get("dataset")
     table, base, _ = SETS.get(ds) or (None, None, None)
     if not table:
         raise ReportError("Choose a register.")
+    queries.check_access(ds, user)
     where, params = [base], []
+    scope = queries.scope_for(ds, queries.dataset(ds), user)
+    if scope:
+        where.append(f"({scope[0]})"); params += list(scope[1])
     conds = []
     for flt in defn.get("filters") or []:
-        c, p = _cond(_field(ds, flt.get("field"), admin), flt)
+        c, p = _cond(_field(ds, flt.get("field"), user), flt)
         conds.append(c); params += p
     if conds:
         where.append("(" + (" OR " if defn.get("match") == "any" else " AND ").join(conds) + ")")
@@ -145,7 +160,7 @@ def build(defn, admin):
         sel, gcols, cols = [], [], []
         for g in group[:4]:
             key, _, part = str(g).partition(":")
-            f = _field(ds, key, admin)
+            f = _field(ds, key, user)
             if part:
                 if f["type"] != "date" or part not in ("month", "year", "quarter"):
                     raise ReportError(f"Cannot group {key} by {part}.")
@@ -160,7 +175,7 @@ def build(defn, admin):
             fn = m.get("fn")
             if fn not in ("sum", "avg", "min", "max", "count_distinct"):
                 raise ReportError("Unknown summary function.")
-            f = _field(ds, m.get("field"), admin)
+            f = _field(ds, m.get("field"), user)
             if fn in ("sum", "avg") and f["type"] != "number":
                 raise ReportError(f"{fn} needs a number field.")
             expr = f'count(DISTINCT "{f["key"]}")' if fn == "count_distinct" else f'{fn}("{f["key"]}")' + ("::numeric" if fn == "avg" else "")
@@ -168,14 +183,14 @@ def build(defn, admin):
         order = "ORDER BY n DESC, 1"
         sql = f"SELECT {', '.join(sel)} FROM {table} WHERE {' AND '.join(where)} GROUP BY {', '.join(gcols)} {order}"
         return sql, params, cols + _blank_columns(defn)
-    chosen = defn.get("columns") or [f["key"] for f in catalog(ds, admin)[:12]]
+    chosen = defn.get("columns") or [f["key"] for f in catalog(ds, user)[:12]]
     cols = []
     for key in chosen[:120]:
-        f = _field(ds, key, admin)
+        f = _field(ds, key, user)
         cols.append((f["key"], label_of(f["key"])))
     sort = []
     for s in (defn.get("sort") or [])[:4]:
-        f = _field(ds, s.get("field"), admin)
+        f = _field(ds, s.get("field"), user)
         sort.append(f'"{f["key"]}" {"DESC" if s.get("dir") == "desc" else "ASC"} NULLS LAST')
     pk = DATASETS[ds]["pk"] if ds in DATASETS else None
     if pk and not sort:
@@ -185,16 +200,16 @@ def build(defn, admin):
     return sql, params, cols + _blank_columns(defn)
 
 
-def run(defn, admin, limit=200):
-    sql, params, cols = build(defn, admin)
+def run(defn, user, limit=200):
+    sql, params, cols = build(defn, user)
     limit = max(1, min(int(limit), MAX_ROWS))
     total = db.one(f"SELECT count(*) AS n FROM ({sql}) q", params)["n"]
     rows = db.query(f"{sql} LIMIT %s", params + [limit])
     return {"columns": [{"key": k, "label": l} for k, l in cols], "rows": rows, "total": total}
 
 
-def table_for_export(defn, admin, title):
-    r = run(defn, admin, MAX_ROWS)
+def table_for_export(defn, user, title):
+    r = run(defn, user, MAX_ROWS)
     return {"title": title, "columns": [(c["key"], c["label"]) for c in r["columns"]], "rows": r["rows"]}, r["total"]
 
 
@@ -217,7 +232,7 @@ def save(user, name, defn, shared):
     if not 2 <= len(name) <= 80:
         raise ReportError("Give the report a name (2 to 80 characters).")
     import json
-    build(defn, user["role"] == "ADMIN")            # refuse definitions that would not run
+    build(defn, user)            # refuse definitions that would not run (or that this user could not access)
     with db.write() as con:
         con.execute("""INSERT INTO portal_report (name, owner, definition, shared) VALUES (%s,%s,%s::jsonb,%s)
                        ON CONFLICT (owner, name) DO UPDATE SET definition = EXCLUDED.definition, shared = EXCLUDED.shared, updated_at = now()""",

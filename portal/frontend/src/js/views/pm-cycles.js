@@ -52,6 +52,9 @@ export function mountPmCycles(root) {
 
   function rollover(r) {
     const confirm = h('input', { id: 'ro-c', type: 'text', autocomplete: 'off', placeholder: 'ROLL OVER' });
+    // the field displays upper-case regardless (CSS, like every text input on this page) - force the real value to match what's
+    // shown, so what the admin sees typed is actually what gets sent, not silently different underneath
+    confirm.addEventListener('blur', () => { confirm.value = confirm.value.trim().toUpperCase(); });
     const early = h('input', { type: 'checkbox', id: 'ro-e' });
     openModal({
       title: `Close ${r.closing} and open ${r.opening}`,

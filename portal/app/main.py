@@ -105,7 +105,7 @@ async def meta(request):
 
 async def dash_assets(request):
     u = request.state.user
-    eng = None if u["role"] == "ADMIN" else u.get("engineer_key")
+    eng = None if u["role"] == "ADMIN" or u.get("asset_access") in ("READ", "FULL") else u.get("engineer_key")
     return await _cached_threaded(request, lambda: dashboards.assets(eng))
 
 

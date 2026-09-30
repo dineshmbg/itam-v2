@@ -48,6 +48,14 @@ DDL = [
     # Control, Data tools or Administration.
     # role_locked: the group was set by hand in Manage user, so roster sync no longer derives it from the designation.
     "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS extended_access BOOLEAN NOT NULL DEFAULT FALSE",
+    # asset_access (2026-09-30): unlike extended_access, this never bumps the effective role to ADMIN - it only widens the Asset
+    # dashboard/register/report SCOPE (queries.scope_for, dash_assets, reports.py) to every asset, unscoped. Editing stays governed
+    # separately: READ grants no write beyond the usual USER_ASSET_FIELDS-on-their-own-assets; FULL also lets check_edit/check_create/
+    # check_archive/check_verify treat any asset as if it were assigned to them. Deliberately narrower than extended_access, which
+    # conflates "sees everything" with "can edit everything" across every register, not just Assets.
+    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS asset_access TEXT NOT NULL DEFAULT 'NONE'",
+    "ALTER TABLE portal_user DROP CONSTRAINT IF EXISTS portal_user_asset_access_check",
+    "ALTER TABLE portal_user ADD CONSTRAINT portal_user_asset_access_check CHECK (asset_access IN ('NONE','READ','FULL'))",
     "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS role_locked BOOLEAN NOT NULL DEFAULT FALSE",
     "CREATE TABLE IF NOT EXISTS portal_password_history (user_id INT NOT NULL REFERENCES portal_user(user_id), password_hash TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())",
     """CREATE TABLE IF NOT EXISTS portal_session (
@@ -261,7 +269,7 @@ def public_user(u):
             "totp_enabled": u["totp_enabled"], "must_change": u["must_change"], "locked": bool(u["locked_until"] and u["locked_until"] > _now()),
             "last_login_at": u["last_login_at"].isoformat() if u["last_login_at"] else None, "created_at": u["created_at"].isoformat(), "engineer_key": u["engineer_key"],
             "read_only": bool(u.get("read_only")), "call_parts_access": u.get("call_parts_access") or "NONE",
-            "extended_access": bool(u.get("extended_access")), "role_locked": bool(u.get("role_locked"))}
+            "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked"))}
 
 
 def create_user(username, display_name, email, role, editor, engineer_key=None, password=None):
@@ -407,6 +415,11 @@ def update_user(user_id, changes, editor, lock_role=False):
             if v not in ("NONE", "READ", "FULL"):
                 raise AuthError("Choose none, read-only or full access.", 400, fields={"call_parts_access": "invalid"})
             sets.append("call_parts_access = %s"); vals.append(v)
+        if "asset_access" in changes:
+            v = changes["asset_access"] or "NONE"
+            if v not in ("NONE", "READ", "FULL"):
+                raise AuthError("Choose none, view-only or full access.", 400, fields={"asset_access": "invalid"})
+            sets.append("asset_access = %s"); vals.append(v)
         if changes.get("unlock"):
             sets.append("failed_attempts = 0"); sets.append("locked_until = NULL")
         if changes.get("reset_2fa"):
@@ -716,6 +729,8 @@ def check_edit(user, dataset, fields, key=None):
             return
         raise AuthError("This register is for administrators only.", 403, code="forbidden")
     if dataset == "assets":
+        if user.get("asset_access") == "FULL":
+            return
         bad = sorted(set(fields) - USER_ASSET_FIELDS)
         if bad:
             raise AuthError("Only administrators can change: " + ", ".join(bad) + ". You can update status, cover and preventive-maintenance details.", 403, code="forbidden")
@@ -730,8 +745,8 @@ def check_edit(user, dataset, fields, key=None):
 
 
 def check_verify(user, key):
-    """Physically checking an asset: an administrator any asset, an engineer only one assigned to them."""
-    if is_admin(user):
+    """Physically checking an asset: an administrator any asset, an engineer only one assigned to them (or any asset, with asset_access=FULL)."""
+    if is_admin(user) or user.get("asset_access") == "FULL":
         return
     row = db.one("SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", [key])
     if not row or row["engineer_name"] != user.get("engineer_key"):
@@ -747,7 +762,7 @@ def check_create(user, dataset):
         if user.get("call_parts_access") == "FULL":
             return
         raise AuthError("This register is for administrators only.", 403, code="forbidden")
-    if dataset == "assets" and not is_admin(user):
+    if dataset == "assets" and not is_admin(user) and user.get("asset_access") != "FULL":
         raise AuthError("Only administrators can add a new asset.", 403, code="forbidden")
 
 
@@ -758,7 +773,7 @@ def check_archive(user, dataset):
         if user.get("call_parts_access") == "FULL":
             return
         raise AuthError("This register is for administrators only.", 403, code="forbidden")
-    if dataset == "assets" and not is_admin(user):
+    if dataset == "assets" and not is_admin(user) and user.get("asset_access") != "FULL":
         raise AuthError("Only administrators can archive an asset.", 403, code="forbidden")
 
 

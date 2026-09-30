@@ -30,6 +30,8 @@ DDL = [
 RULES = {
     "PM_KICKOFF": ("PM kick-off", f"{pm.KICKOFF_DAYS} days after a quarter starts, every engineer gets the list of assets still needing preventive maintenance.", {}),
     "PM_REMINDER": ("PM weekly reminder", "Every Monday after the kick-off until the quarter ends: engineers with pending PM get the list.", {}),
+    "PM_CLOSE_QUARTER": ("PM quarter needs closing", "Once a quarter has ended and nobody has rolled it over yet, every administrator (Team Leader / Site In-charge) is "
+                         "reminded daily until it is closed from PM cycles. Never closes it automatically - this is a reminder only.", {}),
     "ASSET_ADDED": ("New asset assigned", "An asset is added (import or portal) and assigned to an engineer.", {"lookback_days": 7}),
     "ASSET_REMOVED": ("Asset removed", "An asset assigned to an engineer is removed from the register.", {"lookback_days": 7}),
     "AMC_EXPIRED": ("Cover expired", "The AMC / warranty of an assigned asset has expired.", {"lookback_days": 7}),
@@ -213,6 +215,25 @@ def detect(rule_key, params, today=None):
             D[eng] = dict(event_key=f"{q['label']}:{_iso_week(today)}", subject=f"PM reminder: {len(items)} assets pending, {(q['end'] - today).days} days left",
                           intro=f"{len(items)} asset(s) still need preventive maintenance before {q['end']:%d %b %Y}.", rows=items,
                           columns=[("asset_key", "Asset"), ("asset_class", "Class"), ("model", "Model"), ("location_code", "Location")])
+    elif rule_key == "PM_CLOSE_QUARTER":
+        # Finds the cycle itself, not pm.quarter(today): once today has rolled into the next quarter, pm.quarter(today) already
+        # points at the NEW one, so "the quarter containing today" is the wrong question - the right one is "is there a cycle
+        # whose end_date has passed that is still OPEN". Recurs daily (event_key includes today) until someone rolls it over,
+        # at which point pm_cycle.status flips to CLOSED and this stops finding anything - never rolls the quarter over itself.
+        overdue = db.one("SELECT quarter_label, end_date FROM pm_cycle WHERE status = 'OPEN' AND end_date < %s ORDER BY end_date DESC LIMIT 1", [today])
+        if not overdue:
+            return D
+        k = db.one(f"SELECT count(*) FILTER (WHERE pm_status IN ('DONE','DONE_OUTSIDE_QUARTER')) AS done, count(*) FILTER (WHERE pm_status = 'PENDING') AS pending, count(*) AS scope FROM asset WHERE {pm.IN_SCOPE}")
+        overdue_days = (today - overdue["end_date"]).days
+        admins = db.query("SELECT DISTINCT engineer_key FROM portal_user WHERE role = 'ADMIN' AND active AND engineer_key IS NOT NULL")
+        for row in admins:
+            D[row["engineer_key"]] = dict(
+                event_key=f"{overdue['quarter_label']}:{today.isoformat()}",
+                subject=f"{overdue['quarter_label']} needs closing - ended {overdue_days} day{'s' if overdue_days != 1 else ''} ago",
+                intro=f"{overdue['quarter_label']} ended on {overdue['end_date']:%d %b %Y} and has not been rolled over to the next quarter yet. "
+                      f"{k['pending']} of {k['scope']} in-scope assets still show pending PM for it. Close the quarter from PM cycles once you have reviewed this "
+                      "- nothing closes it automatically.",
+                rows=[], columns=[])
     elif rule_key == "ASSET_ADDED":
         rows = db.query("""SELECT a.asset_key, a.asset_class, trim(coalesce(a.make,'') || ' ' || coalesce(a.model,'')) AS model, a.location_code, a.engineer_name, a.first_seen_date
                            FROM asset a WHERE a.is_current = 1 AND a.record_level = 'ASSET' AND a.engineer_name IS NOT NULL AND a.first_seen_date >= %s

@@ -84,8 +84,13 @@ def archived_base(name, ds):
 
 def scope_for(name, ds, user):
     """Row-level restriction for a non-admin engineer: only their own assigned assets / PM worklist rows, and only the employees those assets
-    belong to. None for an administrator (or the read-only demo account, which carries role ADMIN) - they see everything."""
+    belong to. None for an administrator (or the read-only demo account, which carries role ADMIN) - they see everything. A User granted
+    asset_access READ or FULL (Manage user) is also unscoped for "assets" specifically - a narrower grant than extended_access, since it
+    widens only what is SEEN here, not what can be edited (auth.check_edit/check_create/check_archive/check_verify check asset_access
+    separately, and only FULL bypasses those)."""
     if not user or user.get("role") == "ADMIN":
+        return None
+    if name == "assets" and user.get("asset_access") in ("READ", "FULL"):
         return None
     eng = user.get("engineer_key")
     if name in ("assets", "pm"):
