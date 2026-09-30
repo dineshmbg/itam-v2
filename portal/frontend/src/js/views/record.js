@@ -80,6 +80,11 @@ export async function mountRecord({ drawer, name, payload, schema, onChange }) {
     const reason = h('input', { type: 'text', id: 'rec-reason', maxlength: '200', placeholder: 'Optional: why is this being changed?' });
     const save = h('button', { class: 'btn primary', type: 'button', disabled: true }, icon('save'), 'Save changes');
     const cancel = h('button', { class: 'btn', type: 'button', onClick: show }, 'Cancel');
+    if (name === 'assets' && !p.row.install_date) {
+      // Installed On was blank - offer today's date as a real pending change (must still click Save changes), never touched if it already had one.
+      form.setValue('install_date', todayISO());
+      save.disabled = false;
+    }
     save.addEventListener('click', async () => {
       const changes = form.changes();
       if (!Object.keys(changes).length) return;
