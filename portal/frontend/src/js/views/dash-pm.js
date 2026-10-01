@@ -21,7 +21,7 @@ export function mountPmDash(root) {
     return [
       { id: 'scope', label: 'Assets in scope', value: int(k.scope), sub: 'desktops, workstations, servers, network, printers…', ico: 'devices', href: regHref('pm', { 'f.pm_status': '' }) },
       { id: 'done', label: 'PM done', value: int(k.done), sub: k.pct_done != null ? `${pct(k.pct_done)} of scope` : '', tone: 'ok', href: regHref('pm', { 'f.pm_status': 'DONE' }) },
-      { id: 'pending', label: 'PM pending', value: int(k.pending), sub: `${int(k.days_left)} days left in the quarter`, tone: k.pending ? (behind ? 'bad' : 'warn') : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING' }) },
+      { id: 'pending', label: 'PM pending', value: int(k.pending), sub: d.cycle.overdue ? 'quarter ended, not closed yet' : `${int(k.days_left)} days left in the quarter`, tone: k.pending ? (behind ? 'bad' : 'warn') : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING' }) },
       { id: 'stale', label: 'Done outside quarter', value: int(k.stale), sub: 'dated before this quarter', tone: k.stale ? 'warn' : 'ok', href: regHref('pm', { 'f.pm_status': 'DONE_OUTSIDE_QUARTER' }) },
       { id: 'pace', label: 'Time elapsed', value: pct(k.expected_pct), sub: behind ? 'work is behind the calendar' : 'work is on pace', tone: behind ? 'bad' : 'ok' },
       { id: 'un', label: 'Pending, no engineer', value: int(k.unassigned), sub: 'nobody is responsible yet', tone: k.unassigned ? 'bad' : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING', 'f.engineer_name': '~blank' }) },
@@ -33,7 +33,9 @@ export function mountPmDash(root) {
     const kick = Math.max(0, Math.min(100, 100 * (new Date(c.kickoff) - new Date(c.start)) / (new Date(c.end) - new Date(c.start))));
     const kickTxt = k.kickoff_in_days > 0 ? `kick-off in ${k.kickoff_in_days} days (${date(c.kickoff)})` : `kick-off was ${date(c.kickoff)}${c.kickoff_sent ? ' · e-mail sent' : ''}`;
     return h('div', { class: 'cycle-bar', role: 'img', 'aria-label': `${pct(k.pct_done)} of assets done, ${pct(k.expected_pct)} of the quarter elapsed` },
-      h('div', { class: 'cb-h' }, h('strong', null, c.label), h('span', { class: 'muted' }, `${date(c.start)} → ${date(c.end)} · ${kickTxt}`), h('span', { class: 'badge ' + (c.status === 'OPEN' ? 'info' : 'mute') }, c.status === 'OPEN' ? 'Open' : 'Closed')),
+      h('div', { class: 'cb-h' }, h('strong', null, c.label), h('span', { class: 'muted' }, `${date(c.start)} → ${date(c.end)} · ${kickTxt}`), c.overdue ? h('span', { class: 'badge bad' }, icon('warning--alt--filled'), 'Not closed yet') : h('span', { class: 'badge ' + (c.status === 'OPEN' ? 'info' : 'mute') }, c.status === 'OPEN' ? 'Open' : 'Closed')),
+      c.overdue ? h('div', { class: 'cb-over' }, `These are still the ${c.label} figures. That quarter ended ${date(c.end)} but has not been closed, so ${c.calendar_label} has not started counting. `,
+        h('a', { href: '#/pm/cycles' }, 'Close it under Cycles and snapshots'), ' to reset every asset to pending.') : null,
       h('div', { class: 'cb-track' }, h('i', { class: 'cb-time', style: { width: k.expected_pct + '%' } }), h('i', { class: 'cb-done', style: { width: (k.pct_done || 0) + '%' } }), h('i', { class: 'cb-kick', style: { left: kick + '%' }, title: 'Kick-off' })),
       h('div', { class: 'cb-l' }, h('span', null, h('i', { class: 'sw', style: { background: 'var(--chart-3)' } }), `Done ${pct(k.pct_done)}`), h('span', null, h('i', { class: 'sw', style: { background: 'var(--c-border-strong)' } }), `Time elapsed ${pct(k.expected_pct)}`)));
   }

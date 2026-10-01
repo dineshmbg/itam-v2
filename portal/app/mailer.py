@@ -200,6 +200,8 @@ def detect(rule_key, params, today=None):
     today = today or dt.date.today()
     q = pm.quarter(today)
     D = {}
+    if rule_key in ("PM_KICKOFF", "PM_REMINDER") and pm.active_quarter(today=today)["overdue"]:
+        return D      # the pending figures still belong to a quarter nobody has closed yet - PM_CLOSE_QUARTER covers that, not these
     if rule_key == "PM_KICKOFF":
         if today < q["kickoff"]:
             return D

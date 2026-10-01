@@ -259,7 +259,7 @@ async def import_load(request):
 def _after_import():
     with db.write() as con:
         pm.ensure_cycle(con)
-        pm.capture_snapshot(con, pm.quarter(dt.date.today())["label"], dt.date.today())
+        pm.capture_snapshot(con, pm.active_quarter(con)["label"], dt.date.today())
 
 
 async def import_detail(request):

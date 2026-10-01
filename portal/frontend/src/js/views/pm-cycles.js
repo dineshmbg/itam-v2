@@ -39,7 +39,8 @@ export function mountPmCycles(root) {
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn', type: 'button', onClick: snapshot }, icon("report"), 'Capture snapshot now'),
           h('button', { class: 'btn danger', type: 'button', onClick: () => rollover(r) }, icon('renew'), `Close ${r.closing} and open ${r.opening}…`)),
-        h('p', { class: 'hint' }, `${r.opening} starts ${date(r.opening_start)} (${r.starts_in_days > 0 ? `in ${r.starts_in_days} days` : 'now'}). A safety backup is taken first.`))));
+        h('p', { class: 'hint' }, r.overdue ? `${r.closing} ended ${date(r.closing_end)} and has not been closed yet. A safety backup is taken first.`
+          : `${r.opening} starts ${date(r.opening_start)} (${r.starts_in_days > 0 ? `in ${r.starts_in_days} days` : 'now'}). A safety backup is taken first.`))));
     }
     body.replaceChildren(...panels);
   }

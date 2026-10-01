@@ -144,8 +144,14 @@ def test_export_and_share_endpoints(box, monkeypatch):
 
 
 # ---------------------------------------------------------------- PM
+def _put_assets_in(box, q):
+    """Pin the quarter the in-scope assets carry, so these tests do not depend on where the real data happens to be today."""
+    box.execute(f"UPDATE asset SET pm_quarter = %s WHERE {pm.IN_SCOPE}", (q["label"],))
+
+
 def test_recording_pm_updates_asset_history_and_status(box):
     q = pm.quarter(dt.date.today())
+    _put_assets_in(box, q)
     a = one(box, "SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND pm_status = 'PENDING' LIMIT 2")
     keys = [r[0] for r in box.execute("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND pm_status = 'PENDING' ORDER BY asset_key LIMIT 2").fetchall()]
     assert a and len(keys) == 2
@@ -171,7 +177,10 @@ def test_recording_pm_updates_asset_history_and_status(box):
 
 def test_rollover_snapshots_then_resets_the_quarter(box):
     user = {"username": "ADMIN1", "role": "ADMIN"}
+    _put_assets_in(box, pm.quarter(dt.date.today()))
+    audited = one(box, "SELECT count(*) FROM portal_audit WHERE record_key = 'PM-ROLLOVER'")[0]      # real earlier roll-overs exist
     before = pm.rollover_preview()
+    assert before["closing"] == pm.quarter(dt.date.today())["label"] and before["opening"] == pm.next_quarter(dt.date.today())["label"] and not before["overdue"]
     with pytest.raises(pm.PmError):
         pm.rollover(user, "127.0.0.1")                                    # the quarter has not ended yet
     out = pm.rollover(user, "127.0.0.1", force=True)
@@ -181,7 +190,38 @@ def test_rollover_snapshots_then_resets_the_quarter(box):
     k = one(box, "SELECT count(*), count(*) FILTER (WHERE pm_status = 'PENDING'), count(*) FILTER (WHERE pm_date IS NOT NULL), count(DISTINCT pm_quarter) FROM asset WHERE " + pm.IN_SCOPE)
     assert k[0] == before["scope"] and k[1] == k[0] and k[2] == 0 and k[3] == 1
     assert one(box, "SELECT status FROM pm_cycle WHERE quarter_label = %s", (before["closing"],))[0] == "CLOSED"
-    assert one(box, "SELECT count(*) FROM portal_audit WHERE record_key = 'PM-ROLLOVER'")[0] == 1
+    assert one(box, "SELECT count(*) FROM portal_audit WHERE record_key = 'PM-ROLLOVER'")[0] == audited + 1
+
+
+def test_closing_a_quarter_after_it_has_ended_closes_that_quarter_not_the_new_one(box):
+    """The 2026-10-01 bug: on the first day of Q3 the roll-over offered to close Q3 and open Q4, and the dashboard showed Q2's
+    done/pending under a Q3 heading. The quarter to close is the one the assets carry; the one to open is the one containing today."""
+    user = {"username": "ADMIN1", "role": "ADMIN"}
+    today = dt.date.today()
+    cur = pm.quarter(today)
+    old = pm.quarter(cur["start"] - dt.timedelta(days=1))
+    _put_assets_in(box, old)
+    box.execute("DELETE FROM pm_cycle WHERE quarter_label = %s", (cur["label"],))
+    kept, wiped = [r[0] for r in box.execute(f"SELECT asset_key FROM asset WHERE {pm.IN_SCOPE} ORDER BY asset_key LIMIT 2").fetchall()]
+    box.execute("UPDATE asset SET pm_date = %s, pm_done_by = 'SOMEONE' WHERE asset_key = %s", (today, kept))                 # done already, in the new quarter
+    box.execute("UPDATE asset SET pm_date = %s, pm_done_by = 'SOMEONE' WHERE asset_key = %s", (old["end"], wiped))           # done in the old quarter
+
+    d = pm.dashboard()["cycle"]
+    assert d["label"] == old["label"] and d["overdue"] and d["calendar_label"] == cur["label"]       # old figures are labelled as old
+    assert pm.snapshot_now(user, "x")["quarter"] == old["label"]                                       # ... and so is a snapshot of them
+    before = pm.rollover_preview()
+    assert (before["closing"], before["opening"], before["overdue"]) == (old["label"], cur["label"], True) and before["starts_in_days"] <= 0
+
+    out = pm.rollover(user, "127.0.0.1")                                                               # no early cut-over needed
+    assert (out["closed"], out["opened"]) == (old["label"], cur["label"])
+    assert one(box, "SELECT status FROM pm_cycle WHERE quarter_label = %s", (old["label"],))[0] == "CLOSED"
+    assert one(box, "SELECT status FROM pm_cycle WHERE quarter_label = %s", (cur["label"],))[0] == "OPEN"
+    assert one(box, "SELECT count(*) FROM pm_snapshot WHERE quarter_label = %s AND as_of = %s", (old["label"], old["end"]))[0] == before["scope"]
+    assert one(box, "SELECT pm_status, pm_date, pm_done_by FROM asset WHERE asset_key = %s", (kept,)) == ("DONE", today, "SOMEONE")
+    assert one(box, "SELECT pm_status, pm_date, pm_done_by FROM asset WHERE asset_key = %s", (wiped,)) == ("PENDING", None, None)
+    k = pm.dashboard()
+    assert k["cycle"]["label"] == cur["label"] and not k["cycle"]["overdue"]
+    assert (k["kpi"]["done"], k["kpi"]["stale"], k["kpi"]["pending"]) == (1, 0, before["scope"] - 1)
 
 
 # ---------------------------------------------------------------- e-mail

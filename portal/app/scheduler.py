@@ -71,8 +71,9 @@ def tick(now=None):
             with db.write() as con:
                 pm.ensure_cycle(con)
                 if now.weekday() == 0:
-                    n = pm.capture_snapshot(con, pm.quarter(now.date())["label"], now.date())
-                    auth.log("SCHEDULER", None, "PM_SNAPSHOT", pm.quarter(now.date())["label"], {"assets": n})
+                    label = pm.active_quarter(con)["label"]      # the quarter the figures belong to, not the calendar one
+                    n = pm.capture_snapshot(con, label, now.date())
+                    auth.log("SCHEDULER", None, "PM_SNAPSHOT", label, {"assets": n})
         job("pm", do_pm)
         st["last_pm"] = today; changed = True
 

@@ -58,6 +58,29 @@ def next_quarter(d):
     return quarter(quarter(d)["end"] + dt.timedelta(days=1))
 
 
+def active_quarter(con=None, today=None):
+    """The quarter the PM figures on the assets belong to: the label the in-scope assets carry. That label only moves when a quarter
+    is closed (rollover) or an import brings a new one - it is NOT simply the quarter containing today. The two differ from the
+    first day of a new quarter until somebody closes the old one; `overdue` is True for exactly that stretch."""
+    today = today or dt.date.today()
+    sql = f"SELECT pm_quarter FROM asset WHERE {IN_SCOPE} AND pm_quarter IS NOT NULL GROUP BY 1 ORDER BY count(*) DESC, 1 DESC LIMIT 1"
+    if con is not None:
+        row = con.execute(sql).fetchone()
+        label = row[0] if row else None
+    else:
+        row = db.one(sql)
+        label = row["pm_quarter"] if row else None
+    start, _ = R.quarter_window(label)
+    q = quarter(start or today)
+    q["overdue"] = q["end"] < today
+    return q
+
+
+def _opening(q, today):
+    """The quarter a roll-over of q opens: the one containing today when q is already over, otherwise the one right after q (early cut-over)."""
+    return quarter(max(today, q["end"] + dt.timedelta(days=1)))
+
+
 def ensure_cycle(con, on=None, by="system"):
     q = quarter(on or dt.date.today())
     con.execute("INSERT INTO pm_cycle (quarter_label, start_date, end_date, kickoff_date, opened_by) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (quarter_label) DO NOTHING",
@@ -72,9 +95,12 @@ def _rows(sql, params=()):
 def dashboard(eng=None):
     """`eng`: a non-admin engineer's own engineer_key - scopes every asset-level figure to their own assets ("my PM worklist"
     rather than the whole fleet). None (an administrator) means unscoped. The cycle/quarter metadata (dates, kickoff, snapshot
-    history) is the same for everyone regardless and is never scoped."""
+    history) is the same for everyone regardless and is never scoped.
+
+    The cycle shown is active_quarter() - the one the counts actually belong to - not the calendar quarter: after a quarter ends
+    and before it is closed, the counts are still the old quarter's and are labelled as such (cycle.overdue), never as the new one."""
     today = dt.date.today()
-    q = quarter(today)
+    q = active_quarter(today=today)
     cyc = db.one("SELECT * FROM pm_cycle WHERE quarter_label = %s", [q["label"]])
     label_in_data = db.one("SELECT max(pm_quarter) AS l FROM asset WHERE is_current = 1")["l"]
     scope = IN_SCOPE + (" AND engineer_name = %(eng)s" if eng else "")
@@ -101,7 +127,8 @@ def dashboard(eng=None):
                         FROM pm_snapshot GROUP BY 1, 2 ORDER BY 2""")
     recent = _rows(f"""SELECT pm_id AS id, quarter_label, asset_key, pm_date, done_by, signed_by, recorded_by, recorded_at FROM pm_record
                       {"WHERE asset_key IN (SELECT asset_key FROM asset WHERE engineer_name = %(eng)s)" if eng else ""} ORDER BY pm_id DESC LIMIT 10""", p)
-    return {"cycle": {"label": q["label"], "start": q["start"], "end": q["end"], "kickoff": q["kickoff"], "status": cyc["status"] if cyc else "OPEN", "kickoff_sent": cyc["kickoff_notified_at"] if cyc else None},
+    return {"cycle": {"label": q["label"], "start": q["start"], "end": q["end"], "kickoff": q["kickoff"], "status": cyc["status"] if cyc else "OPEN", "kickoff_sent": cyc["kickoff_notified_at"] if cyc else None,
+                      "overdue": q["overdue"], "calendar_label": quarter(today)["label"]},
             "kpi": k, "by_engineer": by_eng, "by_location": by_loc, "by_class": by_class, "burn": burn, "signers": signers, "quarters": quarters, "recent": recent}
 
 
@@ -156,40 +183,50 @@ def capture_snapshot(con, label, as_of):
 
 
 def snapshot_now(user, ip):
-    q = quarter(dt.date.today())
     with db.write() as con:
+        q = active_quarter(con)                              # labelled with the quarter the figures belong to, not the calendar one
         n = capture_snapshot(con, q["label"], dt.date.today())
     return {"quarter": q["label"], "assets": n}
 
 
 def rollover_preview():
-    q = quarter(dt.date.today())
-    nq = next_quarter(dt.date.today())
+    today = dt.date.today()
+    q = active_quarter(today=today)
+    nq = _opening(q, today)
     k = db.one(f"SELECT count(*) AS scope, count(*) FILTER (WHERE pm_status IN ('DONE','DONE_OUTSIDE_QUARTER')) AS with_pm, count(*) FILTER (WHERE pm_status = 'PENDING') AS pending FROM asset WHERE {IN_SCOPE}")
-    return {"closing": q["label"], "opening": nq["label"], "opening_start": nq["start"], "starts_in_days": (nq["start"] - dt.date.today()).days, **k}
+    return {"closing": q["label"], "closing_end": q["end"], "overdue": q["overdue"], "opening": nq["label"], "opening_start": nq["start"],
+            "starts_in_days": (q["end"] - today).days + 1, **k}
 
 
 def rollover(user, ip, force=False):
-    """Close the current quarter (freeze a snapshot) and open the next: every in-scope asset goes back to PM pending for the new quarter.
-    The previous values stay in pm_snapshot / pm_record. Refused before the quarter has ended unless force=True (early cut-over)."""
+    """Close the quarter the assets are in (freeze a snapshot) and open the next: every in-scope asset goes back to PM pending for the new quarter.
+    The previous values stay in pm_snapshot / pm_record. Refused before the quarter has ended unless force=True (early cut-over).
+
+    "The quarter the assets are in" is active_quarter(), not quarter(today): a quarter is normally closed a day or more AFTER it ends,
+    and by then quarter(today) is already the new one - closing that would skip a quarter and leave the old one open for ever.
+    A PM already dated inside the quarter being opened (recorded between the quarter ending and this close) is kept, not wiped."""
     today = dt.date.today()
-    q, nq = quarter(today), next_quarter(today)
-    if today <= q["end"] and not force:
+    q = active_quarter(today=today)
+    nq = _opening(q, today)
+    if not q["overdue"] and not force:
         raise PmError(f"{q['label']} runs until {q['end']:%d %b %Y}. Use an early roll-over only if you really are cutting over now.", 409)
     with db.write() as con:
         capture_snapshot(con, q["label"], min(today, q["end"]))
+        ensure_cycle(con, q["start"], user["username"])
         con.execute("UPDATE pm_cycle SET status = 'CLOSED', closed_at = now(), closed_by = %s WHERE quarter_label = %s", (user["username"], q["label"]))
         ensure_cycle(con, nq["start"], user["username"])
         rows = con.execute(f"SELECT asset_key FROM asset WHERE {IN_SCOPE} FOR UPDATE").fetchall()
         keys = [r[0] for r in rows]
-        con.execute(f"UPDATE asset SET pm_quarter = %s, pm_date = NULL, pm_done_by = NULL, pm_signed_by = NULL WHERE {IN_SCOPE}", (nq["label"],))
-        con.execute("DELETE FROM portal_lock WHERE dataset = 'assets' AND field = ANY(%s)", (["pm_date", "pm_done_by", "pm_signed_by"],))
+        con.execute(f"UPDATE asset SET pm_quarter = %s WHERE {IN_SCOPE}", (nq["label"],))
+        con.execute(f"UPDATE asset SET pm_date = NULL, pm_done_by = NULL, pm_signed_by = NULL WHERE {IN_SCOPE} AND (pm_date IS NULL OR pm_date < %s)", (nq["start"],))
+        con.execute(f"""DELETE FROM portal_lock WHERE dataset = 'assets' AND field = ANY(%s)
+                        AND record_key NOT IN (SELECT asset_key FROM asset WHERE {IN_SCOPE} AND pm_date IS NOT NULL)""", (["pm_date", "pm_done_by", "pm_signed_by"],))
         with con.cursor() as cur:
             cur.execute(f"SELECT * FROM asset WHERE {IN_SCOPE}")
             cols = [c.name for c in cur.description]
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
-                new = R.derive_asset(row, {}, today)      # pm_date is now empty and pm_quarter is the new label -> PENDING
+                new = R.derive_asset(row, {}, today)      # pm_quarter is the new label; pm_date is empty -> PENDING (or kept, inside it -> DONE)
                 con.execute("UPDATE asset SET pm_status = %s, dq_flags = %s WHERE asset_key = %s", (new["pm_status"], new["dq_flags"], row["asset_key"]))
         con.execute("INSERT INTO portal_audit (editor, client_ip, dataset, record_key, action, changes, reason) VALUES (%s,%s,'assets',%s,'UPDATE',%s::jsonb,%s)",
                     (user["username"], ip, "PM-ROLLOVER", json.dumps({"pm_quarter": {"old": q["label"], "new": nq["label"]}, "assets": {"new": len(keys)}}), f"PM cycle rolled over to {nq['label']}"))
