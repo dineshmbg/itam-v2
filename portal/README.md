@@ -42,17 +42,19 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 
 | | Administrator | User | DEMOUSER |
 |---|---|---|---|
-| Assets dashboard | yes, whole fleet | yes, own assets only | yes, whole fleet (read-only) |
+| Assets dashboard | yes, whole fleet | yes, own assets only - unless individually granted `asset_access` READ/FULL, see below (2026-09-30) | yes, whole fleet (read-only) |
 | Call tracker dashboard | yes, whole fleet | yes, own calls only | yes, whole fleet (read-only) |
 | PM dashboard | yes, whole fleet | yes, own assets only | yes, whole fleet (read-only) |
+| Report builder | yes, every dataset, unscoped | yes, but scoped the same as the matching register/dashboard (own data only, Calls/Inward/Outward/RMA gated by `call_parts_access`) - see below (2026-09-30) | yes, everything (read-only) |
 | Data integrity | yes | **no access at all** (2026-09-23) | yes, everything (read-only) |
-| Assets register, hover cards | yes | yes, own scope only (see below) | yes, everything (read-only) |
+| Assets register, hover cards | yes | yes, own scope only - unless individually granted `asset_access` READ/FULL, see below (2026-09-30) | yes, everything (read-only) |
 | Engineers register, hover cards | yes, any engineer | yes, list of everyone, but a hover card/floating window only for themselves | yes, everything (read-only) |
 | Employees register | yes | yes, own scope only | yes, everything (read-only) |
 | Calls, Inward, Outward, OEM RMA registers | yes | **no access by default** - unless individually granted read-only or full access, see below (2026-09-22, extended 2026-09-23) | yes, everything (read-only) |
 | Engineers dashboard, Change log, Cycles and snapshots | yes | **no access at all** (2026-09-22) | yes, everything (read-only) |
 | Assets: change status, cover, PM fields | yes | yes, only on assets assigned to them | no |
-| Assets: add, archive, change any other field | yes | no | no |
+| Assets: reassign ownership (CPF No., Engineer) | yes | only if individually granted `can_reassign_assets`, and only on assets already assigned to them, see below (2026-10-01) | no |
+| Assets: add, archive, change any other field | yes | no, unless individually granted `asset_access=FULL`, see below (2026-09-30) | no |
 | Engineer record: any field | yes, any engineer | yes, but **only their own record** (2026-09-23 - was contact fields only) | no |
 | Engineer record: create | yes (2026-09-23 - was roster sync only) | no | no |
 | Engineer record: archive | no one - roster sync/events only | no | no |
@@ -73,6 +75,37 @@ People, Preventive maintenance (including Cycles and snapshots) and Reports. It 
 (Data import, Backup and restore, Software update) or Administration: those routes use `admin="strict"` (`auth.is_full_admin`), and the menu
 hides them. `auth.session_user()` sets the effective `role` (ADMIN for such an account) and keeps the real one in `group`. It does not count as an
 administrator for the last-administrator check or for required two-factor sign-in.
+
+**Asset access for a User (`portal_user.asset_access`, 2026-09-30):** set from *Manage user* to `NONE` (default), `READ` or `FULL` -
+deliberately narrower than `extended_access`, which conflates "sees everything" with "can edit everything" across every register, not
+just Assets. `READ` unscopes the Assets dashboard, register and report builder (whole fleet, not just assets assigned to them) but grants
+no extra editing - still only `USER_ASSET_FIELDS` on assets already assigned to them. `FULL` also bypasses the ownership check entirely
+in `check_edit`/`check_create`/`check_archive`/`check_verify`, so the account can add, edit, archive and verify any asset, as if every
+asset were assigned to them. Neither value touches Engineers, PM, or anything outside Assets - unlike `extended_access`, which does.
+While building this, the report builder (`app/reports.py`) was found to have **no row- or dataset-level access control at all** - any
+signed-in User could already pull a full, unscoped report over every dataset including Calls/Inward/Outward/OEM RMA, regardless of role
+or `call_parts_access`. Fixed by threading the real `user` object (not a bare `admin` boolean) through the whole call chain
+(`catalog`/`describe`/`values`/`_field`/`build`/`run`/`table_for_export`), calling the same `queries.check_access`/`scope_for` every
+other register already uses.
+
+**Can reassign ownership for a User (`portal_user.can_reassign_assets`, 2026-10-01):** set from *Manage user*, User group only, off by
+default. Real-world scenario: an asset's owner moves department and hands the asset to someone else (sometimes under a different
+engineer's territory); normally only an administrator can change CPF No. or Engineer. This grant lets the engineer who already holds the
+asset do the hand-off themselves - `auth.check_edit`'s assets branch widens the allowed-field set to include `cpf_no`/`engineer_name`
+(`REASSIGN_FIELDS`) on top of the usual `USER_ASSET_FIELDS` when this is set, but the existing ownership check (the asset must already be
+assigned to the caller) is completely untouched - this only ever widens **which fields** are editable, never **which assets**. Deliberately
+a per-person toggle rather than a blanket rule for every User, matching `asset_access`/`call_parts_access`/`extended_access`'s existing
+pattern: minimal extra code, a safer staged rollout (switch on per-engineer without a new release), and consistency with how every other
+capability in this system is granted.
+
+**A real bug found while wiring up `can_reassign_assets`**: `routes_auth.py`'s `user_update` route has its own allowlist of which fields
+from the Manage-user save payload get forwarded to `auth.update_user` - and `asset_access` had never been added to it. The Manage dialog's
+Save button showed "User saved" and the value simply never reached the database, for every account since `asset_access` was built
+(2026-09-30). Undetected because every test for it exercised `auth.update_user` or `auth.check_edit` directly, never the real HTTP route
+with a real logged-in session. Both `asset_access` and `can_reassign_assets` are now in that allowlist; a regression test
+(`test_auth.py`'s `test_manage_user_route_persists_asset_access_and_reassign_grant`) does a real login and a real POST to catch this class
+of bug again. **Lesson for any future per-user grant**: a field added to `auth.update_user`'s `changes` handling is not reachable from the
+UI until it is also added to `routes_auth.py`'s `user_update` allowlist - verify with an end-to-end HTTP test, not a monkeypatched user.
 
 **A group set by hand survives roster sync (`portal_user.role_locked`):** changing a group in *Manage user* locks it, so *Sync from roster*
 no longer derives it from the designation (e.g. a TEAM LEADER/SI moved to User stays a User).
