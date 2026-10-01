@@ -107,6 +107,15 @@ with a real logged-in session. Both `asset_access` and `can_reassign_assets` are
 of bug again. **Lesson for any future per-user grant**: a field added to `auth.update_user`'s `changes` handling is not reachable from the
 UI until it is also added to `routes_auth.py`'s `user_update` allowlist - verify with an end-to-end HTTP test, not a monkeypatched user.
 
+**A second, related bug** (reported by the user as "enabled the option but can't find it anywhere" after granting two real accounts):
+fixing the save path above was not enough on its own - `routes_edit.py`'s `schema()` route, which tells `record.js`'s edit form which
+fields to even render, computed every USER-role field's `readonly` flag from `auth.USER_ASSET_FIELDS` alone, with no knowledge of
+`can_reassign_assets` or `asset_access=FULL` either. The edit form filters to `!readonly` fields before building, so `cpf_no`/
+`engineer_name` never appeared as inputs at all - the backend permission in `check_edit` was correct, but there was no way to reach it
+from the UI. Fixed by making `schema()`'s readonly computation mirror `check_edit`'s own logic exactly (same two-bug lesson: a backend
+permission change needs both the save-route allowlist *and* the schema route updated, or the capability is unusable even though
+`check_edit` itself is right) - covered by three new schema-level tests asserting `readonly` per field per grant combination.
+
 **A group set by hand survives roster sync (`portal_user.role_locked`):** changing a group in *Manage user* locks it, so *Sync from roster*
 no longer derives it from the designation (e.g. a TEAM LEADER/SI moved to User stays a User).
 
