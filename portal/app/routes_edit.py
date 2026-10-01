@@ -151,12 +151,8 @@ async def schema(request):
         s = edit.schema()
         u = request.state.user
         if u["role"] != "ADMIN":
-            if u.get("asset_access") == "FULL":
-                allowed = None   # every field editable, same as check_edit's asset_access=FULL bypass
-            else:
-                allowed = auth.USER_ASSET_FIELDS | (auth.REASSIGN_FIELDS if u.get("can_reassign_assets") else set())
             for f in s["assets"]["fields"]:
-                f["readonly"] = allowed is not None and f["key"] not in allowed
+                f["readonly"] = f["key"] not in auth.USER_ASSET_FIELDS
             # engineers: every field is editable for a non-admin - but only on their own record, enforced by auth.check_edit's
             # ownership check (and by record.js only showing the Edit button on the signed-in engineer's own record) rather than
             # by field, since the person is allowed to change all of their own details, not just a fixed contact-details subset

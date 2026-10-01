@@ -57,13 +57,6 @@ DDL = [
     "ALTER TABLE portal_user DROP CONSTRAINT IF EXISTS portal_user_asset_access_check",
     "ALTER TABLE portal_user ADD CONSTRAINT portal_user_asset_access_check CHECK (asset_access IN ('NONE','READ','FULL'))",
     "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS role_locked BOOLEAN NOT NULL DEFAULT FALSE",
-    # can_reassign_assets (2026-10-01): a User-group account may change CPF No. and Engineer - never any other field - on an
-    # asset already assigned to them (the existing ownership check in check_edit still applies; this only widens WHICH fields
-    # are allowed once that check passes). The real-world scenario: an asset's registered owner moves department and hands the
-    # asset to someone else, who may be in a different engineer's territory - the engineer currently holding it updates both
-    # in one edit. cpf_no still validates against a real employee and engineer_name against a real engineer, exactly as it
-    # already does for an administrator's edit (edit.py's field validation does not look at who is making the change).
-    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS can_reassign_assets BOOLEAN NOT NULL DEFAULT FALSE",
     "CREATE TABLE IF NOT EXISTS portal_password_history (user_id INT NOT NULL REFERENCES portal_user(user_id), password_hash TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())",
     """CREATE TABLE IF NOT EXISTS portal_session (
          token_hash TEXT PRIMARY KEY, user_id INT NOT NULL REFERENCES portal_user(user_id), stage TEXT NOT NULL CHECK (stage IN ('PENDING_2FA','ACTIVE')),
@@ -276,8 +269,7 @@ def public_user(u):
             "totp_enabled": u["totp_enabled"], "must_change": u["must_change"], "locked": bool(u["locked_until"] and u["locked_until"] > _now()),
             "last_login_at": u["last_login_at"].isoformat() if u["last_login_at"] else None, "created_at": u["created_at"].isoformat(), "engineer_key": u["engineer_key"],
             "read_only": bool(u.get("read_only")), "call_parts_access": u.get("call_parts_access") or "NONE",
-            "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE",
-            "can_reassign_assets": bool(u.get("can_reassign_assets")), "role_locked": bool(u.get("role_locked"))}
+            "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked"))}
 
 
 def create_user(username, display_name, email, role, editor, engineer_key=None, password=None):
@@ -428,8 +420,6 @@ def update_user(user_id, changes, editor, lock_role=False):
             if v not in ("NONE", "READ", "FULL"):
                 raise AuthError("Choose none, view-only or full access.", 400, fields={"asset_access": "invalid"})
             sets.append("asset_access = %s"); vals.append(v)
-        if "can_reassign_assets" in changes:
-            sets.append("can_reassign_assets = %s"); vals.append(bool(changes["can_reassign_assets"]))
         if changes.get("unlock"):
             sets.append("failed_attempts = 0"); sets.append("locked_until = NULL")
         if changes.get("reset_2fa"):
@@ -724,7 +714,6 @@ def totp_disable(user, password, code):
 
 # ---------------------------------------------------------------- permissions
 USER_ASSET_FIELDS = {"asset_status", "cover_type", "cover_expiry_date", "pm_date", "pm_done_by", "pm_signed_by"}
-REASSIGN_FIELDS = {"cpf_no", "engineer_name"}       # only unlocked by can_reassign_assets - see its DDL comment above
 
 
 def is_admin(user):
@@ -742,14 +731,10 @@ def check_edit(user, dataset, fields, key=None):
     if dataset == "assets":
         if user.get("asset_access") == "FULL":
             return
-        allowed = USER_ASSET_FIELDS | REASSIGN_FIELDS if user.get("can_reassign_assets") else USER_ASSET_FIELDS
-        bad = sorted(set(fields) - allowed)
+        bad = sorted(set(fields) - USER_ASSET_FIELDS)
         if bad:
-            extra = " or reassign its CPF No. / Engineer" if user.get("can_reassign_assets") else ""
-            raise AuthError("Only administrators can change: " + ", ".join(bad) + ". You can update status, cover and preventive-maintenance details" + extra + ".", 403, code="forbidden")
+            raise AuthError("Only administrators can change: " + ", ".join(bad) + ". You can update status, cover and preventive-maintenance details.", 403, code="forbidden")
         if key is not None:
-            # Same ownership check regardless of what is being changed - can_reassign_assets widens which fields are allowed,
-            # never which assets: an engineer can only ever touch (and hand off) a record already assigned to them.
             row = db.one("SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", [key])
             if not row or row["engineer_name"] != user.get("engineer_key"):
                 raise AuthError("You can only change assets assigned to you.", 403, code="forbidden")

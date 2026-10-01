@@ -103,7 +103,6 @@ export function mountUsers(root) {
         h('td', null, h('span', { class: 'badge ' + (u.role === 'ADMIN' ? 'info' : 'mute') }, u.role === 'ADMIN' ? 'Administrator' : 'User'),
           u.role !== 'ADMIN' && u.extended_access ? h('span', { class: 'badge info', style: { marginLeft: '4px' } }, 'Extended access') : null,
           u.role !== 'ADMIN' && !u.extended_access && u.asset_access && u.asset_access !== 'NONE' ? h('span', { class: 'badge info', style: { marginLeft: '4px' } }, 'Asset ' + u.asset_access.toLowerCase()) : null,
-          u.role !== 'ADMIN' && u.can_reassign_assets ? h('span', { class: 'badge info', style: { marginLeft: '4px' } }, 'Can reassign') : null,
           u.read_only ? h('span', { class: 'badge mute', style: { marginLeft: '4px' } }, 'Read-only') : null), h('td', null, badgeFor(u)),
         h('td', null, u.totp_enabled ? h('span', { class: 'tick' }, icon('checkmark--filled'), ' On') : h('span', { class: 'faint' }, icon('close--outline'), ' Off')),
         h('td', null, u.email ? h('span', { class: 'email' }, u.email) : h('span', { class: 'faint' }, '—')), h('td', { class: 'nowrap' }, u.last_login_at ? when(u.last_login_at) : h('span', { class: 'faint' }, 'never')),
@@ -130,12 +129,7 @@ export function mountUsers(root) {
       h('span', { class: 'name' }, 'Extended access - administrator-level access to dashboards, registers, people, preventive maintenance and reports'));
     const extHint = h('div', { class: 'hint' }, 'For a User account only: everything unscoped, but no Control, Data tools or Administration.');
     const extWrap = h('div', { class: 'frow' }, extRow, extHint);
-    const reassign = h('input', { type: 'checkbox', id: 'u-reassign' }); reassign.checked = !!u.can_reassign_assets;
-    const reassignRow = h('label', { class: 'opt', for: 'u-reassign' }, reassign, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'),
-      h('span', { class: 'name' }, 'Can reassign ownership - may change CPF No. and Engineer, only on assets already assigned to them'));
-    const reassignHint = h('div', { class: 'hint' }, 'For handing an asset to a new owner (and a new engineer, if that person is in someone else’s territory). Does not widen which assets they can see or touch otherwise.');
-    const reassignWrap = h('div', { class: 'frow' }, reassignRow, reassignHint);
-    const syncExt = () => { const isUser = role.querySelector('input:checked')?.value === 'USER'; extWrap.hidden = !isUser; reassignWrap.hidden = !isUser; };
+    const syncExt = () => { extWrap.hidden = role.querySelector('input:checked')?.value !== 'USER'; };
     role.addEventListener('change', syncExt); syncExt();
     const active = h('input', { type: 'checkbox', id: 'u-active' }); active.checked = u.active;
     const activeRow = h('label', { class: 'opt', for: 'u-active' }, active, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'Account is active (can sign in)'));
@@ -148,11 +142,11 @@ export function mountUsers(root) {
       body: h('div', null, f('u-name', 'User name', username), f('u-full', 'Full name', name), f('u-mail', 'E-mail (for notifications)', email),
         h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Group'), role), f('u-eng', 'Linked engineer (optional)', eng),
         f('u-parts', 'Calls / Inward / Outward / OEM RMA access', parts, 'For a User account only - an administrator already has full access to every register.'),
-        f('u-assets', 'Asset dashboard / register / reports access', assetAccess, 'Independent of Extended access below - never grants Engineers, PM, or editing beyond Assets on its own.'), reassignWrap, extWrap,
+        f('u-assets', 'Asset dashboard / register / reports access', assetAccess, 'Independent of Extended access below - never grants Engineers, PM, or editing beyond Assets on its own.'), extWrap,
         u.role_locked ? h('p', { class: 'hint' }, 'Group set here by hand - Sync from roster keeps it.') : null, activeRow, extra),
       actions: [{ label: 'Cancel' }, { label: 'Save', primary: true, onClick: async () => {
         const g = role.querySelector('input:checked').value;
-        await send('/api/admin/users/update', { user_id: u.user_id, display_name: name.value, email: email.value, role: g, active: active.checked, engineer_key: eng.value, call_parts_access: parts.value, asset_access: assetAccess.value, can_reassign_assets: g === 'USER' && reassign.checked, extended_access: g === 'USER' && ext.checked });
+        await send('/api/admin/users/update', { user_id: u.user_id, display_name: name.value, email: email.value, role: g, active: active.checked, engineer_key: eng.value, call_parts_access: parts.value, asset_access: assetAccess.value, extended_access: g === 'USER' && ext.checked });
         toast('User saved'); await load();
       } }],
     });
