@@ -158,6 +158,7 @@ def test_changing_call_asset_moves_the_copied_asset_columns(sandbox):
 def test_asset_user_and_pm_rules(sandbox):
     a = one(sandbox, "SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' LIMIT 1")["asset_key"]
     emp = one(sandbox, "SELECT cpf_no, employee_name FROM employee WHERE record_status = 'ACTIVE' LIMIT 1")
+    sandbox.execute("UPDATE asset SET pm_quarter = 'Q2 JUL-SEP 2026' WHERE asset_key = %s", (a,))      # pin the quarter: the real data moves on every roll-over
     edit.update("assets", a, {"cpf_no": str(emp["cpf_no"]), "pm_date": "2026-08-15"}, {}, ED, "127.0.0.1")
     r = one(sandbox, "SELECT * FROM asset WHERE asset_key = %s", (a,))
     assert r["user_name"] == emp["employee_name"] and r["user_hr_status"] == "ACTIVE" and r["pm_status"] == "DONE"
@@ -316,6 +317,7 @@ def as_user(monkeypatch, role="ADMIN", engineer_key=None, username="TEST"):
     async def fake(request):
         return user
     monkeypatch.setattr(web, "current_user", fake)
+    return user
 
 
 def test_http_write_guards(sandbox, monkeypatch):
@@ -352,17 +354,19 @@ def test_http_update_returns_fresh_detail_and_conflict_is_409(sandbox, monkeypat
 
 
 def test_groups_limit_what_a_user_can_change(sandbox, monkeypatch):
-    """USER group: assets - only status, cover and PM fields, and only on assets assigned to them; no new assets, no asset archive. ADMIN: everything."""
+    """USER group: assets - any field except the Contract and Lifecycle groups (2026-10-02, blanket for every User, no
+    per-person toggle), and only on assets assigned to them; no new assets, no asset archive. ADMIN: everything."""
     a_row = one(sandbox, "SELECT asset_key, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND engineer_name IS NOT NULL LIMIT 1")
     a = a_row["asset_key"]
+    sandbox.execute("UPDATE asset SET pm_quarter = 'Q2 JUL-SEP 2026' WHERE asset_key = %s", (a,))      # pin the quarter: the real data moves on every roll-over
     as_user(monkeypatch, "USER", engineer_key=a_row["engineer_name"])
     with TestClient(app) as c:
-        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "STANDBY", "pm_date": "2026-08-01", "cover_expiry_date": "2027-01-01"}}, headers=HDR)
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "STANDBY", "pm_date": "2026-08-01", "location_code": "X1", "hostname": "RENAMED"}}, headers=HDR)
         assert r.status_code == 200, r.text
-        assert one(sandbox, "SELECT asset_status, pm_status FROM asset WHERE asset_key = %s", (a,)) == {"asset_status": "STANDBY", "pm_status": "DONE"}
-        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"location_code": "X1"}}, headers=HDR)
+        assert one(sandbox, "SELECT asset_status, pm_status, location_code, hostname FROM asset WHERE asset_key = %s", (a,)) == {"asset_status": "STANDBY", "pm_status": "DONE", "location_code": "X1", "hostname": "RENAMED"}
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"cover_expiry_date": "2027-01-01"}}, headers=HDR)
         assert r.status_code == 403 and "administrator" in r.json()["error"].lower()
-        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "IN_USE", "hostname": "HACK"}}, headers=HDR)
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "IN_USE", "purchase_cost": 999}}, headers=HDR)
         assert r.status_code == 403
         assert c.post("/api/edit/assets/create", json={"values": {"asset_key": "NEW-1", "asset_class": "DESKTOP", "asset_type": "DESKTOP"}}, headers=HDR).status_code == 403
         assert c.post("/api/edit/assets/archive", json={"key": a, "reason": "test archive"}, headers=HDR).status_code == 403
@@ -382,6 +386,29 @@ def test_groups_limit_what_a_user_can_change(sandbox, monkeypatch):
         assert r.status_code == 200, r.text
         row = one(sandbox, "SELECT * FROM asset WHERE asset_key = 'TEST-NEW-1'")
         assert row["make"] == "HP" and row["asset_type"] == "DESKTOP" and row["is_current"] == 1 and row["pm_status"] == "PENDING"
+
+
+def test_schema_readonly_matches_asset_locked_fields_for_a_user(sandbox, monkeypatch):
+    """The edit form (record.js) only renders fields the schema marks !readonly - check_edit alone is not enough, a
+    field has to be offered by /api/edit/schema too (caught as a real bug once already, 2026-10-01). Contract and
+    Lifecycle fields must be readonly for a plain User; everything else must not be; asset_access=FULL unlocks all
+    of it, same as check_edit's own bypass."""
+    as_user(monkeypatch, "USER", engineer_key="SOME-ENGINEER")
+    with TestClient(app) as c:
+        fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
+    for locked in ("cover_type", "cover_expiry_date", "rate_component", "rate_value", "purchase_date", "purchase_cost", "vendor_name", "po_no", "refresh_due_date"):
+        assert fields[locked]["readonly"] is True, locked
+    for open_field in ("asset_status", "hostname", "location_code", "cpf_no", "engineer_name", "make", "model", "remarks"):
+        assert fields[open_field]["readonly"] is False, open_field
+
+
+def test_schema_unlocks_everything_with_asset_access_full(sandbox, monkeypatch):
+    u = as_user(monkeypatch, "USER", engineer_key="SOME-ENGINEER")
+    u["asset_access"] = "FULL"
+    with TestClient(app) as c:
+        fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
+    assert fields["cover_expiry_date"]["readonly"] is False
+    assert fields["purchase_cost"]["readonly"] is False
 
 
 def test_text_is_stored_in_upper_case(sandbox):

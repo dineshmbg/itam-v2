@@ -42,17 +42,19 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 
 | | Administrator | User | DEMOUSER |
 |---|---|---|---|
-| Assets dashboard | yes, whole fleet | yes, own assets only | yes, whole fleet (read-only) |
+| Assets dashboard | yes, whole fleet | yes, own assets only - unless individually granted `asset_access` READ/FULL, see below (2026-09-30) | yes, whole fleet (read-only) |
 | Call tracker dashboard | yes, whole fleet | yes, own calls only | yes, whole fleet (read-only) |
 | PM dashboard | yes, whole fleet | yes, own assets only | yes, whole fleet (read-only) |
+| Report builder | yes, every dataset, unscoped | yes, but scoped the same as the matching register/dashboard | yes, everything (read-only) |
 | Data integrity | yes | **no access at all** (2026-09-23) | yes, everything (read-only) |
-| Assets register, hover cards | yes | yes, own scope only (see below) | yes, everything (read-only) |
+| Assets register, hover cards | yes | yes, own scope only - unless individually granted `asset_access` READ/FULL, see below (2026-09-30) | yes, everything (read-only) |
 | Engineers register, hover cards | yes, any engineer | yes, list of everyone, but a hover card/floating window only for themselves | yes, everything (read-only) |
 | Employees register | yes | yes, own scope only | yes, everything (read-only) |
 | Calls, Inward, Outward, OEM RMA registers | yes | **no access by default** - unless individually granted read-only or full access, see below (2026-09-22, extended 2026-09-23) | yes, everything (read-only) |
 | Engineers dashboard, Change log, Cycles and snapshots | yes | **no access at all** (2026-09-22) | yes, everything (read-only) |
-| Assets: change status, cover, PM fields | yes | yes, only on assets assigned to them | no |
-| Assets: add, archive, change any other field | yes | no | no |
+| Assets: change any field except Contract/Lifecycle | yes | yes, only on assets assigned to them (2026-10-02 - was status/cover/PM only) | no |
+| Assets: change Contract or Lifecycle fields (cover, rate, purchase, vendor, PO, refresh-due) | yes | no, unless individually granted `asset_access=FULL`, see below | no |
+| Assets: add, archive | yes | no, unless individually granted `asset_access=FULL`, see below (2026-09-30) | no |
 | Engineer record: any field | yes, any engineer | yes, but **only their own record** (2026-09-23 - was contact fields only) | no |
 | Engineer record: create | yes (2026-09-23 - was roster sync only) | no | no |
 | Engineer record: archive | no one - roster sync/events only | no | no |
@@ -73,6 +75,23 @@ People, Preventive maintenance (including Cycles and snapshots) and Reports. It 
 (Data import, Backup and restore, Software update) or Administration: those routes use `admin="strict"` (`auth.is_full_admin`), and the menu
 hides them. `auth.session_user()` sets the effective `role` (ADMIN for such an account) and keeps the real one in `group`. It does not count as an
 administrator for the last-administrator check or for required two-factor sign-in.
+
+**Asset access for a User (`portal_user.asset_access`, 2026-09-30):** set from *Manage user* to `NONE` (default), `READ` or `FULL` -
+deliberately narrower than `extended_access`, which conflates "sees everything" with "can edit everything" across every register, not
+just Assets. `READ` unscopes the Assets dashboard, register and report builder (whole fleet, not just assets assigned to them) but grants
+no extra editing beyond the blanket User rule below. `FULL` also bypasses the ownership check entirely in `check_edit`/`check_create`/
+`check_archive`/`check_verify`, so the account can add, edit (including Contract/Lifecycle fields), archive and verify any asset, as if
+every asset were assigned to them. Neither value touches Engineers, PM, or anything outside Assets - unlike `extended_access`, which does.
+
+**What a plain User can edit on an asset (`auth.ASSET_LOCKED_FIELDS`, 2026-10-02 - supersedes the narrower status/cover/PM-only rule from
+2026-09-22):** any field on an asset already assigned to them, **except** the Contract group (cover type, cover ends, rate component, rate
+value) and the Lifecycle group (purchased on, purchase cost, vendor, PO no., refresh due) - those stay administrator-only for every User,
+with no per-person toggle (an earlier, since-reverted attempt built this as a per-engineer grant; the user asked for it blanket instead).
+This includes CPF No. and Engineer, so an engineer who already holds an asset can hand it to a new owner (and a new engineer, if that
+person is in someone else's territory) without an administrator - the asset must still be assigned to them already; this only widens
+**which fields** are editable, never **which assets**. `routes_edit.py`'s `schema()` route computes the same field set for the edit form's
+`readonly` flags as `auth.check_edit` enforces server-side - both have to agree, or a field can be technically permitted but never
+actually offered in the UI (or vice versa); see the schema-level tests in `tests/test_edit.py` for the regression coverage this needs.
 
 **A group set by hand survives roster sync (`portal_user.role_locked`):** changing a group in *Manage user* locks it, so *Sync from roster*
 no longer derives it from the designation (e.g. a TEAM LEADER/SI moved to User stays a User).
@@ -311,7 +330,7 @@ no existing row was changed and no importer behaviour changed.
 
 ## Preventive maintenance
 
-Financial-year quarters (Q1 APR-JUN ... Q4 JAN-MAR). The kick-off e-mail goes out **60 days after the quarter starts**; a weekly reminder follows. Record PM from an asset, or for every asset in the worklist. **Cycles and snapshots**: a snapshot is captured every Monday, after every asset import and when a quarter closes; *Close quarter* (administrator, typed confirmation, automatic backup first) freezes the snapshot and returns every in-scope asset to "PM pending" for the next quarter.
+Financial-year quarters (Q1 APR-JUN ... Q4 JAN-MAR). The kick-off e-mail goes out **60 days after the quarter starts**; a weekly reminder follows. Record PM from an asset, or for every asset in the worklist. **Cycles and snapshots**: a snapshot is captured every Monday, after every asset import and when a quarter closes; *Close quarter* (administrator, typed confirmation, automatic backup first) freezes the snapshot and returns every in-scope asset to "PM pending" for the next quarter. Until a finished quarter is closed, the dashboard keeps showing it (marked "Not closed yet") rather than the new one - see "Closing a quarter after it has ended (2026-10-01)".
 
 ## Data import
 
@@ -456,6 +475,23 @@ its return (`test_scoping.py`'s old `test_add_user_route_no_longer_exists`, now 
 broader default access than a roster one) - re-added at the user's explicit request, specifically for logins that don't belong to
 anyone on the CIPL roster (a general ONGC employee, say). Uses the same `auth.create_user()` the roster sync already called; the only
 change is a new HTTP path to it. See "Account creation" above for the full behaviour.
+
+## Closing a quarter after it has ended (2026-10-01)
+
+On the first day of Q3 the PM dashboard showed Q2's done/pending counts under a "Q3 OCT-DEC 2026" heading, and *Close quarter* offered
+"Close Q3 and open Q4 JAN-MAR 2027" (as an early cut-over). Cause: `pm.dashboard()`, `pm.rollover()`, `pm.rollover_preview()` and the
+snapshot labels all took "the current quarter" from `pm.quarter(today)`, which flips at midnight - but a quarter is normally closed a
+day or more *after* it ends. Now they use `pm.active_quarter()`: the quarter the in-scope assets actually carry in `pm_quarter`, with
+`overdue = True` from the day it ends until it is closed.
+- **Close quarter** closes the assets' quarter and opens the one containing today (or the next one, for an early cut-over). No
+  "early" tick is needed once the quarter is over. A PM already dated inside the quarter being opened (recorded between the quarter
+  ending and the close) is kept and becomes *Done* for the new quarter instead of being wiped.
+- **Dashboard** keeps the old quarter's label while it is unclosed, with a "Not closed yet" badge and a line pointing to
+  *Cycles and snapshots*. After the close: Done 0, Pending = everything in scope.
+- **Snapshots** (manual, Monday, after import) are labelled with the assets' quarter, never the calendar one.
+- **PM kick-off / weekly reminder e-mails** stay silent while a quarter is overdue; the *quarter needs closing* reminder covers it.
+- Test: `test_closing_a_quarter_after_it_has_ended_closes_that_quarter_not_the_new_one`; the two older PM tests now pin
+  `pm_quarter` themselves instead of depending on where the real data is on the day they run.
 
 ## Design basis
 

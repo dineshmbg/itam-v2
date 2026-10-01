@@ -713,7 +713,16 @@ def totp_disable(user, password, code):
 
 
 # ---------------------------------------------------------------- permissions
-USER_ASSET_FIELDS = {"asset_status", "cover_type", "cover_expiry_date", "pm_date", "pm_done_by", "pm_signed_by"}
+# A User may change any asset field on an asset assigned to them (2026-10-02) except the Contract and Lifecycle
+# groups (edit.py's SPEC field groups) - those stay administrator-only for every User, no per-person toggle. Kept
+# as an explicit set here rather than imported from edit.py to avoid a circular import (edit.py already imports
+# auth.py for its own field validation). edit.py's own _clean_all() already rejects any field name not in the
+# dataset's real field list, and create_only fields (asset_key/class/type) on update regardless of caller, so this
+# only needs to name what's locked, not enumerate everything that's allowed.
+ASSET_LOCKED_FIELDS = {
+    "cover_type", "cover_expiry_date", "rate_component", "rate_value",            # Contract
+    "purchase_date", "purchase_cost", "vendor_name", "po_no", "refresh_due_date",  # Lifecycle
+}
 
 
 def is_admin(user):
@@ -731,9 +740,9 @@ def check_edit(user, dataset, fields, key=None):
     if dataset == "assets":
         if user.get("asset_access") == "FULL":
             return
-        bad = sorted(set(fields) - USER_ASSET_FIELDS)
+        bad = sorted(set(fields) & ASSET_LOCKED_FIELDS)
         if bad:
-            raise AuthError("Only administrators can change: " + ", ".join(bad) + ". You can update status, cover and preventive-maintenance details.", 403, code="forbidden")
+            raise AuthError("Only administrators can change: " + ", ".join(bad) + " (contract and lifecycle details).", 403, code="forbidden")
         if key is not None:
             row = db.one("SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", [key])
             if not row or row["engineer_name"] != user.get("engineer_key"):
