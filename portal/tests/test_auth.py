@@ -285,6 +285,23 @@ def test_group_set_by_hand_survives_roster_sync(sandbox):
     assert n(sandbox, "SELECT extended_access FROM portal_user WHERE user_id = %s", (uid,)) is True
 
 
+def test_manage_user_route_persists_asset_access_and_reassign_grant(sandbox):
+    """Real login, real route (not a monkeypatched user) - routes_auth.user_update's field allowlist must actually
+    forward these two grants to auth.update_user, same as every other Manage-user field. Caught a real bug on
+    2026-10-01: asset_access (and, at the time, the not-yet-added can_reassign_assets) were silently dropped here -
+    the Manage dialog's Save button showed "User saved" and the value simply never reached the database."""
+    admin = make(sandbox, "TESTER2", "ADMIN")
+    target = make(sandbox, "TESTER3", "USER")
+    uid = n(sandbox, "SELECT user_id FROM portal_user WHERE username = %s", (target,))
+    with TestClient(app) as c:
+        post(c, "/api/auth/login", {"username": admin, "password": STRONG})
+        r = post(c, "/api/admin/users/update", {"user_id": uid, "asset_access": "READ", "can_reassign_assets": True})
+        assert r.status_code == 200, r.text
+        assert r.json()["user"]["asset_access"] == "READ" and r.json()["user"]["can_reassign_assets"] is True
+    assert n(sandbox, "SELECT asset_access FROM portal_user WHERE user_id = %s", (uid,)) == "READ"
+    assert n(sandbox, "SELECT can_reassign_assets FROM portal_user WHERE user_id = %s", (uid,)) is True
+
+
 def test_password_reset_by_email_sends_it_or_changes_nothing(sandbox, monkeypatch):
     from portal.app import mailer
     make(sandbox, "TESTER1", "USER")

@@ -122,7 +122,7 @@ async def user_update(request):
     uid = int(b.get("user_id"))
     if uid == u["user_id"] and (b.get("active") is False or (b.get("role") and b["role"] != u["role"])):
         return error(409, "You cannot deactivate or demote your own account.")
-    changes = {k: b[k] for k in ("display_name", "email", "role", "active", "unlock", "reset_2fa", "engineer_key", "call_parts_access", "extended_access") if k in b}
+    changes = {k: b[k] for k in ("display_name", "email", "role", "active", "unlock", "reset_2fa", "engineer_key", "call_parts_access", "extended_access", "asset_access", "can_reassign_assets") if k in b}
     out = await run_in_threadpool(auth.update_user, uid, changes, u["username"], True)
     await run_in_threadpool(auth.log, u["username"], client_ip(request), "USER_UPDATED", out["username"], changes)
     return json_response({"user": out})
