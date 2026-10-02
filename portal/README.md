@@ -493,6 +493,27 @@ day or more *after* it ends. Now they use `pm.active_quarter()`: the quarter the
 - Test: `test_closing_a_quarter_after_it_has_ended_closes_that_quarter_not_the_new_one`; the two older PM tests now pin
   `pm_quarter` themselves instead of depending on where the real data is on the day they run.
 
+## Inward / outward line identity (2026-10-02)
+
+Uploading the 1 Oct call tracker was refused with "Load blocked (SPARE_OUTWARD): 30 of 113 current rows are missing (>20%)". Nothing was
+missing: the tracker's SERIAL column had been filled in for 29 outward lines that were blank before, and the loader built each line's ID
+from that column (`OUT-0084`), or from the sheet row when it was blank (`OUT-R85`). Same lines, new IDs - so the old IDs looked deleted.
+SERIAL is typed by hand (blank, retyped, renumbered on a sort), so it can no longer decide identity.
+- A line is **the same line** when it has the same call (SR) and the same part (inward: and the same date logged). Received date, bill,
+  AWB, gate pass, sent date and remarks are deliberately *not* part of it - they are filled in later and must update the record.
+  Whitespace and letter case are ignored. `call_tracking.reuse_ids()` does the matching, in the check step and again at load.
+- **IDs are sticky.** A matched line keeps the ID it already has (including old `OUT-R85` ones), so portal edits, locks, history and
+  the change log stay attached. Only a genuinely new line gets a new ID: the next free number after the highest in the table, the same
+  scheme the portal uses when someone adds a line by hand (both take the same database lock, so they cannot collide).
+- **Edits are recognised, and reported.** A line that no longer matches but obviously is an edit keeps its record: same call + part with a
+  corrected date; or the only leftover line of its call on both sides (part text corrected). The converter report lists each one. If a
+  call has several leftovers, nothing is guessed - they count as removed + added.
+- A line that was removed and later comes back revives its old record. Repeats of one identical line pair up in file order and the
+  second is flagged `DUPLICATE_LINE` (replaces the old `DUPLICATE_SOURCE_SERIAL`). The 20% mass-removal safety stop is unchanged.
+- SERIAL is still read, only as a provisional label when the database is unreachable. The sheet row is kept in `SOURCE_ROW`.
+- Replay of the real 21 Sep -> 1 Oct files: outward 112 matched (29 under their old `OUT-R` IDs), 1 new, 0 removed; inward 0 removed.
+  Tests: `tests/test_call_ids.py` (14).
+
 ## Design basis
 
 WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy). Colour: one accent per module plus a 10-hue categorical chart palette (`tokens.css`), status colour always paired with an icon and a text label.

@@ -71,7 +71,7 @@ CALLS = [
 ]
 SPARE_IN = [
     ("SNAPSHOT_DATE", "TRACE", "Date of the load.", "date"),
-    ("INWARD_ID", "IDENTITY", "UNIQUE key: IN-0001 (from the source serial).", "text"),
+    ("INWARD_ID", "IDENTITY", "UNIQUE key: IN-0001. Stable once given; a line is matched by call + part + date, NOT by the sheet SERIAL.", "text"),
     ("INWARD_DATE", "IDENTITY", "Date on the source line (dispatch / bill date).", "date"),
     ("LOCATION", "IDENTITY", "Location.", "text"),
     ("SR_ID", "LINK", "CIPL service request this part is for.", "text"),
@@ -89,7 +89,7 @@ SPARE_IN = [
 ]
 SPARE_OUT = [
     ("SNAPSHOT_DATE", "TRACE", "Date of the load.", "date"),
-    ("OUTWARD_ID", "IDENTITY", "UNIQUE key: OUT-0001 (from the source serial).", "text"),
+    ("OUTWARD_ID", "IDENTITY", "UNIQUE key: OUT-0001. Stable once given; a line is matched by call + part, NOT by the sheet SERIAL.", "text"),
     ("OUTWARD_DATE", "IDENTITY", "Date on the source line.", "date"),
     ("LOCATION", "IDENTITY", "Location.", "text"),
     ("SR_ID", "LINK", "CIPL service request the faulty part belongs to.", "text"),
@@ -423,24 +423,28 @@ def build_calls(rows, cm, look, as_of):
 
 
 def build_inward(in_rows, in_cm, calls_by_sr, as_of):
-    out, seen = [], collections.Counter()
+    out, seen, lines = [], collections.Counter(), collections.Counter()
     for src_row, row in in_rows:
         sr = txt(g(row, in_cm, "sr"), True)
         if not sr:
             continue
         r = {c[0]: None for c in SPARE_IN}
         flags = []
+        # The sheet's SERIAL column is a label for people, not an identity: it is only used for this provisional ID, which
+        # reuse_ids() replaces with the record's real, stable ID whenever the database is reachable (see "record identity" below).
         sn = txt(g(row, in_cm, "serial"))
         mid = f"IN-{int(float(sn)):04d}" if sn and re.fullmatch(r"\d+(\.0)?", sn) else f"IN-R{src_row}"
         seen[mid] += 1
         if seen[mid] > 1:
             mid += f"-{seen[mid]}"
-            flags.append("DUPLICATE_SOURCE_SERIAL")
         desc = txt(g(row, in_cm, "part"))
         pn = re.search(r"\b\d{5,7}-\d{3}\b", desc or "")
         r.update(SNAPSHOT_DATE=as_of, INWARD_ID=mid, INWARD_DATE=to_date(g(row, in_cm, "date")), LOCATION=txt(g(row, in_cm, "loc"), True), SR_ID=sr,
                  PART_DESCRIPTION=desc, PART_NO=pn.group() if pn else None, BILL_NO=txt(g(row, in_cm, "bill")), COURIER_AWB=txt(g(row, in_cm, "awb")),
                  RECEIVED_BY=txt(g(row, in_cm, "by"), True), RECEIVED_DATE=to_date(g(row, in_cm, "on")), REMARKS=txt(g(row, in_cm, "remarks")), SOURCE_ROW=src_row)
+        lines[line_key("SPARE_INWARD", r)] += 1
+        if lines[line_key("SPARE_INWARD", r)] > 1:
+            flags.append("DUPLICATE_LINE")           # the very same call + part + date appears more than once in the sheet
         c = calls_by_sr.get(sr)
         r["ASSET_KEY"] = c["ASSET_KEY"] if c else None
         if not c:
@@ -458,25 +462,27 @@ def build_inward(in_rows, in_cm, calls_by_sr, as_of):
 
 
 def build_outward(out_rows, out_cm, calls_by_sr, look, as_of):
-    out, seen = [], collections.Counter()
+    out, seen, lines = [], collections.Counter(), collections.Counter()
     for src_row, row in out_rows:
         sr = txt(g(row, out_cm, "sr"), True)
         if not sr:
             continue
         r = {c[0]: None for c in SPARE_OUT}
         flags = []
-        sn = txt(g(row, out_cm, "serial"))
+        sn = txt(g(row, out_cm, "serial"))          # a label for people only - see build_inward
         mid = f"OUT-{int(float(sn)):04d}" if sn and re.fullmatch(r"\d+(\.0)?", sn) else f"OUT-R{src_row}"
         seen[mid] += 1
         if seen[mid] > 1:
             mid += f"-{seen[mid]}"
-            flags.append("DUPLICATE_SOURCE_SERIAL")
         ak = txt(g(row, out_cm, "ci"), True)
         desc = txt(g(row, out_cm, "desc")) or txt(g(row, out_cm, "part"))
         r.update(SNAPSHOT_DATE=as_of, OUTWARD_ID=mid, OUTWARD_DATE=to_date(g(row, out_cm, "date")), LOCATION=txt(g(row, out_cm, "loc"), True), SR_ID=sr,
                  ASSET_KEY=ak, PART_DESCRIPTION=desc, PART_SERIAL_NO=txt(g(row, out_cm, "part_serial"), True), DEVICE_SERIAL_NO=txt(g(row, out_cm, "dev_serial"), True),
                  COURIER=txt(g(row, out_cm, "courier")), GATEPASS_NO=txt(g(row, out_cm, "gp")), SENT_DATE=to_date(g(row, out_cm, "sent")),
                  SENT_LOCATION=txt(g(row, out_cm, "sent_loc"), True), REMARKS=txt(g(row, out_cm, "remarks")), SOURCE_ROW=src_row)
+        lines[line_key("SPARE_OUTWARD", r)] += 1
+        if lines[line_key("SPARE_OUTWARD", r)] > 1:
+            flags.append("DUPLICATE_LINE")           # the very same call + part appears more than once in the sheet
         if sr not in calls_by_sr:
             flags.append("SR_NOT_IN_CALLS")
         if look is not None and ak and ak not in look["assets"]:
@@ -822,10 +828,93 @@ def _cv(v):
     return v.isoformat() if isinstance(v, dt.date) else str(v)
 
 
+# ------------------------------------------------------------------ record identity (inward / outward lines)
+# A spare line is the same line when it belongs to the same call and is the same part (inward: and was logged on the same date).
+# The sheet's SERIAL column is NOT part of that: it is typed by hand, can be blank, retyped or renumbered, and keying on it made
+# a harmless clean-up of the sheet look like dozens of deletions. Everything that changes over time (received date, bill, AWB,
+# gate pass, sent date, remarks) is deliberately outside the identity so it can be updated without making a "new" record.
+# IDs are sticky: a line that matches an existing record keeps that record's ID for good; only a genuinely new line is given a
+# new one (the next free number, the same scheme the portal uses when someone adds a line by hand).
+IDENT = {"SPARE_INWARD": ("SR_ID", "PART_DESCRIPTION", "INWARD_DATE"), "SPARE_OUTWARD": ("SR_ID", "PART_DESCRIPTION")}
+ID_PREFIX = {"SPARE_INWARD": "IN", "SPARE_OUTWARD": "OUT"}
+
+
+def _ival(v):
+    return v.isoformat() if isinstance(v, dt.date) else re.sub(r"\s+", " ", str(v or "")).strip().upper()
+
+
+def line_key(name, rec):
+    return tuple(_ival(rec.get(c)) for c in IDENT[name])
+
+
+def reuse_ids(con, name, records, lock=False, say=None):
+    """Give every incoming line the ID of the existing record it is, or a new ID if it is new. Mutates `records`, returns a summary.
+    1. exact match on the identity (same call + part [+ date]); repeats of one identity pair up in file order
+    2. a line that no longer matches but clearly is an edit of an existing one - same call + part with a corrected date, or the
+       only leftover line of its call on both sides - keeps that record (and is reported, so nothing is silently re-pointed)
+    3. anything left is new: next free number after the highest one in the table (portal-created lines included)."""
+    if name not in IDENT:
+        return {}
+    cols, key, table = TABLES[name]
+    idc, pre = IDENT[name], ID_PREFIX[name]
+    cur = con.cursor()
+    if lock:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (table,))      # the same lock the portal takes when it adds a line
+    cur.execute(f"SELECT {key}, {','.join(idc)}, is_current FROM {table} ORDER BY is_current DESC NULLS LAST, source_row NULLS LAST, {key}")
+    by_ident, info, current = collections.defaultdict(list), {}, []
+    for row in cur.fetchall():
+        rid, vals, cur_flag = row[0], row[1:1 + len(idc)], row[-1]
+        k = tuple(_ival(v) for v in vals)
+        by_ident[k].append(rid)
+        info[rid] = (_ival(vals[0]), _ival(vals[1]), k)
+        if cur_flag == 1:
+            current.append(rid)
+    used, assigned, nth = set(), {}, collections.Counter()
+    for i, rec in enumerate(records):                                                   # 1. same line
+        k = line_key(name, rec)
+        cand = by_ident.get(k, [])
+        if nth[k] < len(cand):
+            assigned[i] = cand[nth[k]]
+            used.add(cand[nth[k]])
+        nth[k] += 1
+    edited = []
+    left_old = [rid for rid in current if rid not in used]                              # 2. same line, edited
+    left_new = [i for i in range(len(records)) if i not in assigned]
+    for pairing in (lambda s, p: (s, p), lambda s, p: (s,)):
+        olds, news = collections.defaultdict(list), collections.defaultdict(list)
+        for rid in left_old:
+            olds[pairing(*info[rid][:2])].append(rid)
+        for i in left_new:
+            news[pairing(_ival(records[i]["SR_ID"]), _ival(records[i]["PART_DESCRIPTION"]))].append(i)
+        for g_, ids in olds.items():
+            idx = news.get(g_, [])
+            if len(g_) == 1 and not (len(ids) == 1 and len(idx) == 1):
+                continue                                                               # by call alone only when it is one-for-one
+            for rid, i in zip(ids, idx):
+                assigned[i] = rid
+                used.add(rid)
+                edited.append((rid, records[i]["SR_ID"], info[rid][1], _ival(records[i]["PART_DESCRIPTION"])))
+        left_old = [rid for rid in left_old if rid not in used]
+        left_new = [i for i in left_new if i not in assigned]
+    top = max([int(m[1]) for rid in info if (m := re.fullmatch(rf"{pre}-(\d+)", rid))], default=0)
+    for i in left_new:                                                                  # 3. new line
+        top += 1
+        assigned[i] = f"{pre}-{top:04d}"
+    for i, rec in enumerate(records):
+        rec[key] = assigned[i]
+    out = {"kept": len(records) - len(left_new) - len(edited), "edited": edited, "new": len(left_new)}
+    if say:
+        say(f"  {name}: {out['kept']} lines matched to existing records, {len(edited)} edited lines kept their record, {out['new']} new")
+        for rid, sr, old, new in edited[:25]:
+            say(f"    {rid}: {sr} - '{old}'" + (f" is now '{new}'" if old != new else " has a corrected date"))
+    return out
+
+
 def load_table(con, name, records, as_of, force):
     cols, key, table = TABLES[name]
     names = [c[0] for c in cols]
     records = [itam_rules.upper_record(r) for r in records]        # text rule: upper case everywhere
+    reuse_ids(con, name, records, lock=True)                       # same line -> same ID, whatever the sheet's SERIAL column says
     cur = con.cursor()
     cur.execute(f"SELECT {','.join(names)}, first_seen_date FROM {table} WHERE is_current = 1")
     existing = {r[names.index(key)]: r for r in cur.fetchall()}
@@ -914,6 +1003,14 @@ def run_tracker(raw, as_of, out_dir, load, force):
     inward = build_inward(irows, colmap(hi, IN_SPEC), by_sr, as_of)
     outward = build_outward(orows, colmap(ho, OUT_SPEC), by_sr, look, as_of)
     finish_calls(calls, inward, outward, as_of)
+    if look is not None:                      # database reachable: give each line the ID of the record it already is (read-only here)
+        import master_db
+        idcon = master_db.connect()
+        try:
+            for nm, recs in (("SPARE_INWARD", inward), ("SPARE_OUTWARD", outward)):
+                reuse_ids(idcon, nm, recs, say=print)
+        finally:
+            idcon.close()
     for label, recs, key in (("CALLS", calls, "SR_ID"), ("SPARE_INWARD", inward, "INWARD_ID"), ("SPARE_OUTWARD", outward, "OUTWARD_ID")):
         d = [r[key] for r in recs]
         if len(d) != len(set(d)):
