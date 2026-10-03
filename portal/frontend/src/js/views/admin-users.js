@@ -11,7 +11,7 @@ import { when } from './audit.js';
 const SETTING_FIELDS = [
   ['pw_min_length', 'Minimum password length', 'characters', 8, 64], ['pw_history', 'Passwords remembered (cannot be reused)', 'passwords', 0, 24],
   ['pw_max_age_days', 'Password expires after (0 = never)', 'days', 0, 730], ['lockout_attempts', 'Failed sign-ins before lock-out', 'attempts', 3, 20],
-  ['lockout_minutes', 'Lock-out duration', 'minutes', 1, 1440], ['idle_timeout_min', 'Sign out after inactivity', 'minutes', 1, 480], ['session_max_hours', 'Longest session', 'hours', 1, 72],
+  ['starting_pw_days', 'Unused starting password expires after (0 = never)', 'days', 0, 365], ['lockout_minutes', 'Lock-out duration', 'minutes', 1, 1440], ['idle_timeout_min', 'Sign out after inactivity', 'minutes', 1, 480], ['session_max_hours', 'Longest session', 'hours', 1, 72],
 ];
 
 export function mountUsers(root) {
@@ -85,6 +85,7 @@ export function mountUsers(root) {
   function badgeFor(u) {
     if (!u.active) return h('span', { class: 'badge mute' }, icon('close--outline'), 'Deactivated');
     if (u.locked) return h('span', { class: 'badge bad' }, icon('locked'), 'Locked');
+    if (u.starting_pw_expired) return h('span', { class: 'badge bad' }, icon('warning--alt--filled'), 'Starting password expired');
     if (u.must_change) return h('span', { class: 'badge warn' }, icon('time'), 'Must change password');
     return h('span', { class: 'badge ok' }, icon('checkmark--filled'), 'Active');
   }

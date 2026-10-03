@@ -520,6 +520,10 @@ SERIAL is typed by hand (blank, retyped, renumbered on a sort), so it can no lon
 - Replay of the real 21 Sep -> 1 Oct files: outward 112 matched (29 under their old `OUT-R` IDs), 1 new, 0 removed; inward 0 removed.
   Tests: `tests/test_call_ids.py` (14).
 
+## Unused starting passwords can expire (2026-10-03)
+
+Roster accounts start with a password anyone who knows an ECODE could guess, and the Users page keeps warning that a dozen accounts have never signed in. New security setting **Unused starting password expires after N days** (`starting_pw_days`, Users and security > Security settings; **0 = never, and that is the default** - switch it on deliberately, because it affects people who simply have not signed in yet). With it on, an account that is still on its starting password (never changed, or reset by an administrator) and older than N days is refused at sign-in *after* the password has been checked: "Your starting password has expired ... Ask an administrator to reset it" (logged as `LOGIN_REFUSED`). A wrong password still gets the generic answer, so nothing leaks. *Manage user > Reset password* re-arms the clock; the Users page shows a red **Starting password expired** badge. A password the person chose themselves, and the read-only demo account, are never affected. Tests: `tests/test_starting_password.py`.
+
 ## The import check is a rehearsal of the load (2026-10-03)
 
 The 1 Oct call tracker passed the import check and was only refused when *Load* was pressed ("30 of 113 current rows are missing"), because the check never touched the database. Now every loader accepts `--dry-run` (`ITAM_DRY_RUN=1`): `master_db.connect()` hands out a connection whose `commit()` does nothing and whose `close()` rolls back, so the check runs the real load end to end - the same reads, the same safety stops, the same change counts - and saves nothing ("DRY RUN: nothing was saved"). The import page's check step uses it for assets, CIPL roster, call tracker, RMA and (by environment) the HR master.

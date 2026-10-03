@@ -30,6 +30,9 @@ COOKIE = "itam_session"
 DEFAULT_SETTINGS = {
     "idle_timeout_min": 15, "session_max_hours": 12, "pw_min_length": 12, "pw_history": 5, "pw_max_age_days": 90,
     "lockout_attempts": 5, "lockout_minutes": 15, "require_2fa_admin": False,
+    # An account that still has its starting password (never signed in, or reset by an administrator) stops being usable after this many days
+    # (0 = never). A known starting password sitting unused is the easiest way into the portal; an administrator's Reset password re-arms it.
+    "starting_pw_days": 0,
 }
 
 DDL = [
@@ -100,7 +103,7 @@ def settings(fresh=False):
 
 
 LIMITS = {"idle_timeout_min": (1, 480), "session_max_hours": (1, 72), "pw_min_length": (8, 64), "pw_history": (0, 24), "pw_max_age_days": (0, 730),
-          "lockout_attempts": (3, 20), "lockout_minutes": (1, 1440)}
+          "lockout_attempts": (3, 20), "lockout_minutes": (1, 1440), "starting_pw_days": (0, 365)}
 
 
 def save_settings(values, editor):
@@ -269,7 +272,8 @@ def public_user(u):
             "totp_enabled": u["totp_enabled"], "must_change": u["must_change"], "locked": bool(u["locked_until"] and u["locked_until"] > _now()),
             "last_login_at": u["last_login_at"].isoformat() if u["last_login_at"] else None, "created_at": u["created_at"].isoformat(), "engineer_key": u["engineer_key"],
             "read_only": bool(u.get("read_only")), "call_parts_access": u.get("call_parts_access") or "NONE",
-            "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked"))}
+            "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked")),
+            "starting_pw_expired": _starting_pw_expired(u, settings())}
 
 
 def create_user(username, display_name, email, role, editor, engineer_key=None, password=None):
@@ -540,6 +544,7 @@ def login(username, password, ip, user_agent):
     _ip_throttle_check(ip or "")
     s = settings()
     uname = re.sub(r"\s+", "", (username or "")).upper()
+    expired = None
     with db.write() as con:
         u = _row(con, "SELECT * FROM portal_user WHERE username = %s FOR UPDATE", (uname,))
         if not u or not u["active"]:
@@ -553,8 +558,13 @@ def login(username, password, ip, user_agent):
             lock = _now() + dt.timedelta(minutes=s["lockout_minutes"]) if n >= s["lockout_attempts"] else None
             con.execute("UPDATE portal_user SET failed_attempts = %s, locked_until = %s WHERE user_id = %s", (0 if lock else n, lock, u["user_id"]))
             failure = (uname, n, bool(lock))
+        elif _starting_pw_expired(u, s):
+            failure, expired = None, u["username"]
         else:
             failure = None
+    if expired:                                        # the password was right, so saying why is not a leak; the person needs an administrator
+        log(expired, ip, "LOGIN_REFUSED", detail={"reason": "starting password expired"}, ok=False)
+        raise AuthError("Your starting password has expired because it was not used in time. Ask an administrator to reset it.", 403, code="starting_password_expired")
     if failure:
         _ip_throttle_fail(ip or "")
         log(failure[0], ip, "LOGIN_FAILED", detail={"attempt": failure[1], "locked": failure[2]}, ok=False)
@@ -636,6 +646,12 @@ def session_user(token):
     if r["role"] == "USER" and r.get("extended_access"):
         r["role"] = "ADMIN"
     return r
+
+
+def _starting_pw_expired(u, s):
+    """Still on the starting password (never changed, or reset by an administrator) for longer than the allowed days. Read-only demo accounts are exempt."""
+    days = s.get("starting_pw_days") or 0
+    return bool(days and u.get("must_change") and not u.get("read_only") and u.get("password_changed_at") and (_now() - u["password_changed_at"]).days >= days)
 
 
 def _password_expired(u, s):
