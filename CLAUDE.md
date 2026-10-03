@@ -75,13 +75,34 @@ Run any converter directly with the portal's own venv's Python (it has `pandas`)
 interpreter if `pandas` isn't otherwise available - see `portal/tests/test_edit.py`'s import fallback
 pattern for exactly how tests locate it.
 
+## Standing instructions from the user (permanent - do not drop or dilute)
+
+- **Default working folder:** `ai-workspace/projects` on the user's **Google Drive** (not on a local
+  PC). At the start of work, always ask which project to open, or whether to create a new one.
+- **New project = new GitHub repo:** whenever a new project folder is created, automatically create
+  and sync a GitHub repository named exactly after the project directory.
+- **Git is pre-authorised:** pull before editing; commit and push when the work is ready. Don't ask.
+- **NO DATA MAY BE DELETED OR REMOVED WITHOUT THE USER'S EXPLICIT CONSENT.** This covers files,
+  folders, database rows/tables, backups, branches, commits/history (force-push, `reset --hard`,
+  rebase), and existing content inside files. Before any removal:
+  1. Give a detailed explanation: the root cause / why removal is needed, the steps taken so far,
+     what changes, exactly what data would be removed, and what is saved or backed up.
+  2. Give the user a short confirmation phrase to reply with, in the form
+     `CONFIRM DELETE <ITEM-ID>` (e.g. `CONFIRM DELETE OLD-GIT-RULE`).
+  3. Remove nothing until the user replies with that exact phrase. Anything else = not confirmed.
+- **Work setup:**
+  | Machine | Role | Address |
+  |---|---|---|
+  | Dev PC or laptop | Where development happens - separate from production | - |
+  | Production physical server | Windows Server 2019 Standard, PostgreSQL runs natively | 10.205.64.47 |
+  | Hyper-V VM on that server | Ubuntu Linux, runs the portal container via Podman | 10.205.64.25 |
+
 ## Working rules (apply across this whole project, not just the portal)
 
 - **Templates go in `templates/`, samples/previews go in `samples/`** - always, by default, unless the
   user asks for somewhere else.
-- **One logical change per commit, with a why-focused message - but never commit or push unless
-  explicitly asked.** This project is not (yet) a git repository; treat any future `git commit`
-  request the same way.
+- **One logical change per commit, with a why-focused message.** Pull before editing, commit and
+  push when the work is ready - pre-authorised by the user, don't ask.
 - **Never run a destructive command** (`DROP DATABASE`, `rm -rf`, restoring a backup over live data,
   `git reset --hard`, force-push) **without first showing exactly what will be lost and getting an
   explicit yes.**
