@@ -58,6 +58,11 @@ ACTIONS = {
     "admin: users list": ("GET", "/api/admin/users", None, FULL_ADMIN),
     "admin: users update": ("POST", "/api/admin/users/update", {"user_id": 0}, who("admin")),
     "admin: backups list": ("GET", "/api/admin/backups", None, FULL_ADMIN),
+    # Replace / Redeploy re-key an asset across the whole database: real administrators only - not even extended access
+    "lifecycle: preflight": ("GET", "/api/lifecycle/preflight?key=MATRIX-NONE", None, FULL_ADMIN),
+    "lifecycle: candidates": ("GET", "/api/lifecycle/candidates?q=ab", None, FULL_ADMIN),
+    "lifecycle: replace": ("POST", "/api/lifecycle/replace", {}, who("admin")),
+    "lifecycle: redeploy": ("POST", "/api/lifecycle/redeploy", {}, who("admin")),
     "calls: create": ("POST", "/api/edit/calls/create", {"values": {}}, who("admin", "user+parts_full", "user+extended")),
     "assets: create": ("POST", "/api/edit/assets/create", {"values": {}}, who("admin", "user+asset_full", "user+extended")),
     "assets: archive": ("POST", "/api/edit/assets/archive", "OWN_ARCHIVE", who("admin", "user+asset_full", "user+extended")),
