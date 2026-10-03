@@ -98,6 +98,18 @@ def run(backup_file=None, admin_user="postgres", keep=False, say=print):
                             "--no-owner", "--single-transaction", str(dump)], env=env, capture_output=True, text=True, timeout=1800)
         if r.returncode != 0:
             raise DrillError("pg_restore failed: " + (r.stderr or "")[-400:])
+        drill = _connect(scratch, admin_user, pw, autocommit=True)          # the dump carries no owners (--no-owner): give the copy to the portal's own login,
+        try:                                                                  # as in the real database, so the copy can be used for rehearsals as well as compared
+            owner = sql.Identifier(config.PG["user"])
+            admin.execute(sql.SQL("ALTER DATABASE {} OWNER TO {}").format(sql.Identifier(scratch), owner))
+            with drill.cursor() as cur:
+                cur.execute("SELECT n.nspname, c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                            "WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S') ORDER BY c.relkind = 'S'")
+                for nsp, rel, kind in cur.fetchall():
+                    word = {"r": "TABLE", "p": "TABLE", "v": "VIEW", "m": "MATERIALIZED VIEW", "S": "SEQUENCE"}[kind]
+                    drill.execute(sql.SQL("ALTER {} {}.{} OWNER TO {}").format(sql.SQL(word), sql.Identifier(nsp), sql.Identifier(rel), owner))
+        finally:
+            drill.close()
         live = _connect(config.PG["dbname"], config.PG["user"], db.password())
         drill = _connect(scratch, admin_user, pw)
         try:
@@ -134,7 +146,9 @@ def run(backup_file=None, admin_user="postgres", keep=False, say=print):
             admin.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(scratch)))
             say(f"Scratch database {scratch} dropped.")
         elif created:
-            say(f"Scratch database {scratch} kept (--keep). Drop it yourself when done:  DROP DATABASE {scratch};")
+            say(f"Scratch database {scratch} kept (--keep), owned by {config.PG['user']} like the real one. To rehearse an upload against this copy instead of the real database:\n"
+                f"  set PGDATABASE={scratch} and PGPASSWORD=<the portal login's password>, then run the converter with --dry-run.\n"
+                f"Drop it yourself when done:  DROP DATABASE {scratch};")
         admin.close()
         if tmp:
             tmp.cleanup()
