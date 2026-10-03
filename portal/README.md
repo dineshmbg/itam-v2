@@ -520,6 +520,14 @@ SERIAL is typed by hand (blank, retyped, renumbered on a sort), so it can no lon
 - Replay of the real 21 Sep -> 1 Oct files: outward 112 matched (29 under their old `OUT-R` IDs), 1 new, 0 removed; inward 0 removed.
   Tests: `tests/test_call_ids.py` (14).
 
+## The import check is a rehearsal of the load (2026-10-03)
+
+The 1 Oct call tracker passed the import check and was only refused when *Load* was pressed ("30 of 113 current rows are missing"), because the check never touched the database. Now every loader accepts `--dry-run` (`ITAM_DRY_RUN=1`): `master_db.connect()` hands out a connection whose `commit()` does nothing and whose `close()` rolls back, so the check runs the real load end to end - the same reads, the same safety stops, the same change counts - and saves nothing ("DRY RUN: nothing was saved"). The import page's check step uses it for assets, CIPL roster, call tracker, RMA and (by environment) the HR master.
+- A safety stop the person may knowingly override (mass removal; the message says `--force`) no longer waits for the load: the check passes with a warning box and the log opens with "THE LOAD WOULD BE REFUSED" and why. A stop that cannot be overridden (a snapshot older than what is loaded; a file that undoes a Replace/Redeploy made in the portal; duplicate keys) fails the check, with the reason.
+- The call-tracker converter now lists **what points at nothing** before loading: calls whose asset (CI) is not in the register, calls with no asset, spare lines whose call is not in the tracker. They still load (the portal flags them), but are named in the report instead of surfacing later on the integrity page.
+- Not built: an "undo this load" button. A load changes several tables and merges with manual edits made since, so a safe undo is not a simple reverse; the protection is the rehearsal, the automatic safety backup before every load, and the restore drill (`db/restore_drill.py`).
+- Tests: `tests/test_import_rehearsal.py`; the old check test now asserts the rehearsal saved nothing.
+
 ## Design basis
 
 WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy). Colour: one accent per module plus a 10-hue categorical chart palette (`tokens.css`), status colour always paired with an icon and a text label.

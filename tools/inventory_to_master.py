@@ -7,6 +7,7 @@ Reads cached values. Resolves user details from the PostgreSQL employee table wh
 import argparse
 import collections
 import datetime as dt
+import os
 import re
 import sys
 from pathlib import Path
@@ -871,9 +872,12 @@ def main():
     ap.add_argument("--build-template", action="store_true")
     ap.add_argument("--no-load-db", action="store_true", help="build the workbook only; skip the PostgreSQL load (default: load into database ongc_ank)")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="rehearse the database load: everything runs and is reported, nothing is saved")
     ap.add_argument("--as-of")
     ap.add_argument("--out-dir", default=str(Path(__file__).resolve().parent.parent / "masters"))
     a = ap.parse_args()
+    if a.dry_run:
+        os.environ["ITAM_DRY_RUN"] = "1"
     if a.build_template:
         TEMPLATE_DIR.mkdir(exist_ok=True)
         write_template(TEMPLATE_DIR / TEMPLATE_NAME)
@@ -911,7 +915,7 @@ def main():
     for r in summary_rows(df):
         print("  ", r)
     print("Skipped junk rows:", skipped, "| unknown sheets:", unknown)
-    if not a.no_load_db:
+    if a.dry_run or not a.no_load_db:
         sys.path.insert(0, str(Path(__file__).parent))
         import master_db
         master_db.load_assets(path, force=a.force)

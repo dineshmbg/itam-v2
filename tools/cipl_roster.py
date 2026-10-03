@@ -10,6 +10,7 @@ Sensitive fields (Aadhaar, UAN, bank account, IFSC) are NEVER read: columns are 
 import argparse
 import collections
 import datetime as dt
+import os
 import re
 import sys
 from pathlib import Path
@@ -757,12 +758,15 @@ if __name__ == "__main__":
     ap.add_argument("--build-template", action="store_true")
     ap.add_argument("--no-load-db", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="rehearse the database load: everything runs and is reported, nothing is saved")
     ap.add_argument("--ecode")
     ap.add_argument("--type", choices=["RESIGNED", "TERMINATED", "TRANSFERRED", "REJOINED", "NOTE"])
     ap.add_argument("--date")
     ap.add_argument("--last-working-date")
     ap.add_argument("--reason")
     a = ap.parse_args()
+    if a.dry_run:
+        os.environ["ITAM_DRY_RUN"] = "1"
     if a.build_template:
         TEMPLATE_DIR.mkdir(exist_ok=True)
         build_template(TEMPLATE_DIR / TEMPLATE_NAME)
@@ -774,6 +778,6 @@ if __name__ == "__main__":
             sys.exit("event needs --ecode, --type and --date")
         manual_event(a.ecode.upper(), a.type, a.date, a.reason, a.last_working_date)
     elif a.raw:
-        run(a.raw, pd.to_datetime(a.as_of).date() if a.as_of else dt.date.today(), a.out_dir, not a.no_load_db, a.force)
+        run(a.raw, pd.to_datetime(a.as_of).date() if a.as_of else dt.date.today(), a.out_dir, a.dry_run or not a.no_load_db, a.force)
     elif not a.build_template:
         ap.print_help()

@@ -53,10 +53,10 @@ export function mountImport(root) {
   }
 
   async function check() {
-    stepEl.replaceChildren(h('div', { class: 'loading-line' }, 'Checking - the converter runs without touching the database…'));
+    stepEl.replaceChildren(h('div', { class: 'loading-line' }, 'Checking - the load is rehearsed end to end and rolled back; nothing is saved…'));
     try {
       const r = await send('/api/admin/import/check', { job_id: job.job_id, as_of: asOf.value || null });
-      job = { ...job, log: r.log, ok: r.ok, outputs: r.outputs, state: r.ok ? 'CHECKED' : 'CHECK_FAILED' };
+      job = { ...job, log: r.log, ok: r.ok, warning: r.warning || null, outputs: r.outputs, state: r.ok ? 'CHECKED' : 'CHECK_FAILED' };
     } catch (e) { job = { ...job, log: e.message, ok: false, state: 'CHECK_FAILED' }; }
     drawStep();
   }
@@ -66,6 +66,7 @@ export function mountImport(root) {
     const [tone, text] = STATUS[job.state] || STATUS.UPLOADED;
     stepEl.replaceChildren(
       h('div', { class: 'kv' }, kv('File', job.filename), kv('Size', bytes(job.size_bytes)), kv('Status', h('span', { class: 'badge ' + tone }, text))),
+      job.warning ? h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), 'The rehearsal says this load would be refused: ' + job.warning) : null,
       h('h3', { class: 'small-h' }, 'Converter report'), h('pre', { class: 'log mono' }, job.log || '(no output yet)'),
       job.ok ? h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: confirmLoad }, icon('data--base'), 'Load into database…'), h('span', { class: 'hint' }, 'A safety backup is taken first.')) : null,
       job.state === 'CHECK_FAILED' ? h('p', { class: 'rec-note bad' }, icon('error--filled'), 'The file did not pass the check. Nothing was changed. Fix the file (or the date) and upload again.') : null);

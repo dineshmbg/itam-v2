@@ -79,22 +79,25 @@ def save_upload(kind, filename, data, user):
 
 
 def _cmd(kind, path, out_dir, as_of, load, force):
+    """load=False is the CHECK step: the loader still runs end to end - the same reads, safety stops and change counts as the real load - but
+    in a rehearsal (--dry-run) that is rolled back, so the check can say beforehand what the load will do or refuse."""
     py = _python()
     a = ["--as-of", as_of] if as_of else []
+    mode = [] if load else ["--dry-run"]
     if kind == "assets":
         c = [py, str(TOOLS / "inventory_to_master.py"), "--raw", str(path), "--out-dir", str(out_dir), *a]
-        return c + ([] if load else ["--no-load-db"]) + (["--force"] if force else [])
+        return c + mode + (["--force"] if force else [])
     if kind == "cipl":
         c = [py, str(TOOLS / "cipl_roster.py"), "--raw", str(path), "--out-dir", str(out_dir), *a]
-        return c + ([] if load else ["--no-load-db"]) + (["--force"] if force else [])
+        return c + mode + (["--force"] if force else [])
     if kind in ("calls", "rma"):
         c = [py, str(TOOLS / "call_tracking.py"), "tracker" if kind == "calls" else "rma", "--raw", str(path), "--out-dir", str(out_dir), *a]
-        return c + ([] if load else ["--no-load-db"]) + (["--force"] if force else [])
+        return c + mode + (["--force"] if force else [])
     return [py, str(TOOLS / "hr_export_to_template.py"), "--raw", str(path), "--out-dir", str(out_dir)]
 
 
-def _run(cmd, timeout=600):
-    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+def _run(cmd, timeout=600, extra_env=None):
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", **(extra_env or {}))
     pw = db.password()
     if pw:
         env["PGPASSWORD"] = pw
@@ -119,10 +122,23 @@ def check(job_id, as_of=None):
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True)
     code, log = _run(_cmd(j["kind"], src, out_dir, as_of, load=False, force=False))
+    if code == 0 and j["kind"] == "hr":                # the HR converter only builds a workbook; rehearse loading it too
+        made = sorted(out_dir.glob("Employee_Master_Upload_*.xlsx"), key=lambda p: p.stat().st_mtime)
+        if made:
+            code, log2 = _run([_python(), str(TOOLS / "master_db.py"), "load", "--file", str(made[-1])], extra_env={"ITAM_DRY_RUN": "1"})
+            log += "\n" + log2
+    warning = None
+    if code != 0:
+        m = re.search(r"Load blocked[^\n]*(?:\n  [^\n]*)*", log)
+        if m and "--force" in m.group(0):              # a safety stop the person may knowingly override: warn now, let them decide at load time
+            warning = re.sub(r"\s*(?:Re-)?[Cc]heck the file or use --force\.", "", m.group(0)).strip()
+            log = ("!! THE LOAD WOULD BE REFUSED (this was only a rehearsal - nothing has been changed):\n   " + warning
+                   + "\n   Look at the file first. Only if the file really is meant to remove these records, tick \"Allow a large number of records to disappear\" when loading.\n\n" + log)
+            code = 0
     status = "CHECKED" if code == 0 else "CHECK_FAILED"
     with db.write() as con:
         con.execute("UPDATE portal_import SET status = %s, check_log = %s, as_of = %s WHERE job_id = %s", (status, log, dt.date.fromisoformat(as_of) if as_of else None, job_id))
-    return {"job_id": job_id, "ok": code == 0, "log": log, "outputs": sorted(p.name for p in out_dir.glob("*"))}
+    return {"job_id": job_id, "ok": code == 0, "log": log, "warning": warning, "outputs": sorted(p.name for p in out_dir.glob("*"))}
 
 
 def load(job_id, user, as_of=None, force=False):

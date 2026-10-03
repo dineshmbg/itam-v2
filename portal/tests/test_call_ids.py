@@ -204,3 +204,21 @@ def test_rma_same_serial_repaired_again_later_is_a_new_record(box):
     first = rma("RMA-0002", "SNTEST-E5", dt.date(2026, 3, 1))
     ct.reuse_ids(box, "OEM_RMA", [first, again])
     assert first["RMA_LINE_ID"] == "RMA-R994" and again["RMA_LINE_ID"] not in ("RMA-R994", first["RMA_LINE_ID"])
+
+
+def test_orphan_report_names_lines_that_point_at_nothing():
+    said = []
+    ct.orphan_report({
+        "CALLS": [{"SR_ID": "SR1", "ASSET_KEY": "CI-X", "DQ_FLAGS": "ASSET_NOT_IN_MASTER"}, {"SR_ID": "SR2", "ASSET_KEY": "CI-Y", "DQ_FLAGS": None}],
+        "SPARE_INWARD": [{"INWARD_ID": "IN-1", "DQ_FLAGS": "SR_NOT_IN_CALLS; NOT_RECEIVED_YET"}],
+        "SPARE_OUTWARD": [{"OUTWARD_ID": "OUT-1", "ASSET_KEY": "CI-Z", "DQ_FLAGS": "ASSET_NOT_IN_MASTER"}]}, say=said.append)
+    text = "\n".join(said)
+    assert "1 calls whose asset (CI) is not in the asset register: SR1 (CI-X)" in text
+    assert "1 inward lines whose call is not in the tracker: IN-1" in text
+    assert "OUT-1 (CI-Z)" in text and "SR2" not in text
+
+
+def test_orphan_report_says_so_when_everything_is_linked():
+    said = []
+    ct.orphan_report({"CALLS": [{"SR_ID": "SR1", "DQ_FLAGS": None}], "SPARE_INWARD": [], "SPARE_OUTWARD": []}, say=said.append)
+    assert said == ["Not linked: nothing - every call and spare line points at a record that exists."]

@@ -72,9 +72,31 @@ def _pgpass_password():
     return None
 
 
+class _DryRunConnection(psycopg.Connection):
+    """ITAM_DRY_RUN=1: a rehearsal. Every loader runs exactly as it would for real - the same reads, the same safety stops, the same change
+    counts - but nothing is ever committed, and closing the connection rolls everything back. One switch here covers every loader that
+    gets its connection from connect()."""
+
+    def commit(self):
+        pass
+
+    def close(self):
+        if not self.closed:
+            try:
+                self.rollback()
+                print("DRY RUN: nothing was saved - the database is exactly as it was.")
+            finally:
+                super().close()
+
+
+def dry_run():
+    return os.environ.get("ITAM_DRY_RUN") == "1"
+
+
 def connect():
     try:
-        con = psycopg.connect(**PG, password=_pgpass_password(), connect_timeout=8)
+        cls = _DryRunConnection if dry_run() else psycopg.Connection
+        con = cls.connect(**PG, password=_pgpass_password(), connect_timeout=8)
     except psycopg.OperationalError as e:
         sys.exit(f"Cannot connect to {DB_LABEL}: {e}")
     return con

@@ -342,7 +342,8 @@ def test_import_upload_rules(box, tmp_path, monkeypatch):
             importer.detail(bad)
 
 
-def test_import_check_runs_converter_without_touching_the_database(box, tmp_path, monkeypatch):
+def test_import_check_rehearses_the_load_without_touching_the_database(box, tmp_path, monkeypatch):
+    """The check runs the converter AND rehearses the load (--dry-run: rolled back), so it can warn about a refused load beforehand - and saves nothing."""
     monkeypatch.setattr(importer, "UPLOADS", tmp_path)
     src = tmp_path / "IT-IMMDSS ASSET INVENTORY 2026 -Q2.xlsx"
     import shutil
@@ -353,11 +354,14 @@ def test_import_check_runs_converter_without_touching_the_database(box, tmp_path
     shutil.copy(real, src)
     job = importer.save_upload("assets", src.name, src.read_bytes(), "ADMIN1")
     before = one(box, "SELECT count(*), max(snapshot_date) FROM asset WHERE is_current = 1")
-    res = importer.check(job["job_id"], "2026-09-21")
-    assert res["ok"], res["log"]
+    latest = one(box, "SELECT max(snapshot_date) FROM asset_snapshot")[0]
+    res = importer.check(job["job_id"], (latest or dt.date.today()).isoformat())
+    # Whether this old workbook PASSES depends on what the dev database holds today (a replacement already made in the portal, a newer snapshot,
+    # a mass removal): the rehearsal reports those honestly, which is its job. What must hold whatever the data is: it ran, and it saved nothing.
     assert any(n.endswith(".xlsx") for n in res["outputs"]) and "ASSET" in res["log"].upper()
+    assert "nothing was saved" in res["log"]                                           # it was a rehearsal
     assert one(box, "SELECT count(*), max(snapshot_date) FROM asset WHERE is_current = 1") == before
-    assert one(box, "SELECT status FROM portal_import WHERE job_id = %s", (job["job_id"],))[0] == "CHECKED"
+    assert one(box, "SELECT status FROM portal_import WHERE job_id = %s", (job["job_id"],))[0] == ("CHECKED" if res["ok"] else "CHECK_FAILED")
 
 
 def test_import_endpoints_need_an_administrator(box, monkeypatch):

@@ -12,6 +12,7 @@ import argparse
 import collections
 import datetime as dt
 import difflib
+import os
 import re
 import sys
 from pathlib import Path
@@ -998,6 +999,27 @@ def report():
 
 
 # ------------------------------------------------------------------ commands
+def orphan_report(tables, say=print):
+    """List the lines that point at something that does not exist (a call whose asset is not in the register, a spare line whose call is not in
+    the tracker). They still load - the portal flags them - but a person should see them BEFORE loading, not find them later on the integrity page."""
+    checks = (("CALLS", "ASSET_NOT_IN_MASTER", "SR_ID", "calls whose asset (CI) is not in the asset register"),
+              ("CALLS", "MISSING_ASSET_ID", "SR_ID", "calls with no asset (CI) at all"),
+              ("SPARE_INWARD", "SR_NOT_IN_CALLS", "INWARD_ID", "inward lines whose call is not in the tracker"),
+              ("SPARE_OUTWARD", "SR_NOT_IN_CALLS", "OUTWARD_ID", "outward lines whose call is not in the tracker"),
+              ("SPARE_OUTWARD", "ASSET_NOT_IN_MASTER", "OUTWARD_ID", "outward lines whose asset (CI) is not in the asset register"))
+    found = False
+    for table, flag, idc, label in checks:
+        hit = [r for r in tables.get(table, []) if flag in (r.get("DQ_FLAGS") or "").split("; ")]
+        if hit:
+            if not found:
+                say("Not linked (these load, but point at records that do not exist - worth a look):")
+                found = True
+            ex = ", ".join(f"{r[idc]}" + (f" ({r['ASSET_KEY']})" if r.get("ASSET_KEY") and "ASSET" in flag else "") for r in hit[:6])
+            say(f"  {len(hit)} {label}: {ex}" + (" ..." if len(hit) > 6 else ""))
+    if not found:
+        say("Not linked: nothing - every call and spare line points at a record that exists.")
+
+
 def run_tracker(raw, as_of, out_dir, load, force):
     look = lookups()
     if look is None:
@@ -1047,6 +1069,7 @@ def run_tracker(raw, as_of, out_dir, load, force):
     except PermissionError:
         sys.exit(f"Cannot write {path} - it is open in Excel. Close it and run again.")
     print(f"Wrote {path}: {len(calls)} calls ({n_open} open), {len(inward)} inward lines, {len(outward)} outward lines")
+    orphan_report({"CALLS": calls, "SPARE_INWARD": inward, "SPARE_OUTWARD": outward})
     if load:
         db_load({"CALLS": calls, "SPARE_INWARD": inward, "SPARE_OUTWARD": outward}, as_of, force)
 
@@ -1097,7 +1120,10 @@ if __name__ == "__main__":
     ap.add_argument("--build-template", action="store_true")
     ap.add_argument("--no-load-db", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="rehearse the database load: everything runs and is reported, nothing is saved")
     a = ap.parse_args()
+    if a.dry_run:
+        os.environ["ITAM_DRY_RUN"] = "1"
     if a.build_template:
         build_templates()
     if a.cmd == "report":
@@ -1106,6 +1132,6 @@ if __name__ == "__main__":
         if not a.raw:
             sys.exit("--raw is required")
         d = pd.to_datetime(a.as_of).date() if a.as_of else dt.date.today()
-        (run_tracker if a.cmd == "tracker" else run_rma)(a.raw, d, a.out_dir, not a.no_load_db, a.force)
+        (run_tracker if a.cmd == "tracker" else run_rma)(a.raw, d, a.out_dir, a.dry_run or not a.no_load_db, a.force)
     elif not a.build_template:
         ap.print_help()
