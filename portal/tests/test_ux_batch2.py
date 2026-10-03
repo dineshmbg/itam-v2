@@ -105,6 +105,8 @@ def test_admin_only_registers_reachable_for_admin(sandbox, monkeypatch):
 
 
 def test_search_excludes_admin_only_datasets_for_user(sandbox, monkeypatch):
+    """A User's search never returns the administrator-only registers. (It may well return fewer OTHER groups than an administrator -
+    e.g. assets - because a User only sees their own; that is row scoping, tested elsewhere, not what this test is about.)"""
     call = one(sandbox, "SELECT sr_id, problem_description FROM svc_call WHERE is_current=1 AND problem_description IS NOT NULL LIMIT 1")
     q = call["problem_description"][:12]
     as_user(monkeypatch, "ADMIN")
@@ -113,8 +115,8 @@ def test_search_excludes_admin_only_datasets_for_user(sandbox, monkeypatch):
     as_user(monkeypatch, "USER", username="SEARCHUSER")
     with TestClient(app) as c:
         user_groups = {g["dataset"] for g in c.get("/api/search", params={"q": q}).json()["groups"]}
-    assert "calls" not in user_groups
-    assert admin_groups - user_groups <= {"calls", "inward", "outward", "rma"}
+    assert "calls" in admin_groups                                    # the search term was taken from a call, so an administrator finds it
+    assert not (user_groups & {"calls", "inward", "outward", "rma"})
 
 
 # ---------------------------------------------------------------- scoped dashboards
