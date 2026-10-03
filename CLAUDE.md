@@ -34,6 +34,7 @@ cd portal
 .\run_portal.ps1                              # dev: build .venv from vendor\wheels if needed, prepare DB, open http://127.0.0.1:8420
 .\.venv\Scripts\python -m pytest -q           # tests: run inside rolled-back transactions, never touch real data
 cd frontend; node build.mjs                   # rebuild the front end after any frontend/src change (offline, esbuild)
+..\check.ps1 [-Drill]                         # is it safe to release? uncommitted work, front-end build, every test, optional restore drill
 .\service\install.ps1                         # register the always-on Scheduled Task (logon + boot + 1-min self-heal watchdog)
 ```
 First admin: `ADMIN` / a printed temporary password (see `%USERPROFILE%\.itam_first_admin.txt` after
