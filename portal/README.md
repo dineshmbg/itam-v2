@@ -64,6 +64,8 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Users, security policy, e-mail set-up, activity log | yes | no | no |
 | Create a portal account | yes, manually (Add user) or via roster sync (2026-09-30 - Add user restored) | never | never |
 
+**The table above is also executable** (2026-10-03): `tests/test_permission_matrix.py` runs 9 kinds of account (administrator, plain User, +calls/parts read or full, +asset read or full, extended access, User with no engineer, read-only demo) against ~20 sensitive actions through the real HTTP routes, plus what each account sees in the Assets register and which datasets the report builder offers. Change a rule by changing that table; add a grant by adding an account row. It fails if any route disagrees (checked by deliberately loosening a rule: it caught it).
+
 **Calls/Inward/Outward/OEM RMA access for a User (`portal_user.call_parts_access`, 2026-09-23):** set from *Manage user* to `NONE`
 (default), `READ` or `FULL` - one setting covers all four registers together, not per-module. `READ` can view and search those
 registers but not add/edit/archive; `FULL` can also add and edit (never archive - that stays administrator-only, same as assets).
