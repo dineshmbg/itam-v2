@@ -24,3 +24,15 @@
 .pill-toggle:has(input:checked) .off { display: none; }
 .pill-toggle .off { color: var(--c-text-3); }
 .updated { font-size: 12px; color: var(--c-text-3); }
+
+/* Replace / Redeploy asset windows */
+.lc-body h3 { margin: 16px 0 6px; font-size: 14px; }
+.lc-checks { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.lc-checks .ok { color: var(--c-ok); vertical-align: -3px; }
+.lc-checks .bad { color: var(--c-bad); vertical-align: -3px; }
+.lc-results { display: grid; gap: 2px; max-height: 240px; overflow: auto; margin: 4px 0 8px; }
+.lc-cand { align-items: flex-start; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--r-1); }
+.lc-cand:hover, .lc-cand:has(input:checked) { background: var(--c-surface-2); border-color: var(--c-border); }
+.lc-identity { border-left: 3px solid var(--c-accent); background: var(--c-surface-2); padding: 8px 12px; margin: 0 0 12px; }
+.lc-body .frow > .ropt { margin-right: 16px; }
+.lc-body .tbl td strong { font-weight: 600; }

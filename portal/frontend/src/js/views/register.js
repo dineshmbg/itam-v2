@@ -118,7 +118,7 @@ export function mountRegister(root, name, opts = {}) {
       const [d, schema] = await Promise.all([get(`/api/registers/${dn}/${encodeURIComponent(id)}`), getSchema()]);
       if (dead || openId !== id) return;
       drawer.setTitle(id, meta[name].label.replace(/s$/, ''));
-      rec = await mountRecord({ drawer, name: dn, payload: d, schema, onChange: () => table?.refresh() });
+      rec = await mountRecord({ drawer, name: dn, payload: d, schema, onChange: () => table?.refresh(), onOpen: (key) => openDetail(key) });
     } catch (e) { drawer.body.replaceChildren(errorBlock(e)); }
   }
 

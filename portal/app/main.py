@@ -17,7 +17,7 @@ from starlette.responses import FileResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import auth, cards, config, dashboards, db, engineers, export, integrity, queries, routes_auth, routes_edit, routes_tools, routes_update, scheduler
+from . import auth, cards, config, dashboards, db, engineers, export, integrity, queries, routes_auth, routes_edit, routes_lifecycle, routes_tools, routes_update, scheduler
 from .live import hub, sse
 from .web import client_ip, dumps, error, guarded, read
 
@@ -240,6 +240,7 @@ routes = [
     Route("/api/events", read(events)),
     *routes_auth.routes,
     *routes_edit.routes,
+    *routes_lifecycle.routes,
     *cards.routes,
     *routes_tools.routes,
     *routes_update.routes,

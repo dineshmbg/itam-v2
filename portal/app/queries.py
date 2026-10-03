@@ -211,6 +211,7 @@ def detail(name, ident, include_archived=False, user=None):
         rel["rma"] = db.query("SELECT rma_line_id AS id, rma_no, fault_item, call_log_date, return_status FROM oem_rma WHERE asset_key=%s AND is_current=1 ORDER BY call_log_date DESC", [ident])
         rel["serial_history"] = db.query("SELECT old_serial, new_serial, rma_no, change_date FROM oem_serial_history WHERE asset_key=%s ORDER BY change_date", [ident])
         rel["history"] = db.query("SELECT snapshot_date, change_type, field, old_value, new_value FROM asset_change_log WHERE asset_key=%s ORDER BY snapshot_date DESC LIMIT 50", [ident])
+        rel["aliases"] = db.query("SELECT alias_key AS former_name, valid_from AS from_date, valid_to AS to_date, reason FROM asset_alias WHERE asset_key=%s ORDER BY valid_to NULLS LAST, alias_id", [ident])
         rel["verifications"] = db.query("SELECT verified_on, result, verified_by, note FROM asset_verification WHERE asset_key=%s ORDER BY verified_on DESC, verification_id DESC LIMIT 20", [ident])
     elif name == "calls":
         rel["asset"] = db.one("SELECT asset_key AS id, asset_class, asset_type, make, model, serial_no, location_code, room, user_name, engineer_name FROM asset WHERE asset_key=%s AND is_current=1", [row["asset_key"]]) if row["asset_key"] else None

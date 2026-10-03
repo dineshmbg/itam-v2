@@ -318,6 +318,11 @@ def load_assets(xlsx, force=False):
             sys.exit("Load blocked: " + "; ".join(problems))
         snap = df["SNAPSHOT_DATE"].iloc[0]
         itam_locks.ensure_tables(con)
+        ident = df[["ASSET_KEY", "SERIAL_NO", "ONGC_ASSET_ID", "SOURCE_ROW"]].astype(object)
+        stale = itam_locks.alias_conflicts(con, ident.where(ident.notna(), None).values.tolist())      # a file that undoes a Replace / Redeploy made in the portal
+        if stale:
+            more = f"\n  ... and {len(stale) - 25} more" if len(stale) > 25 else ""
+            sys.exit("Load blocked - the file does not match a replacement already made in the portal:\n  " + "\n  ".join(stale[:25]) + more)
         locked = itam_locks.load_overrides(con, "assets")[0]
         idx = df.index[df["ASSET_KEY"].isin(set(locked))]
         recs = [{k: (None if not isinstance(v, (str, list, dict)) and pd.isna(v) else v) for k, v in df.loc[i].to_dict().items()} for i in idx]     # NaN -> None

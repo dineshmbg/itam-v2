@@ -122,3 +122,36 @@ def apply_records(con, dataset, records, key, as_of, upper=True):
                         (json.dumps(jsonable(incoming)), dataset, k, f))
         n += 1
     return created, archived
+
+
+def alias_conflicts(con, rows):
+    """Guard for the asset loader after a Replace / Redeploy (portal/app/lifecycle.py). `rows`: [(asset_key, serial_no, ongc_asset_id, source_row)]
+    taken from the incoming file. Returns readable messages for rows that would recreate a former name or put the wrong machine on a reused name;
+    an empty list means the file is safe to load. Does nothing when no asset has ever been replaced."""
+    with con.cursor() as cur:
+        cur.execute("SELECT to_regclass('asset_alias') IS NOT NULL")
+        if not cur.fetchone()[0]:
+            return []
+        cur.execute("SELECT alias_key, asset_key FROM asset_alias WHERE alias_key <> asset_key")
+        aliases = {}
+        for alias_key, asset_key in cur.fetchall():
+            aliases.setdefault(alias_key, set()).add(asset_key)
+        hit = [r for r in rows if r[0] in aliases]
+        if not hit:
+            return []
+        cur.execute("SELECT asset_key, serial_no, ongc_asset_id FROM asset WHERE asset_key = ANY(%s)", ([r[0] for r in hit],))
+        held = {k: (sn, oid) for k, sn, oid in cur.fetchall()}
+    norm = lambda v: str(v).strip().upper() if v not in (None, "") else None  # noqa: E731
+    out = []
+    for key, serial, ongc, src in hit:
+        where = f"row {int(src)}" if src not in (None, "") else key
+        if key not in held:
+            now = ", ".join(sorted(aliases[key]))
+            out.append(f"{where}: {key} is a former name of the machine that is now {now}. Use the new name in the sheet.")
+            continue
+        db_serial, db_ongc = held[key]
+        for label, a, b in (("serial number", norm(serial), norm(db_serial)), ("ONGC asset ID", norm(ongc), norm(db_ongc))):
+            if a and b and a != b:
+                out.append(f"{where}: {key} was re-assigned to another machine (now {label} {b}) but the file still says {a}. Update or remove that row.")
+                break
+    return out

@@ -8,13 +8,14 @@ import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';
 import { renderDetail } from './detail.js';
 import { recordPmDialog } from './pm-record.js';
+import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
-const ACTIONS = { UPDATE: ['edit', 'Changed'], CREATE: ['add', 'Created'], ARCHIVE: ['archive', 'Archived'], RESTORE: ['renew', 'Restored'], RESET: ['undo', 'Override removed'], CASCADE: ['link', 'Follow-on update'], EVENT: ['user', 'Event'], VERIFY: ['checkmark--outline', 'Physical check'] };
+const ACTIONS = { UPDATE: ['edit', 'Changed'], CREATE: ['add', 'Created'], ARCHIVE: ['archive', 'Archived'], RESTORE: ['renew', 'Restored'], RESET: ['undo', 'Override removed'], CASCADE: ['link', 'Follow-on update'], EVENT: ['user', 'Event'], VERIFY: ['checkmark--outline', 'Physical check'], REPLACE: ['restart', 'Took over the name of a replaced machine'], RETIRE: ['archive', 'Retired (replaced)'], REDEPLOY: ['play', 'Redeployed'] };
 
 const short = (v) => (v == null || v === '' ? '—' : String(v));
 
 /** Drive an open drawer for one record. payload: response of GET /api/registers/<name>/<id>. */
-export async function mountRecord({ drawer, name, payload, schema, onChange }) {
+export async function mountRecord({ drawer, name, payload, schema, onChange, onOpen }) {
   schema ||= await getSchema();
   const spec = schema.datasets[name] || { fields: [], readonly: true, defaults: {} };
   const admin = isAdmin();
@@ -31,14 +32,17 @@ export async function mountRecord({ drawer, name, payload, schema, onChange }) {
     form = null;
     const bar = h('div', { class: 'rec-bar' });
     if (p.archived) {
-      bar.append(h('div', { class: 'rec-note warn' }, icon('archive'), 'This record is archived and hidden from the registers.'));
-      if (!spec.readonly && canArchiveThis) bar.append(h('button', { class: 'btn', type: 'button', onClick: restore }, icon('renew'), 'Restore'));
+      const retired = name === 'assets' && p.row.asset_status === 'REPLACED';
+      bar.append(h('div', { class: 'rec-note warn' }, icon('archive'), retired ? `This machine was retired when it was replaced by ${p.row.replaced_by_key || 'another machine'}. Its history is kept here.` : 'This record is archived and hidden from the registers.'));
+      if (!spec.readonly && canArchiveThis && !retired) bar.append(h('button', { class: 'btn', type: 'button', onClick: restore }, icon('renew'), 'Restore'));
+      if (name === 'assets' && admin && p.row.record_level === 'ASSET') bar.append(h('button', { class: 'btn', type: 'button', title: 'Put this same physical machine back into service under a new name', onClick: redeploy }, icon('play'), 'Redeploy'));
     } else if (!spec.readonly) {
       if (canEditAny() && (name !== 'engineers' || isOwnEngineerRecord())) bar.append(h('button', { class: 'btn primary', type: 'button', onClick: edit }, icon('edit'), 'Edit'));
       if (name === 'assets' && p.row.record_level === 'ASSET' && ['PENDING', 'DONE', 'DONE_OUTSIDE_QUARTER'].includes(p.row.pm_status)) {
         bar.append(h('button', { class: 'btn', type: 'button', onClick: () => recordPmDialog({ keys: [p.id], defaults: { engineer: p.row.pm_done_by || p.row.engineer_name, signed: p.row.pm_signed_by }, onDone: () => reload().then(() => onChange?.()) }) }, icon('checkmark'), 'Record PM'));
       }
       if (canArchiveThis) bar.append(h('button', { class: 'btn', type: 'button', onClick: archive }, icon('archive'), 'Archive'));
+      if (name === 'assets' && admin && p.row.record_level === 'ASSET') bar.append(h('button', { class: 'btn', type: 'button', title: 'A new machine takes over the name of this one; this one is retired with its history', onClick: replace }, icon('restart'), 'Replace'));
       if (name === 'calls' && p.row.call_status === 'OPEN' && !(p.related.inward || []).length) {
         bar.append(h('button', { class: 'btn primary', type: 'button', style: { marginLeft: 'auto' },
           onClick: () => newRecord({ name: 'inward', label: 'Inward', prefill: { sr_id: p.id, asset_key: p.row.asset_key || '' }, onCreated: () => reload().then(() => onChange?.()) }) }, icon('add'), 'Inward'));
@@ -131,6 +135,9 @@ export async function mountRecord({ drawer, name, payload, schema, onChange }) {
       } }],
     });
   }
+
+  function replace() { replaceDialog({ asset: p.row, onDone: (d) => { p = d; show(); onChange?.(); } }); }
+  function redeploy() { redeployDialog({ asset: p.row, engineers: schema.engineers, onDone: (d, key) => { onChange?.(); if (onOpen) onOpen(key); else drawer.close(); } }); }
 
   /** Physical check (stocktake): record that the asset was, or was not, found where the register says. */
   function verifyDialog() {

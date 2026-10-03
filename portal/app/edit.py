@@ -700,6 +700,8 @@ def restore(dataset, key, editor, ip, reason=None):
         rows = _rows(con, f"SELECT * FROM {sp['table']} WHERE {sp['pk']} = %s FOR UPDATE", (key,))
         if not rows or rows[0]["is_current"] == 1 or not _exists(con, "SELECT 1 FROM portal_lock WHERE dataset=%s AND record_key=%s AND field=%s", (dataset, key, L.ARCHIVED)):
             raise NotFound("This record is not in the archive.")
+        if dataset == "assets" and rows[0].get("asset_status") == "REPLACED":
+            raise Conflict("This machine was retired when it was replaced. Use Redeploy to put it back into service under a new name.")
         con.execute(f"UPDATE {sp['table']} SET is_current = 1 WHERE {sp['pk']} = %s", (key,))
         con.execute("DELETE FROM portal_lock WHERE dataset=%s AND record_key=%s AND field=%s", (dataset, key, L.ARCHIVED))
         _audit(con, editor, ip, dataset, key, "RESTORE", {}, reason)

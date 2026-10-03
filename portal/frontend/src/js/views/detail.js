@@ -4,7 +4,7 @@ import { href } from '../core/router.js';
 import { badge } from '../ui/badge.js';
 import { entity } from '../ui/hovercard.js';
 
-const REF = { asset_key: 'asset', parent_asset_key: 'asset', sr_id: 'call', call_sr_id: 'call', cpf_no: 'cpf', engineer: 'engineer', engineer_name: 'engineer', pm_done_by: 'engineer' };
+const REF = { asset_key: 'asset', parent_asset_key: 'asset', replaced_by_key: 'asset', sr_id: 'call', call_sr_id: 'call', cpf_no: 'cpf', engineer: 'engineer', engineer_name: 'engineer', pm_done_by: 'engineer' };
 
 const BADGE_KEYS = new Set(['asset_status', 'cover_status', 'pm_status', 'call_status', 'priority', 'spare_status', 'return_status', 'faulty_spare_status']);
 const NAME_KEYS = new Set(['user_name', 'engineer', 'engineer_name', 'site_incharge', 'pm_done_by', 'pm_signed_by', 'received_by', 'user_designation']);
@@ -19,13 +19,14 @@ const ASSET_GROUPS = [
   ['Lifecycle', ['purchase_date', 'purchase_cost', 'vendor_name', 'po_no', 'refresh_due_date']],
   ['Preventive maintenance', ['pm_quarter', 'pm_date', 'pm_status', 'pm_done_by', 'pm_signed_by', 'pm_tracker_date']],
   ['Status', ['asset_status', 'remarks', 'extra_info']],
+  ['Retirement', ['retired_on', 'retired_reason', 'replaced_by_key', 'disposal_ref', 'data_wiped']],
 ];
 
 const RELATED = {
   assets: [['components', 'Components', 'assets', ['id', 'asset_type', 'model', 'serial_no', 'asset_status']], ['calls', 'Calls', 'calls', ['id', 'cipl_call_date', 'problem_description', 'engineer', 'call_status']],
     ['inward', 'Inward', 'inward', ['id', 'inward_date', 'part_description', 'received_date']], ['outward', 'Outward', 'outward', ['id', 'outward_date', 'part_description', 'gatepass_no', 'sent_date']],
     ['rma', 'OEM RMA', 'rma', ['id', 'rma_no', 'fault_item', 'call_log_date', 'return_status']], ['verifications', 'Physical checks', null, ['verified_on', 'result', 'verified_by', 'note']], ['serial_history', 'Serial history (RMA swaps)', null, ['old_serial', 'new_serial', 'rma_no', 'change_date']],
-    ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']]],
+    ['aliases', 'Former names', null, ['former_name', 'from_date', 'to_date', 'reason']], ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']]],
   calls: [['inward', 'Inward', 'inward', ['id', 'inward_date', 'part_description', 'received_date']], ['outward', 'Outward', 'outward', ['id', 'outward_date', 'part_description', 'gatepass_no', 'sent_date']],
     ['rma', 'OEM RMA', 'rma', ['id', 'rma_no', 'fault_item', 'return_status']], ['history', 'Change history', null, ['snapshot_date', 'change_type', 'field', 'old_value', 'new_value']]],
   rma: [['serial_history', 'Serial history (RMA swaps)', null, ['old_serial', 'new_serial', 'rma_no', 'change_date']]],
@@ -75,7 +76,7 @@ export function renderDetail(ds, payload, ctx = {}) {
   const out = [];
   if (row.dq_flags) out.push(h('div', { class: 'dsec' }, h('h3', null, 'Data-quality flags'), h('div', { class: 'flags' }, row.dq_flags.split('; ').map((f) => h('span', { class: 'badge warn' }, icon('warning--alt--filled'), f.replace(/_/g, ' ').toLowerCase())))));
   if (ds === 'assets') {
-    ASSET_GROUPS.forEach(([title, keys]) => { const b = kvBlock(keys, row, ctx); if (b) out.push(h('div', { class: 'dsec' }, h('h3', null, title), b)); });
+    ASSET_GROUPS.forEach(([title, keys]) => { if (title === 'Retirement' && !keys.some((k) => row[k] != null)) return; const b = kvBlock(keys, row, ctx); if (b) out.push(h('div', { class: 'dsec' }, h('h3', null, title), b)); });
   } else {
     const keys = Object.keys(row).filter((k) => k !== 'dq_flags');
     out.push(h('div', { class: 'dsec' }, h('h3', null, 'Details'), kvBlock(keys, row, ctx)));
