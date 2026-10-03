@@ -3,6 +3,7 @@
   Builds a new portal version on the development PC and packs it as ONE signed release file for the Software update page.
 
 .DESCRIPTION
+  Refuses to build while the working folder has uncommitted changes (override with -AllowDirty); the commit id is recorded in the signed notes.
   Steps: rebuild the front end (skip with -SkipFrontend), run the tests (skip with -SkipTests; a failing test stops the release), build the container image
   with Podman or Docker, then create deploy\releases\itam-release-<version>.itamrel = manifest.json + manifest.sig + itam-portal.tar, where the signature is made
   with your private release key (make-release-key.ps1, once). Upload that file on the portal's  Data tools > Software update  page - or copy it to the VM and run
@@ -20,7 +21,8 @@ param(
   [string]$KeyFile = (Join-Path $env:USERPROFILE '.itam-release\release-private.pem'),
   [ValidateSet('auto', 'podman', 'docker')][string]$Engine = 'auto',
   [switch]$SkipFrontend,
-  [switch]$SkipTests
+  [switch]$SkipTests,
+  [switch]$AllowDirty
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -31,6 +33,21 @@ function Find-OpenSsl {
   if ($c) { return $c.Source }
   foreach ($p in 'C:\Program Files\Git\mingw64\bin\openssl.exe', 'C:\Program Files\Git\usr\bin\openssl.exe', 'C:\Program Files\OpenSSL-Win64\bin\openssl.exe') { if (Test-Path $p) { return $p } }
   throw "openssl was not found (it comes with Git for Windows)."
+}
+
+# A release must be reproducible from a commit: refuse to package work that exists only in the working folder (that is how an
+# uncommitted feature once rode along in a release). AGENTS.md is a copy of CLAUDE.md written by another tool and is ignored here.
+$commit = (& git rev-parse --short HEAD 2>$null)
+if ($commit) {
+  $dirty = @(& git status --porcelain 2>$null | Where-Object { $_ -and $_ -notmatch '^\?\? AGENTS\.md$' })
+  if ($dirty.Count -gt 0 -and -not $AllowDirty) {
+    Write-Host "The working folder has changes that are not committed:" -ForegroundColor Yellow
+    $dirty | Select-Object -First 15 | ForEach-Object { Write-Host "    $_" }
+    if ($dirty.Count -gt 15) { Write-Host "    ... and $($dirty.Count - 15) more" }
+    throw "Not building: commit (or set aside) those changes first so the release matches a commit - or pass -AllowDirty to build anyway."
+  }
+  $Notes = ("$Notes [commit $commit" + $(if ($dirty.Count -gt 0) { ", UNCOMMITTED CHANGES INCLUDED" } else { "" }) + "]").Trim()
+  Write-Host "Building from commit $commit$(if ($dirty.Count -gt 0) { ' (plus uncommitted changes, -AllowDirty)' })" -ForegroundColor Cyan
 }
 
 if (-not (Test-Path $KeyFile)) { throw "Release signing key not found: $KeyFile`nCreate it once with  .\deploy\make-release-key.ps1  (and back it up)." }
