@@ -158,3 +158,49 @@ def test_duplicate_lines_in_the_sheet_are_flagged_by_the_builder():
     flags = [r["_flags"] for r in recs]
     assert "DUPLICATE_LINE" not in flags[0] and "DUPLICATE_LINE" in flags[1] and "DUPLICATE_LINE" not in flags[2]
     assert all("DUPLICATE_SOURCE_SERIAL" not in f for f in flags)
+
+
+# ---------------------------------------------------------------- OEM RMA lines (2026-10-03): same engine, key was the sheet's "Sr. no"
+def put_rma(con, rid, faulty, call_date, rma_no="R-1", **kw):
+    cols = {"rma_line_id": rid, "faulty_part_serial": faulty, "call_log_date": call_date, "rma_no": rma_no, "is_current": 1, **kw}
+    con.execute(f"INSERT INTO oem_rma ({','.join(cols)}) VALUES ({','.join(['%s'] * len(cols))})", list(cols.values()))
+
+
+def rma(rid, faulty, call_date, rma_no="R-1", **kw):
+    return {"RMA_LINE_ID": rid, "FAULTY_PART_SERIAL": faulty, "CALL_LOG_DATE": call_date, "RMA_NO": rma_no, **{k.upper(): v for k, v in kw.items()}}
+
+
+def test_rma_renumbered_sr_no_keeps_the_record(box):
+    d = dt.date(2026, 8, 1)
+    put_rma(box, "RMA-R990", "SNTEST-A1", d)
+    rec = rma("RMA-0990", "snTEST-a1", d, return_status="RETURNED")
+    ct.reuse_ids(box, "OEM_RMA", [rec])
+    assert rec["RMA_LINE_ID"] == "RMA-R990"
+
+
+def test_rma_corrected_call_date_is_an_edit_of_the_same_record(box):
+    put_rma(box, "RMA-R991", "SNTEST-B2", dt.date(2026, 8, 1))
+    rec = rma("RMA-0001", "SNTEST-B2", dt.date(2026, 8, 3))
+    res = ct.reuse_ids(box, "OEM_RMA", [rec])
+    assert rec["RMA_LINE_ID"] == "RMA-R991" and res["edited"] == ["RMA-R991"] and res["new"] == 0
+
+
+def test_rma_corrected_faulty_serial_is_an_edit_only_when_the_rma_number_pairs_one_for_one(box):
+    put_rma(box, "RMA-R992", "SNTEST-C3", dt.date(2026, 8, 1), rma_no="RTEST-77")
+    rec = rma("RMA-0001", "SNTEST-C3X", dt.date(2026, 8, 1), rma_no="RTEST-77")
+    assert ct.reuse_ids(box, "OEM_RMA", [rec])["edited"] == ["RMA-R992"] and rec["RMA_LINE_ID"] == "RMA-R992"
+
+
+def test_rma_blank_rma_number_never_pairs_unrelated_lines(box):
+    put_rma(box, "RMA-R993", "SNTEST-D4", dt.date(2026, 8, 1), rma_no=None)
+    rec = rma("RMA-0001", "SNTEST-OTHER", dt.date(2026, 8, 1), rma_no=None)
+    res = ct.reuse_ids(box, "OEM_RMA", [rec])
+    assert res["edited"] == [] and res["new"] == 1 and rec["RMA_LINE_ID"] != "RMA-R993"
+
+
+def test_rma_same_serial_repaired_again_later_is_a_new_record(box):
+    put_rma(box, "RMA-R994", "SNTEST-E5", dt.date(2026, 3, 1))
+    again = rma("RMA-0001", "SNTEST-E5", dt.date(2026, 9, 1), rma_no="R-2")
+    first = rma("RMA-0002", "SNTEST-E5", dt.date(2026, 3, 1))
+    ct.reuse_ids(box, "OEM_RMA", [first, again])
+    assert first["RMA_LINE_ID"] == "RMA-R994" and again["RMA_LINE_ID"] not in ("RMA-R994", first["RMA_LINE_ID"])

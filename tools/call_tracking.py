@@ -107,7 +107,7 @@ SPARE_OUT = [
 ]
 RMA = [
     ("SNAPSHOT_DATE", "TRACE", "Date of the load.", "date"),
-    ("RMA_LINE_ID", "IDENTITY", "UNIQUE key: RMA-0001 (from the source Sr. no).", "text"),
+    ("RMA_LINE_ID", "IDENTITY", "UNIQUE key: RMA-0001. Stable once given; a line is matched by faulty part serial + call date, NOT by the sheet Sr. no.", "text"),
     ("RMA_NO", "IDENTITY", "OEM RMA number, cleaned (no 'RMA#', spaces or nbsp).", "text"),
     ("VENDOR_CASE_ID", "IDENTITY", "OEM case id (source column 'Cash ID').", "text"),
     ("VENDOR", "DEVICE", "JUNIPER / CISCO.", "text"),
@@ -556,14 +556,14 @@ def clean_rma_no(v):
 
 
 def build_rma(rows, cm, look, as_of):
-    out, chain = [], {}
+    out, chain, lines = [], {}, collections.Counter()
     for src_row, row in rows:
         fserial = txt(g(row, cm, "fserial"), True)
         if not fserial:
             continue
         r = {c[0]: None for c in RMA}
         flags = []
-        sr = txt(g(row, cm, "sr"))
+        sr = txt(g(row, cm, "sr"))           # the sheet's "Sr. no" is a label for people: this is only a provisional ID, see "record identity"
         if sr and re.fullmatch(r"\d+(\.0)?", sr):
             lid = f"RMA-{int(float(sr)):04d}"
         else:
@@ -588,6 +588,9 @@ def build_rma(rows, cm, look, as_of):
                  DEVICE_SERIAL_NO=txt(g(row, cm, "dev"), True), FAULT_ITEM=item, FAULT_CATEGORY=fault_category(item), FAULTY_PART_SERIAL=fserial,
                  CALL_LOG_DATE=cl, REPLACEMENT_RECEIVED_DATE=rc, REPLACEMENT_PART_SERIAL=txt(g(row, cm, "new"), True), FAULTY_RETURN_DATE=sn,
                  DC_NO=txt(g(row, cm, "dc")), GATEPASS_NO=txt(g(row, cm, "gp")), REMARKS=txt(g(row, cm, "remarks")), SOURCE_ROW=src_row)
+        lines[line_key("OEM_RMA", r)] += 1
+        if lines[line_key("OEM_RMA", r)] > 1:
+            flags.append("DUPLICATE_LINE")           # the same faulty part, logged on the same date, appears more than once in the sheet
         r["RETURN_STATUS"] = "RETURNED" if sn else "PENDING"
         if not sn:
             flags.append("FAULTY_PART_NOT_RETURNED")
@@ -721,7 +724,7 @@ TRACKER_README = [
 RMA_README = [
     ("Purpose", "Standard structure for the OEM RMA log of Cisco and Juniper routers and switches."),
     ("Sheet", "OEM_RMA - one row per RMA line (a case can have several lines)."),
-    ("Key", "RMA_LINE_ID (from the source Sr. no)."),
+    ("Key", "RMA_LINE_ID - stable once given; a line is matched by faulty part serial + call date, not by the sheet Sr. no."),
     ("Asset link", "ASSET_KEY is resolved by serial through the asset master, and through the replacement chain when a whole unit was swapped. LINK_BASIS says how."),
     ("Manual link", "CALL_SR_ID ties an RMA to the CIPL service request that caused it."),
     ("Serial history", "Whole-unit swaps also write oem_serial_history (old -> new serial per asset) in the database."),
@@ -828,45 +831,50 @@ def _cv(v):
     return v.isoformat() if isinstance(v, dt.date) else str(v)
 
 
-# ------------------------------------------------------------------ record identity (inward / outward lines)
-# A spare line is the same line when it belongs to the same call and is the same part (inward: and was logged on the same date).
-# The sheet's SERIAL column is NOT part of that: it is typed by hand, can be blank, retyped or renumbered, and keying on it made
-# a harmless clean-up of the sheet look like dozens of deletions. Everything that changes over time (received date, bill, AWB,
-# gate pass, sent date, remarks) is deliberately outside the identity so it can be updated without making a "new" record.
+# ------------------------------------------------------------------ record identity (inward / outward / RMA lines)
+# A line is the same line when it is the same thing, not when a hand-typed counter in the sheet says so. The sheet's SERIAL / "Sr. no"
+# column is a label for people: it can be blank, retyped or renumbered, and keying on it made a harmless clean-up of the sheet look
+# like dozens of deletions. Everything that changes over time (received date, bill, AWB, gate pass, sent date, return date, remarks)
+# is deliberately outside the identity so it can be updated without making a "new" record.
 # IDs are sticky: a line that matches an existing record keeps that record's ID for good; only a genuinely new line is given a
 # new one (the next free number, the same scheme the portal uses when someone adds a line by hand).
-IDENT = {"SPARE_INWARD": ("SR_ID", "PART_DESCRIPTION", "INWARD_DATE"), "SPARE_OUTWARD": ("SR_ID", "PART_DESCRIPTION")}
-ID_PREFIX = {"SPARE_INWARD": "IN", "SPARE_OUTWARD": "OUT"}
+#   IDENT[name] = (identity columns, columns that group an "edited" line with its record (same thing, one detail corrected),
+#                  columns that pair a lone leftover line on each side)
+IDENT = {"SPARE_INWARD": (("SR_ID", "PART_DESCRIPTION", "INWARD_DATE"), ("SR_ID", "PART_DESCRIPTION"), ("SR_ID",)),
+         "SPARE_OUTWARD": (("SR_ID", "PART_DESCRIPTION"), ("SR_ID", "PART_DESCRIPTION"), ("SR_ID",)),
+         "OEM_RMA": (("FAULTY_PART_SERIAL", "CALL_LOG_DATE"), ("FAULTY_PART_SERIAL",), ("RMA_NO",))}
+ID_PREFIX = {"SPARE_INWARD": "IN", "SPARE_OUTWARD": "OUT", "OEM_RMA": "RMA"}
 
 
 def _ival(v):
     return v.isoformat() if isinstance(v, dt.date) else re.sub(r"\s+", " ", str(v or "")).strip().upper()
 
 
-def line_key(name, rec):
-    return tuple(_ival(rec.get(c)) for c in IDENT[name])
+def line_key(name, rec, cols=None):
+    return tuple(_ival(rec.get(c)) for c in (cols or IDENT[name][0]))
 
 
 def reuse_ids(con, name, records, lock=False, say=None):
     """Give every incoming line the ID of the existing record it is, or a new ID if it is new. Mutates `records`, returns a summary.
-    1. exact match on the identity (same call + part [+ date]); repeats of one identity pair up in file order
-    2. a line that no longer matches but clearly is an edit of an existing one - same call + part with a corrected date, or the
-       only leftover line of its call on both sides - keeps that record (and is reported, so nothing is silently re-pointed)
+    1. exact match on the identity; repeats of one identity pair up in file order
+    2. a line that no longer matches but clearly is an edit of an existing one keeps that record (and is reported, so nothing is
+       silently re-pointed): same thing with one detail corrected (e.g. a fixed date), or the only leftover line on both sides
     3. anything left is new: next free number after the highest one in the table (portal-created lines included)."""
     if name not in IDENT:
         return {}
     cols, key, table = TABLES[name]
-    idc, pre = IDENT[name], ID_PREFIX[name]
+    ident, edit1, edit2 = IDENT[name]
+    pre = ID_PREFIX[name]
+    need = list(dict.fromkeys(ident + edit1 + edit2))
     cur = con.cursor()
     if lock:
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (table,))      # the same lock the portal takes when it adds a line
-    cur.execute(f"SELECT {key}, {','.join(idc)}, is_current FROM {table} ORDER BY is_current DESC NULLS LAST, source_row NULLS LAST, {key}")
+    cur.execute(f"SELECT {key}, {','.join(need)}, is_current FROM {table} ORDER BY is_current DESC NULLS LAST, source_row NULLS LAST, {key}")
     by_ident, info, current = collections.defaultdict(list), {}, []
     for row in cur.fetchall():
-        rid, vals, cur_flag = row[0], row[1:1 + len(idc)], row[-1]
-        k = tuple(_ival(v) for v in vals)
-        by_ident[k].append(rid)
-        info[rid] = (_ival(vals[0]), _ival(vals[1]), k)
+        rid, vals, cur_flag = row[0], dict(zip(need, (_ival(v) for v in row[1:1 + len(need)]))), row[-1]
+        by_ident[tuple(vals[c] for c in ident)].append(rid)
+        info[rid] = vals
         if cur_flag == 1:
             current.append(rid)
     used, assigned, nth = set(), {}, collections.Counter()
@@ -880,20 +888,20 @@ def reuse_ids(con, name, records, lock=False, say=None):
     edited = []
     left_old = [rid for rid in current if rid not in used]                              # 2. same line, edited
     left_new = [i for i in range(len(records)) if i not in assigned]
-    for pairing in (lambda s, p: (s, p), lambda s, p: (s,)):
+    for grp in (edit1, edit2):
         olds, news = collections.defaultdict(list), collections.defaultdict(list)
         for rid in left_old:
-            olds[pairing(*info[rid][:2])].append(rid)
+            olds[tuple(info[rid][c] for c in grp)].append(rid)
         for i in left_new:
-            news[pairing(_ival(records[i]["SR_ID"]), _ival(records[i]["PART_DESCRIPTION"]))].append(i)
+            news[line_key(name, records[i], grp)].append(i)
         for g_, ids in olds.items():
             idx = news.get(g_, [])
-            if len(g_) == 1 and not (len(ids) == 1 and len(idx) == 1):
-                continue                                                               # by call alone only when it is one-for-one
+            if not any(g_) or (grp is edit2 and grp != edit1 and not (len(ids) == 1 and len(idx) == 1)):
+                continue                                                               # a blank value never pairs; the weaker key only one-for-one
             for rid, i in zip(ids, idx):
                 assigned[i] = rid
                 used.add(rid)
-                edited.append((rid, records[i]["SR_ID"], info[rid][1], _ival(records[i]["PART_DESCRIPTION"])))
+                edited.append((rid, line_key(name, records[i], grp), info[rid], records[i]))
         left_old = [rid for rid in left_old if rid not in used]
         left_new = [i for i in left_new if i not in assigned]
     top = max([int(m[1]) for rid in info if (m := re.fullmatch(rf"{pre}-(\d+)", rid))], default=0)
@@ -902,11 +910,13 @@ def reuse_ids(con, name, records, lock=False, say=None):
         assigned[i] = f"{pre}-{top:04d}"
     for i, rec in enumerate(records):
         rec[key] = assigned[i]
-    out = {"kept": len(records) - len(left_new) - len(edited), "edited": edited, "new": len(left_new)}
+    n_edit = len(edited)
+    out = {"kept": len(records) - len(left_new) - n_edit, "edited": [e[0] for e in edited], "new": len(left_new), "gone": len(left_old)}
     if say:
-        say(f"  {name}: {out['kept']} lines matched to existing records, {len(edited)} edited lines kept their record, {out['new']} new")
-        for rid, sr, old, new in edited[:25]:
-            say(f"    {rid}: {sr} - '{old}'" + (f" is now '{new}'" if old != new else " has a corrected date"))
+        say(f"  {name}: {out['kept']} lines matched to existing records, {n_edit} edited lines kept their record, {out['new']} new")
+        for rid, k, was, now in edited[:25]:
+            changed = [f"{c}: '{was[c]}' -> '{_ival(now.get(c))}'" for c in ident if was.get(c) != _ival(now.get(c))]
+            say(f"    {rid} {k[0]}: " + ("; ".join(changed) or "detail corrected"))
     return out
 
 
@@ -1047,6 +1057,13 @@ def run_rma(raw, as_of, out_dir, load, force):
         print("NOTE: database unreachable - asset linking skipped.")
     h, rows = read_rows(raw, "Call Log", 16, stop_after=30)
     rma = build_rma(rows, colmap(h, RMA_SPEC), look, as_of)
+    if look is not None:                      # database reachable: give each line the ID of the record it already is (read-only here)
+        import master_db
+        idcon = master_db.connect()
+        try:
+            reuse_ids(idcon, "OEM_RMA", rma, say=print)
+        finally:
+            idcon.close()
     ids = [r["RMA_LINE_ID"] for r in rma]
     if len(ids) != len(set(ids)):
         sys.exit(f"Duplicate RMA_LINE_ID values: {[k for k, c in collections.Counter(ids).items() if c > 1][:5]}")

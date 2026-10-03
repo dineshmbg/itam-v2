@@ -493,7 +493,7 @@ day or more *after* it ends. Now they use `pm.active_quarter()`: the quarter the
 - Test: `test_closing_a_quarter_after_it_has_ended_closes_that_quarter_not_the_new_one`; the two older PM tests now pin
   `pm_quarter` themselves instead of depending on where the real data is on the day they run.
 
-## Inward / outward line identity (2026-10-02)
+## Inward / outward / RMA line identity (2026-10-02, RMA added 2026-10-03)
 
 Uploading the 1 Oct call tracker was refused with "Load blocked (SPARE_OUTWARD): 30 of 113 current rows are missing (>20%)". Nothing was
 missing: the tracker's SERIAL column had been filled in for 29 outward lines that were blank before, and the loader built each line's ID
@@ -511,6 +511,9 @@ SERIAL is typed by hand (blank, retyped, renumbered on a sort), so it can no lon
 - A line that was removed and later comes back revives its old record. Repeats of one identical line pair up in file order and the
   second is flagged `DUPLICATE_LINE` (replaces the old `DUPLICATE_SOURCE_SERIAL`). The 20% mass-removal safety stop is unchanged.
 - SERIAL is still read, only as a provisional label when the database is unreachable. The sheet row is kept in `SOURCE_ROW`.
+- **OEM RMA lines use the same engine** (2026-10-03): the sheet's "Sr. no" used to be the key (`RMA-0001`), the same weakness. A line is now
+  matched by faulty part serial + call date (unique across all 74 current lines); a corrected call date, or a corrected faulty serial where
+  the RMA number pairs one-for-one, is an edit; the same serial repaired again on a later date is a new record. A blank RMA number never pairs.
 - Replay of the real 21 Sep -> 1 Oct files: outward 112 matched (29 under their old `OUT-R` IDs), 1 new, 0 removed; inward 0 removed.
   Tests: `tests/test_call_ids.py` (14).
 
