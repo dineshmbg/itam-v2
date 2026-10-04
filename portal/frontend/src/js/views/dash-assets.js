@@ -25,10 +25,10 @@ export function mountAssetsDash(root) {
     const k = d.kpi;
     return [
       { id: 'assets', label: 'Assets', value: int(k.assets), sub: `+ ${int(k.components)} components`, ico: 'devices', href: regHref('assets') },
-      { id: 'inuse', label: 'In use', value: int(k.in_use), sub: `${pct(100 * k.in_use / k.assets)} of assets`, tone: 'ok', href: regHref('assets', { 'f.asset_status': 'IN_USE' }) },
+      { id: 'inuse', label: 'Deployed', value: int(k.in_use), sub: `${pct(100 * k.in_use / k.assets)} of assets`, tone: 'ok', href: regHref('assets', { 'f.asset_status': 'IN_USE' }) },
       { id: 'exp', label: 'Cover expired', value: int(k.cover_expired), sub: 'AMC / warranty ended', tone: k.cover_expired ? 'bad' : 'ok', href: regHref('assets', { 'f.cover_status': 'EXPIRED' }) },
-      { id: 'soon', label: 'Cover ending ≤ 90 days', value: int(k.cover_expiring), sub: 'renewal planning', tone: k.cover_expiring ? 'warn' : 'ok', href: regHref('assets', { 'f.cover_status': 'EXPIRING_90D' }) },
-      { id: 'pm', label: 'PM pending', value: int(k.pm_pending), sub: k.pm_quarter ? humanize(k.pm_quarter) : '', tone: k.pm_pending ? 'warn' : 'ok', href: regHref('assets', { 'f.pm_status': 'PENDING' }) },
+      { id: 'soon', label: 'Cover renewal due (≤ 90 days)', value: int(k.cover_expiring), sub: 'renewal planning', tone: k.cover_expiring ? 'warn' : 'ok', href: regHref('assets', { 'f.cover_status': 'EXPIRING_90D' }) },
+      { id: 'pm', label: 'PM scheduled', value: int(k.pm_pending), sub: k.pm_quarter ? humanize(k.pm_quarter) : '', tone: k.pm_pending ? 'warn' : 'ok', href: regHref('assets', { 'f.pm_status': 'PENDING' }) },
       { id: 'users', label: 'Users not in HR', value: int(k.users_inactive), sub: 'retired / wrong CPF', tone: k.users_inactive ? 'warn' : 'ok', href: regHref('assets', { 'f.user_hr_status': 'NOT_IN_HR_MASTER' }) },
     ];
   };
@@ -51,7 +51,7 @@ export function mountAssetsDash(root) {
       panel('Assets by class', { cls: 'span-7', hint: 'select a bar to open the register' }, cClass, legend([{ label: 'In use', n: cls.reduce((a, r) => a + r.in_use, 0), color: 'var(--chart-3)' }, { label: 'Idle (store / surplus / not used)', n: cls.reduce((a, r) => a + r.idle, 0), color: 'var(--chart-1)' }, { label: 'Other', n: cls.reduce((a, r) => a + r.other, 0), color: 'var(--chart-2)' }])),
       panel('Status', { cls: 'span-5' }, cStatus, legend(d.status.map((s, i) => ({ label: labelOf(s.label), n: s.n, color: `var(--chart-${(stCols[i] % 8) + 1})` })), (it, i) => regHref('assets', { 'f.asset_status': d.status[i].label }))),
       panel('AMC / warranty cover', { cls: 'span-4', hint: 'all records' }, barRows(d.cover.map((c, i) => ({ label: labelOf(c.label), n: c.n, color: `var(--chart-${(cvCols[i] % 8) + 1})`, href: regHref('assets', { 'f.cover_status': c.label, 'f.record_level': '' }) })))),
-      panel('Preventive maintenance this quarter', { cls: 'span-8', hint: k.pm_quarter ? humanize(k.pm_quarter) : '' }, cPm, legend([{ label: 'Done in quarter', n: d.pm.reduce((a, r) => a + r.done, 0), color: 'var(--chart-3)' }, { label: 'Done outside quarter (stale)', n: d.pm.reduce((a, r) => a + r.stale, 0), color: 'var(--chart-5)' }, { label: 'Pending', n: d.pm.reduce((a, r) => a + r.pending, 0), color: 'var(--chart-8)' }])),
+      panel('Preventive maintenance this quarter', { cls: 'span-8', hint: k.pm_quarter ? humanize(k.pm_quarter) : '' }, cPm, legend([{ label: 'Completed in quarter', n: d.pm.reduce((a, r) => a + r.done, 0), color: 'var(--chart-3)' }, { label: 'Completed late (outside quarter)', n: d.pm.reduce((a, r) => a + r.stale, 0), color: 'var(--chart-5)' }, { label: 'Scheduled', n: d.pm.reduce((a, r) => a + r.pending, 0), color: 'var(--chart-8)' }])),
       panel('Top locations', { cls: 'span-4' }, cLoc),
       panel('Operating systems', { cls: 'span-4' }, barRows(d.os.map((o) => ({ label: humanize(o.label), n: o.n, href: regHref('assets', { 'f.os_family': o.label }) })))),
       panel('Most common data-quality flags', { cls: 'span-4', hint: 'open the register with the flag applied' }, barRows(d.flags.map((f) => ({ label: humanize(f.label), n: f.n, color: 'var(--chart-2)', href: regHref('assets', { 'f.dq_flags': f.label, 'f.record_level': '' }) })))),
@@ -61,10 +61,10 @@ export function mountAssetsDash(root) {
     body.append(extra);
     drawExtra(d);
 
-    ch.class = await charts.barH(cClass.querySelector('canvas'), cls.map((r) => humanize(r.label)), [{ label: 'In use', data: cls.map((r) => r.in_use), color: 2 }, { label: 'Idle', data: cls.map((r) => r.idle), color: 0 }, { label: 'Other', data: cls.map((r) => r.other), color: 1 }],
+    ch.class = await charts.barH(cClass.querySelector('canvas'), cls.map((r) => humanize(r.label)), [{ label: 'Deployed', data: cls.map((r) => r.in_use), color: 2 }, { label: 'Idle', data: cls.map((r) => r.idle), color: 0 }, { label: 'Other', data: cls.map((r) => r.other), color: 1 }],
       { stacked: true, onPick: (i) => { location.hash = regHref('assets', { 'f.asset_class': cls[i].label }); } });
     ch.status = await charts.doughnut(cStatus.querySelector('canvas'), d.status.map((s) => labelOf(s.label)), d.status.map((s) => s.n), { colors: stCols, onPick: (i) => { location.hash = regHref('assets', { 'f.asset_status': d.status[i].label }); } });
-    ch.pm = await charts.barH(cPm.querySelector('canvas'), d.pm.map((r) => humanize(r.label)), [{ label: 'Done', data: d.pm.map((r) => r.done), color: 2 }, { label: 'Stale', data: d.pm.map((r) => r.stale), color: 4 }, { label: 'Pending', data: d.pm.map((r) => r.pending), color: 7 }],
+    ch.pm = await charts.barH(cPm.querySelector('canvas'), d.pm.map((r) => humanize(r.label)), [{ label: 'Completed', data: d.pm.map((r) => r.done), color: 2 }, { label: 'Completed late', data: d.pm.map((r) => r.stale), color: 4 }, { label: 'Scheduled', data: d.pm.map((r) => r.pending), color: 7 }],
       { stacked: true, onPick: (i) => { location.hash = regHref('assets', { 'f.asset_class': d.pm[i].label }); } });
     ch.loc = await charts.barH(cLoc.querySelector('canvas'), d.locations.map((r) => r.label), [{ label: 'Assets', data: d.locations.map((r) => r.n), color: 0 }], { onPick: (i) => { location.hash = regHref('assets', { 'f.location_code': d.locations[i].label }); } });
   }

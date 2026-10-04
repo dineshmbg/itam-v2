@@ -4,17 +4,17 @@ import { humanize } from '../core/format.js';
 // value -> [tone, icon, label]. Status is always icon + text (never colour alone).
 const MAP = {
   // asset status
-  IN_USE: ['ok', 'checkmark--filled', 'In use'], IN_STORE: ['info', 'box', 'In store'], SURPLUS: ['mute', 'archive', 'Surplus'],
-  NOT_IN_USE: ['mute', 'circle-dash', 'Not in use'], NOT_ON_NETWORK: ['warn', 'warning--alt--filled', 'Not on network'],
-  STANDBY: ['info', 'pending', 'Standby'], REMOVED_FROM_AMC: ['bad', 'close--filled', 'Removed from AMC'], TRANSFERRED: ['mute', 'arrow--right', 'Transferred'],
+  IN_USE: ['ok', 'checkmark--filled', 'Deployed'], IN_STORE: ['info', 'box', 'In stock'], SURPLUS: ['mute', 'archive', 'Surplus'],
+  NOT_IN_USE: ['mute', 'circle-dash', 'Not in use'], NOT_ON_NETWORK: ['warn', 'warning--alt--filled', 'Offline'],
+  STANDBY: ['info', 'pending', 'Standby'], REMOVED_FROM_AMC: ['bad', 'close--filled', 'Out of AMC'], TRANSFERRED: ['mute', 'arrow--right', 'Transferred'],
   // cover
-  ACTIVE: ['ok', 'checkmark--filled', 'Active'], EXPIRING_90D: ['warn', 'warning--alt--filled', 'Expiring ≤90 d'], EXPIRED: ['bad', 'error--filled', 'Expired'],
+  ACTIVE: ['ok', 'checkmark--filled', 'Active'], EXPIRING_90D: ['warn', 'warning--alt--filled', 'Renewal due'], EXPIRED: ['bad', 'error--filled', 'Lapsed'],
   REMOVED: ['mute', 'close--outline', 'Removed'], UNKNOWN: ['mute', 'circle-dash', 'Unknown'],
   // pm
-  DONE: ['ok', 'checkmark--filled', 'Done'], DONE_OUTSIDE_QUARTER: ['warn', 'warning--alt--filled', 'Done (stale)'], PENDING: ['warn', 'pending', 'Pending'],
+  DONE: ['ok', 'checkmark--filled', 'Completed'], DONE_OUTSIDE_QUARTER: ['warn', 'warning--alt--filled', 'Completed late'], PENDING: ['warn', 'pending', 'Scheduled'],
   NA: ['mute', 'circle-dash', 'n/a'], NOT_TRACKED: ['mute', 'circle-dash', 'Not tracked'],
   // calls
-  OPEN: ['warn', 'in-progress', 'Open'], CLOSED: ['ok', 'checkmark--filled', 'Closed'],
+  OPEN: ['warn', 'in-progress', 'Raised'], CLOSED: ['ok', 'checkmark--filled', 'Resolved'],
   P1: ['bad', 'error--filled', 'P1'], P2: ['info', 'information--filled', 'P2'], P3: ['mute', 'circle-dash', 'P3'],
   NO_SPARE_NEEDED: ['mute', 'circle-dash', 'Not needed'], PART_RECEIVED: ['ok', 'checkmark--filled', 'Part received'], PART_PENDING: ['warn', 'hourglass', 'Part pending'],
   // rma / engineers

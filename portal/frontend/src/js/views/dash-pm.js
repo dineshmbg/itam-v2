@@ -20,11 +20,11 @@ export function mountPmDash(root) {
     const behind = k.pct_done != null && k.pct_done + 5 < k.expected_pct;
     return [
       { id: 'scope', label: 'Assets in scope', value: int(k.scope), sub: 'desktops, workstations, servers, network, printers…', ico: 'devices', href: regHref('pm', { 'f.pm_status': '' }) },
-      { id: 'done', label: 'PM done', value: int(k.done), sub: k.pct_done != null ? `${pct(k.pct_done)} of scope` : '', tone: 'ok', href: regHref('pm', { 'f.pm_status': 'DONE' }) },
-      { id: 'pending', label: 'PM pending', value: int(k.pending), sub: d.cycle.overdue ? 'quarter ended, not closed yet' : `${int(k.days_left)} days left in the quarter`, tone: k.pending ? (behind ? 'bad' : 'warn') : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING' }) },
-      { id: 'stale', label: 'Done outside quarter', value: int(k.stale), sub: 'dated before this quarter', tone: k.stale ? 'warn' : 'ok', href: regHref('pm', { 'f.pm_status': 'DONE_OUTSIDE_QUARTER' }) },
+      { id: 'done', label: 'PM completed', value: int(k.done), sub: k.pct_done != null ? `${pct(k.pct_done)} of scope` : '', tone: 'ok', href: regHref('pm', { 'f.pm_status': 'DONE' }) },
+      { id: 'pending', label: 'PM scheduled', value: int(k.pending), sub: d.cycle.overdue ? 'quarter ended, not closed yet' : `${int(k.days_left)} days left in the quarter`, tone: k.pending ? (behind ? 'bad' : 'warn') : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING' }) },
+      { id: 'stale', label: 'Completed late', value: int(k.stale), sub: 'dated before this quarter', tone: k.stale ? 'warn' : 'ok', href: regHref('pm', { 'f.pm_status': 'DONE_OUTSIDE_QUARTER' }) },
       { id: 'pace', label: 'Time elapsed', value: pct(k.expected_pct), sub: behind ? 'work is behind the calendar' : 'work is on pace', tone: behind ? 'bad' : 'ok' },
-      { id: 'un', label: 'Pending, no engineer', value: int(k.unassigned), sub: 'nobody is responsible yet', tone: k.unassigned ? 'bad' : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING', 'f.engineer_name': '~blank' }) },
+      { id: 'un', label: 'Scheduled, no engineer', value: int(k.unassigned), sub: 'nobody is responsible yet', tone: k.unassigned ? 'bad' : 'ok', href: regHref('pm', { 'f.pm_status': 'PENDING', 'f.engineer_name': '~blank' }) },
     ];
   };
 
@@ -77,17 +77,17 @@ export function mountPmDash(root) {
     timeline = h('div', { class: 'contents' });
     body.append(h('div', { class: 'span-12' }, progress(d)),
       panel('Completion per day', { cls: 'span-8', hint: 'bars: PM dated that day · line: running total' }, cBurn),
-      panel('By asset class', { cls: 'span-4' }, cClass, legend([{ label: 'Done', color: 'var(--chart-3)' }, { label: 'Done outside quarter', color: 'var(--chart-5)' }, { label: 'Pending', color: 'var(--chart-8)' }])),
+      panel('By asset class', { cls: 'span-4' }, cClass, legend([{ label: 'Completed', color: 'var(--chart-3)' }, { label: 'Completed late', color: 'var(--chart-5)' }, { label: 'Scheduled', color: 'var(--chart-8)' }])),
       panel('By engineer', { cls: 'span-12' }, cEng), timeline);
     drawExtra(d);
     const days = d.burn.map((r) => date(r.day)); let run = 0;
     const cum = d.burn.map((r) => (run += r.n));
     ch.burn = await charts.monthly(cBurn.querySelector('canvas'), days, [{ label: 'PM done that day', data: d.burn.map((r) => r.n), color: 2 }], { label: 'Running total', data: cum });
     const e = d.by_engineer;
-    ch.eng = await charts.barH(cEng.querySelector('canvas'), e.map((r) => person(r.label)), [{ label: 'Done', data: e.map((r) => r.done), color: 2 }, { label: 'Outside quarter', data: e.map((r) => r.stale), color: 4 }, { label: 'Pending', data: e.map((r) => r.pending), color: 7 }],
+    ch.eng = await charts.barH(cEng.querySelector('canvas'), e.map((r) => person(r.label)), [{ label: 'Completed', data: e.map((r) => r.done), color: 2 }, { label: 'Completed late', data: e.map((r) => r.stale), color: 4 }, { label: 'Scheduled', data: e.map((r) => r.pending), color: 7 }],
       { stacked: true, onPick: (i) => { location.hash = regHref('pm', { 'f.engineer_name': e[i].label, 'f.pm_status': '' }); } });
     const c = d.by_class;
-    ch.cls = await charts.barH(cClass.querySelector('canvas'), c.map((r) => r.label), [{ label: 'Done', data: c.map((r) => r.done), color: 2 }, { label: 'Outside', data: c.map((r) => r.stale), color: 4 }, { label: 'Pending', data: c.map((r) => r.pending), color: 7 }],
+    ch.cls = await charts.barH(cClass.querySelector('canvas'), c.map((r) => r.label), [{ label: 'Completed', data: c.map((r) => r.done), color: 2 }, { label: 'Completed late', data: c.map((r) => r.stale), color: 4 }, { label: 'Scheduled', data: c.map((r) => r.pending), color: 7 }],
       { stacked: true, onPick: (i) => { location.hash = regHref('pm', { 'f.asset_class': c[i].label, 'f.pm_status': '' }); } });
   }
 

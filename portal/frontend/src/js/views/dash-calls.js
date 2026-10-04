@@ -19,7 +19,7 @@ export function mountCallsDash(root) {
   const kpis = (d) => {
     const k = d.kpi;
     return [
-      { id: 'open', label: 'Open calls', value: int(k.open), sub: k.oldest_open != null ? `oldest ${int(k.oldest_open)} days` : 'none open', tone: k.open ? 'warn' : 'ok', ico: 'in-progress', href: regHref('calls', { 'f.call_status': 'OPEN' }) },
+      { id: 'open', label: 'Calls raised, unresolved', value: int(k.open), sub: k.oldest_open != null ? `oldest ${int(k.oldest_open)} days` : 'none open', tone: k.open ? 'warn' : 'ok', ico: 'in-progress', href: regHref('calls', { 'f.call_status': 'OPEN' }) },
       { id: 'part', label: 'Waiting for a part', value: int(k.awaiting_part), sub: 'open, part not received', tone: k.awaiting_part ? 'warn' : 'ok', href: regHref('calls', { 'f.call_status': 'OPEN', 'f.spare_status': 'PART_PENDING' }) },
       { id: 'age', label: 'Median age of open calls', value: k.median_open_age != null ? dec(k.median_open_age) + ' d' : '—', sub: 'days since logged' },
       { id: 'tat', label: 'Average time to close', value: k.avg_tat != null ? dec(k.avg_tat) + ' d' : '—', sub: k.median_tat != null ? `median ${dec(k.median_tat)} d` : '' },
@@ -41,7 +41,7 @@ export function mountCallsDash(root) {
     const cPri = canvas('Calls by priority', 'short');
     body.append(
       panel('Calls per month', { cls: 'span-8', hint: 'bars: calls · line: average days to close' }, cMonth,
-        legend([{ label: 'Closed', n: m.reduce((a, r) => a + r.closed, 0), color: 'var(--chart-3)' }, { label: 'Open', n: m.reduce((a, r) => a + r.open, 0), color: 'var(--chart-2)' }, { label: 'Average days to close', n: null, color: 'var(--c-text)' }])),
+        legend([{ label: 'Resolved', n: m.reduce((a, r) => a + r.closed, 0), color: 'var(--chart-3)' }, { label: 'Open', n: m.reduce((a, r) => a + r.open, 0), color: 'var(--chart-2)' }, { label: 'Average days to close', n: null, color: 'var(--c-text)' }])),
       panel('Open calls by age', { cls: 'span-4', hint: 'days since logged' }, cAge, h('div', { class: 'faint', style: { marginTop: '8px', fontSize: '12px' } }, 'Select a bar to list those calls.')),
       panel('Most frequent problems', { cls: 'span-6' }, cProb),
       panel('Asset class', { cls: 'span-3' }, cClass, legend(d.by_class.map((c, i) => ({ label: humanize(c.label), n: c.n, color: `var(--chart-${(i % 10) + 1})` })), (it, i) => regHref('calls', { 'f.asset_class': d.by_class[i].label }))),
@@ -55,7 +55,7 @@ export function mountCallsDash(root) {
     body.append(extra);
     drawExtra(d);
     ch.month = await charts.monthly(cMonth.querySelector('canvas'), m.map((r) => month(r.label)),
-      [{ label: 'Closed', data: m.map((r) => r.closed), color: 2 }, { label: 'Open', data: m.map((r) => r.open), color: 1 }], { label: 'Average days to close', data: m.map((r) => r.avg_tat) },
+      [{ label: 'Resolved', data: m.map((r) => r.closed), color: 2 }, { label: 'Open', data: m.map((r) => r.open), color: 1 }], { label: 'Average days to close', data: m.map((r) => r.avg_tat) },
       { onPick: (i) => { location.hash = regHref('calls', { 'f.month': m[i].label }); } });
     ch.age = await charts.barH(cAge.querySelector('canvas'), d.ageing.map((r) => r.label), [{ label: 'Open calls', data: d.ageing.map((r) => r.n), color: 1 }],
       { colors: [2, 4, 1, 1, 7], onPick: (i) => { location.hash = regHref('calls', { 'f.call_status': 'OPEN', 'f.age_bucket': d.ageing[i].label }); } });
