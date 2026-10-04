@@ -22,7 +22,7 @@ def one(con, sql, params=()):
 def test_financial_year_quarters(day, label, start, end):
     q = pm.quarter(dt.date.fromisoformat(day))
     assert (q["label"], q["start"].isoformat(), q["end"].isoformat()) == (label, start, end)
-    assert q["kickoff"] == q["start"] + dt.timedelta(days=40)
+    assert q["kickoff"] == q["start"] + dt.timedelta(days=60)
 
 
 # ---------------------------------------------------------------- reports
@@ -238,7 +238,7 @@ def test_notification_rules_detect_and_send_once(box, monkeypatch):
     assert d and all(v["rows"] for v in d.values())
     assert mailer.detect("CALL_OVERDUE", {"older_than_days": 1}, today=dt.date(2026, 9, 22)) == {}      # weekly digest: Mondays only
     pmk = mailer.detect("PM_KICKOFF", {}, today=pm.quarter(monday)["kickoff"])
-    assert pmk and mailer.detect("PM_KICKOFF", {}, today=pm.quarter(monday)["kickoff"] - dt.timedelta(days=1)) == {}    # nothing before day 40
+    assert pmk and mailer.detect("PM_KICKOFF", {}, today=pm.quarter(monday)["kickoff"] - dt.timedelta(days=1)) == {}    # nothing before day 60
     preview = mailer.run_rules(dry_run=True, only="CALL_OVERDUE")
     assert preview and all(p["status"] in ("DRY_RUN", "NO_ADDRESS") for p in preview) and sent == []          # a preview never sends
     first = mailer.run_rules(only="CALL_OVERDUE")
