@@ -11,7 +11,7 @@ export function mountPmDash(root) {
   let strip, ch = {}, dead = false, timeline;
   const sub = h('span', null, '');
   const body = h('div', { class: 'grid' });
-  const tools = [h('a', { class: 'btn', href: '#/registers/pm' }, icon('data-table'), 'Worklist'), h('a', { class: 'btn', href: '#/pm/cycles' }, icon('calendar'), 'Cycles and snapshots'), shareMenu({ pack: 'pm' })];
+  const tools = [h('a', { class: 'btn primary', href: '#/pm/work' }, icon('in-progress'), 'Work orders'), h('a', { class: 'btn', href: '#/registers/pm' }, icon('data-table'), 'Worklist'), h('a', { class: 'btn', href: '#/pm/cycles' }, icon('calendar'), 'Cycles and snapshots'), shareMenu({ pack: 'pm' })];
   root.append(h('div', { class: 'page', 'data-mod': 'pm' }, pageHead('Preventive maintenance', sub, tools), h('div', { id: 'kpis' }), body));
   body.append(loading());
 

@@ -172,15 +172,23 @@ async def audit_list(request):
 
 
 # ---------------------------------------------------------------- per-user saved column layout
+EXTRA_VIEWS = {"pm_work"}     # column layouts for screens that are not registers (their columns live in the front end)
+
+
+def _check_view(name):
+    if name not in EXTRA_VIEWS:
+        queries.dataset(name)     # 400 if not a real register
+
+
 async def view_get(request):
     name, u = request.path_params["name"], request.state.user
-    queries.dataset(name)     # 400 if not a real register
+    _check_view(name)
     return json_response({"columns": await run_in_threadpool(views_pref.get, u["user_id"], name)})
 
 
 async def view_save(request):
     name, b, u, _ip = _ctx(request)
-    queries.dataset(name)
+    _check_view(name)
     try:
         cols = await run_in_threadpool(views_pref.save, u["user_id"], name, b.get("columns") or [])
     except ValueError as e:
@@ -190,7 +198,7 @@ async def view_save(request):
 
 async def view_reset(request):
     name, u = request.path_params["name"], request.state.user
-    queries.dataset(name)
+    _check_view(name)
     await run_in_threadpool(views_pref.reset, u["user_id"], name)
     return json_response({"ok": True})
 

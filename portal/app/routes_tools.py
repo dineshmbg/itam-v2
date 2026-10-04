@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, backup, db, export, importer, mailer, packs, pm, reports, scheduler
+from . import auth, backup, db, export, importer, mailer, packs, pm, pmwo, reports, scheduler
 from .web import client_ip, current_user, error, guarded, json_response, read, write
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -205,8 +205,99 @@ async def pm_rollover(request):
         raise pm.PmError('Type ROLL OVER to confirm.')
     await run_in_threadpool(backup.run_backup, "MANUAL", u["username"], "safety copy before PM roll-over")
     out = await run_in_threadpool(pm.rollover, u, client_ip(request), bool(b.get("early")))
+    await run_in_threadpool(pmwo.generate, u["username"])      # the new quarter's work orders, ready at once
     await _log(request, "PM_ROLLOVER", out["opened"], out)
     return json_response(out)
+
+
+# ---------------------------------------------------------------- preventive maintenance: work orders
+def _wo_args(request):
+    g = request.query_params.get
+    return dict(eng=_pm_scope(request.state.user), label=g("quarter") or None)
+
+
+async def wo_summary(request):
+    return json_response(await run_in_threadpool(pmwo.summary, **_wo_args(request)))
+
+
+async def wo_list(request):
+    g = request.query_params.get
+    return json_response(await run_in_threadpool(lambda: pmwo.list_orders(**_wo_args(request), bucket=g("bucket"), q=(g("q") or "").strip()[:60] or None, engineer=g("engineer") or None,
+                                                                          cls=g("cls") or None, location=g("location") or None, limit=min(int(g("limit") or 300), 1000), offset=int(g("offset") or 0))))
+
+
+async def wo_detail(request):
+    return json_response(await run_in_threadpool(pmwo.detail, int(request.query_params.get("id", 0)), _pm_scope(request.state.user)))
+
+
+async def wo_generate(request):
+    out = await run_in_threadpool(pmwo.generate, request.state.user["username"])
+    await _log(request, "PM_WO_GENERATED", out["quarter"], out)
+    return json_response(out)
+
+
+async def wo_save(request):
+    b, u = request.state.body, request.state.user
+    return json_response(await run_in_threadpool(pmwo.save, int(b.get("id", 0)), b.get("results"), b.get("minutes"), b.get("remarks"), u, _pm_scope(u)))
+
+
+async def wo_complete(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(pmwo.complete, int(b.get("id", 0)), b.get("pm_date"), u, client_ip(request), _pm_scope(u))
+    await _log(request, "PM_WO_COMPLETED", out["wo_no"], {"asset": out["asset_key"]})
+    return json_response(out)
+
+
+async def wo_batch(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(pmwo.batch_complete, b.get("ids"), b.get("pm_date"), b.get("minutes"), u, client_ip(request), _pm_scope(u))
+    await _log(request, "PM_WO_BATCH", None, {"completed": out["completed"], "skipped": len(out["skipped"])})
+    return json_response(out)
+
+
+async def wo_defer_request(request):
+    b, u = request.state.body, request.state.user
+    return json_response(await run_in_threadpool(pmwo.defer_request, int(b.get("id", 0)), b.get("reason"), b.get("to"), u, _pm_scope(u)))
+
+
+async def wo_defer_decide(request):
+    b, u = request.state.body, request.state.user
+    return json_response(await run_in_threadpool(pmwo.defer_decide, int(b.get("id", 0)), bool(b.get("approve")), b.get("note"), u))
+
+
+async def wo_verify(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(pmwo.verify, b.get("ids"), bool(b.get("approve", True)), b.get("note"), u)
+    await _log(request, "PM_WO_VERIFY" if b.get("approve", True) else "PM_WO_REJECT", None, {"done": out["done"]})
+    return json_response(out)
+
+
+async def wo_ack(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(pmwo.acknowledge, b.get("ids"), b.get("action"), b.get("by"), b.get("note"), u, client_ip(request))
+    await _log(request, "PM_WO_OWNER_" + str(b.get("action", "")).upper(), None, {"done": out["done"]})
+    return json_response(out)
+
+
+async def wo_cancel(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(pmwo.cancel, int(b.get("id", 0)), b.get("reason"), u)
+    await _log(request, "PM_WO_CANCELLED", out["wo_no"], {"reason": b.get("reason")})
+    return json_response(out)
+
+
+async def wo_findings(request):
+    g = request.query_params.get
+    return json_response(await run_in_threadpool(pmwo.findings, _pm_scope(request.state.user), (g("status") or "OPEN").upper(), g("quarter") or None))
+
+
+async def wo_finding_update(request):
+    b, u = request.state.body, request.state.user
+    return json_response(await run_in_threadpool(pmwo.finding_update, int(b.get("id", 0)), b, u, _pm_scope(u)))
+
+
+async def wo_checklists(request):
+    return json_response(await run_in_threadpool(pmwo.checklists))
 
 
 # ---------------------------------------------------------------- backup and restore
@@ -360,6 +451,21 @@ routes = [
     Route("/api/pm/record", W_(pm_record), methods=["POST"]),
     Route("/api/pm/snapshot", W_(pm_snapshot, admin=True), methods=["POST"]),
     Route("/api/pm/rollover", W_(pm_rollover, admin=True), methods=["POST"]),
+    Route("/api/pmwo/summary", R_(wo_summary)),
+    Route("/api/pmwo/list", R_(wo_list)),
+    Route("/api/pmwo/detail", R_(wo_detail)),
+    Route("/api/pmwo/findings", R_(wo_findings)),
+    Route("/api/pmwo/checklists", R_(wo_checklists)),
+    Route("/api/pmwo/generate", W_(wo_generate, admin=True), methods=["POST"]),
+    Route("/api/pmwo/save", W_(wo_save), methods=["POST"]),
+    Route("/api/pmwo/complete", W_(wo_complete), methods=["POST"]),
+    Route("/api/pmwo/batch", W_(wo_batch), methods=["POST"]),
+    Route("/api/pmwo/defer-request", W_(wo_defer_request), methods=["POST"]),
+    Route("/api/pmwo/defer-decide", W_(wo_defer_decide, admin=True), methods=["POST"]),
+    Route("/api/pmwo/verify", W_(wo_verify, admin=True), methods=["POST"]),
+    Route("/api/pmwo/ack", W_(wo_ack, admin=True), methods=["POST"]),
+    Route("/api/pmwo/cancel", W_(wo_cancel, admin=True), methods=["POST"]),
+    Route("/api/pmwo/finding", W_(wo_finding_update), methods=["POST"]),
     Route("/api/admin/backups", R_(backup_list, admin="strict")),
     Route("/api/admin/backups/create", W_(backup_now, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/verify", W_(backup_verify, admin="strict"), methods=["POST"]),
