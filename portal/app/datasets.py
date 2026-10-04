@@ -70,7 +70,7 @@ DATASETS = {
     },
     "calls": {
         "table": "svc_call", "pk": "sr_id", "base": "is_current = 1", "label": "Calls", "search": CALL_SEARCH,
-        "sort": ("cipl_call_date", "desc"), "defaults": {"call_status": ["OPEN", "~blank"]},
+        "sort": ("cipl_call_date", "desc"), "defaults": {},
         "columns": [
             col("sr_id", "SR ID", "mono", ref="call"),
             col("cipl_call_date", "Logged", "date"),
@@ -84,7 +84,7 @@ DATASETS = {
             col("spare_status", "Spare", "badge"),
         ],
         "facets": [
-            facet("call_status", "Status", order=["~blank", "OPEN", "CLOSED"], labels={"~blank": "Blank"}),
+            facet("call_status", "Status", kind="radio"),
             facet("priority", "Priority"), facet("engineer", "Engineer"), facet("spare_status", "Spare"),
             facet("asset_class", "Asset class"),
             facet("age_bucket", "Age of open calls", order=["0-7 days", "8-14 days", "15-30 days", "31-60 days", "61+ days"],

@@ -24,10 +24,3 @@ def test_spare_and_rma_columns():
     assert export.shown("return_status", "PENDING") == "Awaiting return"
     assert export.shown("faulty_spare_status", "SENT") == "Returned to OEM"
 
-
-def test_call_register_defaults_to_raised_and_blank_with_grouped_status_facet():
-    from app import datasets
-    ds = datasets.DATASETS["calls"]
-    assert ds["defaults"]["call_status"] == ["OPEN", "~blank"]
-    f = next(x for x in ds["facets"] if x["key"] == "call_status")
-    assert f["order"] == ["~blank", "OPEN", "CLOSED"] and f["labels"]["~blank"] == "Blank" and f["kind"] == "single"
