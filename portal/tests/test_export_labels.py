@@ -24,3 +24,4 @@ def test_spare_and_rma_columns():
     assert export.shown("return_status", "PENDING") == "Awaiting return"
     assert export.shown("faulty_spare_status", "SENT") == "Returned to OEM"
 
+

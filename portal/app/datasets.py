@@ -70,7 +70,7 @@ DATASETS = {
     },
     "calls": {
         "table": "svc_call", "pk": "sr_id", "base": "is_current = 1", "label": "Calls", "search": CALL_SEARCH,
-        "sort": ("cipl_call_date", "desc"), "defaults": {},
+        "sort": ("call_status", "asc"), "then": "cipl_call_date DESC NULLS LAST", "defaults": {},   # grouped Blank, Raised, Resolved; newest first within each
         "columns": [
             col("sr_id", "SR ID", "mono", ref="call"),
             col("cipl_call_date", "Logged", "date"),
@@ -79,7 +79,7 @@ DATASETS = {
             col("problem_description", "Problem", "text"),
             col("engineer", "Engineer", "name", ref="engineer"),
             col("priority", "Priority", "badge"),
-            col("call_status", "Status", "badge"),
+            col("call_status", "Status", "badge", sort="CASE WHEN call_status IS NULL THEN 0 WHEN call_status = 'OPEN' THEN 1 ELSE 2 END"),
             col("age_days", "Age / TAT (d)", "int", expr="coalesce(ageing_days, tat_days)", align="right"),
             col("spare_status", "Spare", "badge"),
         ],

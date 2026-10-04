@@ -118,11 +118,12 @@ def list_rows(name, args, user=None, cap=None):
     sort_expr = cols[sort_key]["sort"] if sort_key in cols else ds["sort"][0]
     if sort_key not in cols and sort_key != ds["sort"][0]:
         raise BadRequest(f"cannot sort by '{sort_key}'")
+    then = f"{ds['then']}, " if ds.get("then") else ""      # optional secondary order inside each sort group
     base_sql = "false" if (args.get("scope") == "archived" and ds.get("readonly")) else (archived_base(name, ds) if args.get("scope") == "archived" else ds["base"])
     base = _with_scope(base_sql, scope_for(name, ds, user))
     w, p = where(ds, q, filters, base=base)
     select = ", ".join([f"{c['expr']} AS {c['key']}" for c in ds["columns"]] + [f"{c['ref_id']} AS {c['key']}__ref" for c in ds["columns"] if c.get("ref_id")])
-    sql = f"SELECT {select}, {ds['pk']} AS id FROM {ds['table']} WHERE {w} ORDER BY {sort_expr} {direction} NULLS LAST, {ds['pk']} LIMIT %s OFFSET %s"
+    sql = f"SELECT {select}, {ds['pk']} AS id FROM {ds['table']} WHERE {w} ORDER BY {sort_expr} {direction} NULLS LAST, {then}{ds['pk']} LIMIT %s OFFSET %s"
     rows = db.query(sql, p + [limit, offset])
     out = {"rows": rows}
     if offset == 0 or args.get("count") == "1":

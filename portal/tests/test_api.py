@@ -234,3 +234,12 @@ def test_every_dataset_column_and_facet_is_queryable(client):
         assert set(r.json()["facets"]) == {f["key"] for f in ds["facets"]}
         for col in ds["columns"]:
             assert client.get(f"/api/registers/{name}?limit=1&sort={col['key']}").status_code == 200, (name, col["key"])
+
+
+def test_call_register_is_grouped_blank_raised_resolved_by_default(client):
+    rows = client.get("/api/registers/calls?limit=500").json()["rows"]
+    grp = [0 if r["call_status"] is None else 1 if r["call_status"] == "OPEN" else 2 for r in rows]
+    assert grp == sorted(grp) and len(set(grp)) == 3
+    for g in (0, 1, 2):
+        dates = [str(r["cipl_call_date"]) for r, x in zip(rows, grp) if x == g and r["cipl_call_date"]]
+        assert dates == sorted(dates, reverse=True)
