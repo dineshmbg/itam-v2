@@ -192,8 +192,12 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: underline; }
 
 /* ---------- drawer ---------- */
 .scrim { position: fixed; inset: 0; background: var(--c-scrim); z-index: 50; animation: fade 120ms var(--ease); }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--c-surface); z-index: 51; box-shadow: var(--shadow-pop); display: flex; flex-direction: column; animation: slide 160ms var(--ease); }
-@keyframes fade { from { opacity: 0; } } @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
+.drawer { position: fixed; top: 16px; right: 16px; bottom: 16px; width: min(640px, calc(100vw - 32px)); background: var(--c-surface); z-index: 51; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-float); display: flex; flex-direction: column; animation: pop 180ms var(--ease); }
+@keyframes fade { from { opacity: 0; } } @keyframes pop { from { transform: translateY(8px) scale(0.985); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
+.drawer-h { cursor: grab; background: var(--c-surface-2); touch-action: none; user-select: none; }
+.drawer.dragging .drawer-h { cursor: grabbing; }
+.drawer .kv { border-radius: 10px; overflow: hidden; }
 .drawer-h { display: flex; gap: 12px; align-items: flex-start; padding: 16px 16px 12px; border-bottom: 1px solid var(--c-border); }
 .drawer-h .t { flex: 1; min-width: 0; }
 .drawer-h h2 { font-size: 16px; line-height: 24px; overflow-wrap: anywhere; }

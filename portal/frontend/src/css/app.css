@@ -137,7 +137,7 @@ a.ent:hover { text-decoration: none; border-bottom-style: solid; }
   .usr-t { display: none; }
   .btn.usr { width: 36px; padding: 0; justify-content: center; }
   .hdr-tools .usr-wrap .btn { display: inline-flex; }
-  .drawer { width: 100vw; }
+  .drawer { top: 8px; right: 8px; bottom: 8px; width: calc(100vw - 16px); border-radius: 14px; }
   .frow.row-inline { grid-template-columns: 1fr; }
   .codes { columns: 1; }
   .kv, .kv.compact { grid-template-columns: 120px minmax(0, 1fr); }

@@ -4,7 +4,7 @@ let current = null;
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
 
-/** Right-hand detail panel with focus trap, Esc to close, scrim click to close, and focus return. */
+/** Floating, rounded, draggable detail window with focus trap, Esc to close, scrim click to close, and focus return. */
 export function openDrawer({ title, subtitle, onClose }) {
   if (current) current.close(true);
   const previous = document.activeElement;
@@ -35,6 +35,21 @@ export function openDrawer({ title, subtitle, onClose }) {
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
   }
+  const head = panel.querySelector('.drawer-h');
+  let drag = null;
+  head.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button') || e.button !== 0) return;
+    const r = panel.getBoundingClientRect();
+    Object.assign(panel.style, { right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px', height: r.height + 'px' });
+    drag = { x: e.clientX, y: e.clientY, l: r.left, t: r.top };
+    panel.classList.add('dragging'); head.setPointerCapture(e.pointerId);
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    panel.style.left = Math.max(0, Math.min(innerWidth - 120, drag.l + e.clientX - drag.x)) + 'px';
+    panel.style.top = Math.max(0, Math.min(innerHeight - 48, drag.t + e.clientY - drag.y)) + 'px';
+  });
+  head.addEventListener('pointerup', () => { drag = null; panel.classList.remove('dragging'); });
   document.addEventListener('keydown', onKey, true);
   scrim.addEventListener('click', () => close());
   closeBtn.addEventListener('click', () => close());
