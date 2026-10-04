@@ -16,6 +16,9 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
   const pages = new Map();
   const loading = new Set();
   const rowEls = new Map();
+  // Optional group heading rows ([{ start, n, label }] in data order). A heading takes one grid row of its own, so display index d and
+  // data index i differ by the number of headings above; itemAt/dispOf convert, and every place that used a row index goes through them.
+  let groups = [];
 
   const cols = columns.map((c) => WIDTH[c.kind] || WIDTH.text);
   const template = cols.map(([min, fr]) => `minmax(${min}, ${fr})`).join(' ');
@@ -72,10 +75,30 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     return td;
   }
 
+  function itemAt(d) {
+    let gi = -1;
+    for (let k = 0; k < groups.length; k++) { if (groups[k].start + k <= d) gi = k; else break; }
+    if (gi >= 0 && groups[gi].start + gi === d) return { head: groups[gi] };
+    return { idx: d - (gi + 1) };
+  }
+  const dispOf = (i) => i + groups.filter((g) => g.start <= i).length;
+  const dispTotal = () => total + groups.length;
+  function setGroups(g) {
+    groups = g || [];
+    rowEls.forEach((el) => el.remove()); rowEls.clear();
+    active = -1;
+    rowsEl.style.height = dispTotal() * rowHeight + 'px';
+  }
+
   function rowAt(i) { const p = pages.get(Math.floor(i / pageSize)); return p ? p[i % pageSize] : undefined; }
 
-  function buildRow(i) {
-    const row = rowAt(i);
+  function buildRow(d) {
+    const it = itemAt(d);
+    if (it.head) {
+      return h('div', { class: 'gt-group', role: 'row', id: `gtr-${d}`, 'aria-rowindex': String(d + 2), dataset: { loaded: '1' }, style: { transform: `translateY(${d * rowHeight}px)` } },
+        h('div', { class: 'gt-gcell', role: 'gridcell' }, h('strong', null, it.head.label), h('span', { class: 'n' }, int(it.head.n))));
+    }
+    const i = d, row = rowAt(it.idx);
     const el = h('div', { class: 'gt-row' + (row ? '' : ' skel'), role: 'row', id: `gtr-${i}`, 'aria-rowindex': String(i + 2), style: { transform: `translateY(${i * rowHeight}px)` } });
     if (row) {
       columns.forEach((c) => el.append(cell(c, row)));
@@ -96,6 +119,7 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
       if (my !== epoch) return;
       loading.delete(page);
       pages.set(page, res.rows);
+      if (res.groups !== undefined) setGroups(res.groups);
       if (res.total != null && res.total !== total) setTotal(res.total);
       render(true);
     }).catch((e) => { loading.delete(page); showError(e); });
@@ -103,8 +127,8 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
 
   function setTotal(n) {
     total = n;
-    rowsEl.style.height = n * rowHeight + 'px';
-    scroller.setAttribute('aria-rowcount', String(n + 1));
+    rowsEl.style.height = dispTotal() * rowHeight + 'px';
+    scroller.setAttribute('aria-rowcount', String(dispTotal() + 1));
     emptyEl.hidden = n > 0;
     scroller.hidden = n === 0;
     render();
@@ -114,14 +138,15 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     const top = scroller.scrollTop;
     const view = scroller.clientHeight || 600;
     const first = Math.max(0, Math.floor(top / rowHeight) - 6);
-    const last = Math.min(total - 1, Math.ceil((top + view) / rowHeight) + 6);
+    const last = Math.min(dispTotal() - 1, Math.ceil((top + view) / rowHeight) + 6);
     for (const [i, el] of rowEls) {
-      if (i < first || i > last || (force && !el.dataset.loaded && rowAt(i))) { el.remove(); rowEls.delete(i); }
+      if (i < first || i > last || (force && !el.dataset.loaded && rowAt(itemAt(i).idx))) { el.remove(); rowEls.delete(i); }
     }
     const need = new Set();
     for (let i = first; i <= last; i++) {
       if (!rowEls.has(i)) { const el = buildRow(i); rowsEl.append(el); rowEls.set(i, el); }
-      need.add(Math.floor(i / pageSize));
+      const it = itemAt(i);
+      if (it.idx != null) need.add(Math.floor(it.idx / pageSize));
     }
     need.forEach(ensure);
   }
@@ -135,7 +160,7 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     if (!el || !el.dataset.loaded) return;
     const i = +el.id.slice(4);
     setActive(i);
-    const row = rowAt(i);
+    const row = rowAt(itemAt(i).idx);
     if (row && onOpen) onOpen(row);
   });
 
@@ -155,11 +180,14 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     const step = { ArrowDown: 1, ArrowUp: -1, PageDown: 12, PageUp: -12 }[e.key];
     if (step) {
       e.preventDefault();
-      const n = Math.min(total - 1, Math.max(0, (active < 0 ? (step > 0 ? -1 : 1) : active) + step));
+      const D = dispTotal();
+      let n = Math.min(D - 1, Math.max(0, (active < 0 ? (step > 0 ? -1 : 1) : active) + step));
+      if (itemAt(n).head) n = Math.min(D - 1, Math.max(0, n + (step > 0 ? 1 : -1)));       // headings are not selectable
+      if (itemAt(n).head) return;
       reveal(n); render(); setActive(n);
-    } else if (e.key === 'Home') { e.preventDefault(); scroller.scrollTop = 0; render(); setActive(0); }
-    else if (e.key === 'End') { e.preventDefault(); scroller.scrollTop = total * rowHeight; render(); setActive(total - 1); }
-    else if (e.key === 'Enter' && active >= 0) { const r = rowAt(active); if (r && onOpen) onOpen(r); }
+    } else if (e.key === 'Home') { e.preventDefault(); scroller.scrollTop = 0; render(); setActive(itemAt(0).head ? 1 : 0); }
+    else if (e.key === 'End') { e.preventDefault(); scroller.scrollTop = dispTotal() * rowHeight; render(); setActive(dispTotal() - 1); }
+    else if (e.key === 'Enter' && active >= 0) { const r = rowAt(itemAt(active).idx); if (r && onOpen) onOpen(r); }
   });
 
   function showError(e) {
@@ -171,7 +199,7 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     el: root,
     /** New query: forget everything and start again from the top. */
     reset(emptyText) {
-      epoch++; pages.clear(); loading.clear();
+      epoch++; pages.clear(); loading.clear(); groups = [];
       rowEls.forEach((el) => el.remove()); rowEls.clear();
       active = -1; scroller.scrollTop = 0;
       if (emptyText) emptyEl.replaceChildren(icon('search'), h('h3', null, emptyText.title), h('div', null, emptyText.hint || ''));
@@ -181,7 +209,7 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
     /** Live refresh: keep scroll position and current rows on screen, re-fetch only what is visible. */
     refresh() {
       epoch++;
-      const visible = new Set([...rowEls.keys()].map((i) => Math.floor(i / pageSize)));
+      const visible = new Set([...rowEls.keys()].map((d) => itemAt(d).idx).filter((i) => i != null).map((i) => Math.floor(i / pageSize)));
       loading.clear();
       const my = epoch;
       visible.forEach((p) => {
@@ -189,14 +217,15 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
         fetchPage(p * pageSize, pageSize, p === 0).then((res) => {
           if (my !== epoch) return;
           loading.delete(p); pages.set(p, res.rows);
+          if (res.groups !== undefined) setGroups(res.groups);
           if (res.total != null && res.total !== total) setTotal(res.total);
-          rowEls.forEach((el, i) => { if (Math.floor(i / pageSize) === p) { el.remove(); rowEls.delete(i); } });
+          rowEls.forEach((el, i) => { const it = itemAt(i); if (it.idx != null && Math.floor(it.idx / pageSize) === p) { el.remove(); rowEls.delete(i); } });
           render();
         }).catch(showError);
       });
       for (const p of [...pages.keys()]) if (!visible.has(p)) pages.delete(p);
     },
-    setSelected(id) { selected = id; rowEls.forEach((el, i) => { if (id != null && rowAt(i)?.id === id) el.setAttribute('aria-selected', 'true'); else el.removeAttribute('aria-selected'); }); },
+    setSelected(id) { selected = id; rowEls.forEach((el, i) => { if (id != null && rowAt(itemAt(i).idx)?.id === id) el.setAttribute('aria-selected', 'true'); else el.removeAttribute('aria-selected'); }); },
     setEmpty(t) { emptyEl.replaceChildren(icon('search'), h('h3', null, t.title), h('div', null, t.hint || '')); },
     setSort,
     get total() { return total; },

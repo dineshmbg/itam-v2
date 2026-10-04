@@ -164,7 +164,7 @@ def meta():
     out = {}
     for name, ds in DATASETS.items():
         out[name] = {
-            "label": ds["label"], "sort": list(ds["sort"]), "defaults": ds.get("defaults", {}), "detail": ds.get("detail"),
+            "label": ds["label"], "sort": list(ds["sort"]), "defaults": ds.get("defaults", {}), "detail": ds.get("detail"), "group": ds.get("group"),
             "columns": [{k: c[k] for k in ("key", "label", "kind", "align", "ref")} for c in ds["columns"]],
             "facets": [{k: f[k] for k in ("key", "label", "kind", "limit", "labels")} for f in ds["facets"]],
         }

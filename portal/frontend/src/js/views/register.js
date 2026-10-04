@@ -6,6 +6,7 @@ import { setParams, patchParam, current } from '../core/router.js';
 import { openDrawer } from '../ui/drawer.js';
 import { createFacets, optionLabel, BLANK } from '../ui/facets.js';
 import { createTable } from '../ui/table.js';
+import { labelOf } from '../ui/badge.js';
 import { errorBlock, pageHead } from './common.js';
 import { getSchema } from '../core/editor.js';
 import { mountRecord, newRecord } from './record.js';
@@ -97,12 +98,27 @@ export function mountRegister(root, name, opts = {}) {
     table.reset(q || Object.values(filters).some((v) => v.length) ? { title: 'No matching records', hint: 'Try a different search or remove a filter.' } : { title: 'No records', hint: '' });
   }
 
+  // Group heading rows (e.g. Blank / Raised / Resolved on the call register) - only while the list is sorted by the grouping column,
+  // sized from the status facet's counts so every heading shows the whole group's count, not just the page loaded. The counts must add
+  // up to the list's total, otherwise no headings are drawn rather than wrong ones.
+  function groupHeadings(res) {
+    const g = ds.group;
+    if (!g || sort.key !== g.key || !res.facets?.[g.key]) return [];
+    const n = Object.fromEntries(res.facets[g.key].map((i) => [i.v, i.n]));
+    const sel = filters[g.key] || [];
+    const order = (sort.dir === 'desc' ? [...g.order].reverse() : g.order).filter((v) => n[v] > 0 && (!sel.length || sel.includes(v)));
+    let start = 0;
+    const out = order.map((v) => { const o = { start, n: n[v], label: v === BLANK ? 'Blank' : labelOf(v, g.key) }; start += n[v]; return o; });
+    return start === res.total ? out : [];
+  }
+
   async function fetchPage(offset, limit, first) {
     const res = await get('/api/registers/' + name, paramsForServer(offset, limit, first));
     if (dead) return { rows: [], total: 0 };
     if (first) {
       countEl.replaceChildren(h('strong', null, int(res.total)), ` ${res.total === 1 ? 'record' : 'records'}`);
       if (res.facets) facets.update(res.facets, filters);
+      res.groups = groupHeadings(res);
     }
     return res;
   }

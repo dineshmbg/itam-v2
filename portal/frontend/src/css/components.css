@@ -148,6 +148,10 @@ button.gt-th:hover { background: var(--c-surface-3); color: var(--c-text); }
 .gt-th[aria-sort="ascending"] .ico, .gt-th[aria-sort="descending"] .ico { color: var(--c-accent); }
 .gt-rows { position: relative; }
 .gt-row { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: var(--cols); align-items: center; height: var(--row-h, 36px); border-bottom: 1px solid var(--c-border); background: var(--c-surface); cursor: pointer; }
+.gt-group { position: absolute; left: 0; right: 0; height: var(--row-h, 36px); display: flex; align-items: center; background: var(--c-surface-3); border-bottom: 1px solid var(--c-border-strong); }
+.gt-gcell { position: sticky; left: 0; display: flex; align-items: baseline; gap: 10px; padding: 0 12px; font-size: 13px; }
+.gt-gcell strong { font-weight: 600; letter-spacing: .01em; }
+.gt-gcell .n { color: var(--c-text-3); font-variant-numeric: tabular-nums; }
 .gt-row.row-self { background: var(--c-ok-bg); box-shadow: inset 3px 0 0 var(--c-ok); }
 .gt-row:hover { background: var(--c-surface-2); }
 .gt-row[aria-selected="true"] { background: var(--c-accent-bg); box-shadow: inset 3px 0 0 var(--c-accent); }

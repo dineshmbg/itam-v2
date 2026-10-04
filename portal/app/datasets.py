@@ -70,7 +70,8 @@ DATASETS = {
     },
     "calls": {
         "table": "svc_call", "pk": "sr_id", "base": "is_current = 1", "label": "Calls", "search": CALL_SEARCH,
-        "sort": ("call_status", "asc"), "then": "cipl_call_date DESC NULLS LAST", "defaults": {},   # grouped Blank, Raised, Resolved; newest first within each
+        "sort": ("call_status", "asc"), "then": "cipl_call_date DESC NULLS LAST", "defaults": {},
+        "group": {"key": "call_status", "order": ["~blank", "OPEN", "CLOSED"]},   # heading rows while sorted by this column   # grouped Blank, Raised, Resolved; newest first within each
         "columns": [
             col("sr_id", "SR ID", "mono", ref="call"),
             col("cipl_call_date", "Logged", "date"),
