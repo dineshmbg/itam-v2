@@ -25,6 +25,21 @@ def _plain(v):
     return v
 
 
+# Stored status codes -> the wording shown on screen (frontend/src/js/ui/badge.js), applied only to these columns when a file is
+# written. Stored values are untouched, so an upload with the old codes still loads.
+STATUS_LABELS = {
+    "asset_status": {"IN_USE": "Deployed", "IN_STORE": "In stock", "NOT_ON_NETWORK": "Offline", "REMOVED_FROM_AMC": "Out of AMC"},
+    "cover_status": {"EXPIRING_90D": "Renewal due", "EXPIRED": "Lapsed"},
+    "pm_status": {"PENDING": "Scheduled", "DONE": "Completed", "DONE_OUTSIDE_QUARTER": "Completed late"},
+    "call_status": {"OPEN": "Raised", "CLOSED": "Resolved"},
+}
+
+
+def shown(key, v):
+    m = STATUS_LABELS.get(key)
+    return m.get(v, v) if m else v
+
+
 def safe_name(s):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_")[:80] or "report"
 
@@ -35,7 +50,7 @@ def csv_bytes(table):
     w = csv.writer(buf, lineterminator="\r\n")
     w.writerow([label for _, label in table["columns"]])
     for r in table["rows"]:
-        w.writerow(["" if r.get(k) is None else (r[k].isoformat() if isinstance(r[k], (dt.date, dt.datetime)) else r[k]) for k, _ in table["columns"]])
+        w.writerow(["" if r.get(k) is None else (r[k].isoformat() if isinstance(r[k], (dt.date, dt.datetime)) else shown(k, r[k])) for k, _ in table["columns"]])
     return ("﻿" + buf.getvalue()).encode("utf-8")       # BOM so Excel opens the file as UTF-8
 
 
@@ -151,7 +166,7 @@ def xlsx_bytes(tables, title=None, kpis=None, meta=None, generated_by=None):
             c.alignment = Alignment(vertical="center", wrap_text=True)
         widths = [len(str(label)) for _, label in cols]
         for r in t["rows"]:
-            row = [_plain(r.get(k)) for k, _ in cols]
+            row = [_plain(shown(k, r.get(k))) for k, _ in cols]
             ws.append(row)
             for i, v in enumerate(row):
                 if v is not None and len(str(v)) > widths[i]:
@@ -239,14 +254,14 @@ def pdf_bytes(title, subtitle="", kpis=None, tables=None, charts=None, footer=""
             continue
         weights = []
         for k, label in cols:
-            m = max([len(_txt(label))] + [len(_txt(r.get(k))) for r in rows[:200]])
+            m = max([len(_txt(label))] + [len(_txt(shown(k, r.get(k)))) for r in rows[:200]])
             weights.append(min(40, max(6, m)))
         total = sum(weights)
         avail = W - 30 * mm
         widths = [avail * w / total for w in weights]
         data = [[Paragraph(_txt(label).upper(), st_head) for _, label in cols]]
         for r in rows:
-            data.append([Paragraph(_txt(r.get(k)).replace("&", "&amp;").replace("<", "&lt;"), st_cell) for k, _ in cols])
+            data.append([Paragraph(_txt(shown(k, r.get(k))).replace("&", "&amp;").replace("<", "&lt;"), st_cell) for k, _ in cols])
         tb = Table(data, colWidths=widths, repeatRows=1)
         tb.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), navy), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, light]),
                                 ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#DDE1E6")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
