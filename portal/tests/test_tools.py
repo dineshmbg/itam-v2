@@ -444,3 +444,46 @@ def test_registers_hide_personal_data_and_people_registers_work(box, monkeypatch
         fake_user(monkeypatch, "ADMIN")
         q = c.get("/api/search?q=dinesh").json()
         assert "employees" in {g["dataset"] for g in q["groups"]} or "engineers" in {g["dataset"] for g in q["groups"]}
+
+
+# ---------------------------------------------------------------- past quarters
+def _frozen_quarter(box, label="Q9 TST-TST 2099", as_of=dt.date(2099, 1, 1)):
+    """Two engineers' assets frozen in a made-up quarter, so the assertions never depend on what the real snapshots hold."""
+    keys = [r[0] for r in box.execute(f"SELECT asset_key FROM asset WHERE {pm.IN_SCOPE} ORDER BY asset_key LIMIT 4").fetchall()]
+    box.execute("DELETE FROM pm_snapshot WHERE quarter_label = %s", (label,))
+    for key, eng, st in zip(keys, ["ENG-A", "ENG-A", "ENG-B", None], ["DONE", "PENDING", "DONE_OUTSIDE_QUARTER", "PENDING"]):
+        box.execute("INSERT INTO pm_snapshot (quarter_label, as_of, asset_key, asset_class, engineer_name, location_code, pm_status) VALUES (%s,%s,%s,'DESKTOP',%s,'LOC1',%s)", (label, as_of, key, eng, st))
+    return label, as_of, keys
+
+
+def test_past_quarters_list_and_detail(box):
+    label, as_of, keys = _frozen_quarter(box)
+    row = next(r for r in pm.history()["quarters"] if r["label"] == label)
+    assert (row["scope"], row["done"], row["stale"], row["pending"], row["pct_done"]) == (4, 1, 1, 2, 50.0)
+    d = pm.history_detail(label)
+    assert d["as_of"] == as_of and d["kpi"]["unassigned"] == 1 and {r["label"] for r in d["by_engineer"]} == {"ENG-A", "ENG-B", "UNASSIGNED"}
+    assert d["assets"]["total"] == 4 and [r["asset_key"] for r in d["assets"]["rows"]] == sorted(keys)
+    assert pm.history_detail(label, status="PENDING")["assets"]["total"] == 2
+    assert pm.history_detail(label, q=keys[0].lower())["assets"]["total"] >= 1
+    assert pm.history_detail(label, q="100%_")["assets"]["total"] == 0                         # wildcard characters are searched literally
+    mine = pm.history_detail(label, eng="ENG-A")
+    assert mine["kpi"]["scope"] == 2 and {r["asset_key"] for r in mine["assets"]["rows"]} <= set(keys)
+    assert pm.history_detail(label, eng="~no-engineer~")["kpi"]["scope"] == 0                  # a user with no linked engineer sees nothing
+    for bad in (lambda: pm.history_detail("Q1 NOT-REAL 1999"), lambda: pm.history_detail(label, as_of=dt.date(1999, 1, 1)), lambda: pm.history_detail(label, status="BOGUS")):
+        with pytest.raises(pm.PmError):
+            bad()
+
+
+def test_past_quarters_api_scoping_and_export(box, monkeypatch):
+    label, as_of, keys = _frozen_quarter(box)
+    fake_user(monkeypatch, role="USER", username="E1", engineer_key="ENG-A")
+    with TestClient(app) as c:
+        q = c.get("/api/pm/history").json()["quarters"]
+        assert next(r for r in q if r["label"] == label)["scope"] == 2                         # only their own two assets
+        d = c.get("/api/pm/history/detail", params={"quarter": label}).json()
+        assert d["kpi"]["scope"] == 2 and {r["engineer_name"] for r in d["assets"]["rows"]} == {"ENG-A"}
+        assert c.get("/api/pm/history/detail", params={"quarter": "nope"}).status_code == 404
+        r = c.post("/api/pm/history/export", json={"quarter": label, "format": "csv"}, headers=HDR)
+        assert r.status_code == 200 and "Completed" in r.text and "ENG-B" not in r.text and "DONE_OUTSIDE" not in r.text
+        r = c.post("/api/pm/history/export", json={"quarter": label, "format": "xlsx"}, headers=HDR)
+        assert r.status_code == 200 and zipfile.is_zipfile(io.BytesIO(r.content))

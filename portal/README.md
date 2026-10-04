@@ -556,6 +556,16 @@ The 1 Oct call tracker passed the import check and was only refused when *Load* 
 - Not built: an "undo this load" button. A load changes several tables and merges with manual edits made since, so a safe undo is not a simple reverse; the protection is the rehearsal, the automatic safety backup before every load, and the restore drill (`db/restore_drill.py`).
 - Tests: `tests/test_import_rehearsal.py`; the old check test now asserts the rehearsal saved nothing.
 
+## Past quarters page (2026-10-04)
+
+**Preventive maintenance > Past quarters** (`#/pm/history`) answers "what did an earlier quarter look like?" after it has been closed. Closing never deletes anything: every close (plus the Monday and after-import ones) leaves rows in `pm_snapshot`, and this page reads them.
+- Top table: every quarter with a snapshot, newest first, shown as of its **last** snapshot (the closing picture) - in scope, completed, completed late, scheduled-not-done, done %. Select one to open it.
+- Opened quarter: KPI strip, by engineer / class / location, the PM recorded through the portal in that quarter (`pm_record`), and the asset-by-asset list. Filters: snapshot date (when a quarter has several), status, free-text search. State is in the URL, so a view can be bookmarked.
+- **Download** (Excel, CSV, PDF) takes the same filters; the file also carries the breakdowns. Logged as `EXPORT_PM_HISTORY`. Status uses the on-screen wording (Completed / Completed late / Scheduled).
+- Who sees what: open to everyone who can see PM. An administrator sees the whole fleet; a User sees only the assets that were on their own `engineer_key` when the snapshot was taken. A User with no linked engineer sees nothing (the PM dashboard falls back to everything in that case; this page deliberately does not).
+- API: `GET /api/pm/history`, `GET /api/pm/history/detail?quarter=&as_of=&status=&q=`, `POST /api/pm/history/export`. Code: `pm.history*`, `frontend/src/js/views/pm-history.js`. Tests: `test_past_quarters_*` in `tests/test_tools.py`.
+- Not covered: asset *fields* other than PM (a snapshot holds PM status/date/signers, class, engineer, location, cover status - not the whole asset row). For anything else about a past date use the asset's Change history or the Change log.
+
 ## Design basis
 
 WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy). Colour: one accent per module plus a 10-hue categorical chart palette (`tokens.css`), status colour always paired with an icon and a text label.

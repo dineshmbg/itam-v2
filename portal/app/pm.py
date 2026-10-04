@@ -138,6 +138,107 @@ def cycles():
             "snapshots": _rows("SELECT quarter_label, as_of, count(*) AS assets FROM pm_snapshot GROUP BY 1, 2 ORDER BY 2 DESC")}
 
 
+# ---------------------------------------------------------------- past quarters
+STATUS_WORDS = {"PENDING": "Scheduled", "DONE": "Completed", "DONE_OUTSIDE_QUARTER": "Completed late"}
+HISTORY_ROW_LIMIT = 2000
+
+
+def _snap_scope(eng):
+    return (" AND engineer_name = %(eng)s" if eng else "")
+
+
+def history(eng=None):
+    """Every quarter that has a frozen snapshot, newest first, each shown as it stood in its LAST snapshot (the closing picture; the
+    weekly and after-import ones sit between). `eng` scopes the figures to one engineer's own assets, as the dashboard does."""
+    rows = _rows(f"""WITH last AS (SELECT quarter_label, max(as_of) AS as_of, count(DISTINCT as_of) AS snapshots FROM pm_snapshot GROUP BY 1)
+                     SELECT s.quarter_label AS label, l.as_of, l.snapshots, count(*) AS scope, count(*) FILTER (WHERE s.pm_status = 'DONE') AS done,
+                            count(*) FILTER (WHERE s.pm_status = 'DONE_OUTSIDE_QUARTER') AS stale, count(*) FILTER (WHERE s.pm_status = 'PENDING') AS pending
+                     FROM pm_snapshot s JOIN last l ON l.quarter_label = s.quarter_label AND l.as_of = s.as_of
+                     WHERE true{_snap_scope(eng)} GROUP BY 1, 2, 3""", {"eng": eng})
+    cyc = {c["quarter_label"]: c for c in _rows("SELECT quarter_label, start_date, end_date, status, closed_at, closed_by FROM pm_cycle")}
+    recorded = {r["quarter_label"]: r["n"] for r in _rows("SELECT quarter_label, count(*) AS n FROM pm_record GROUP BY 1")}
+    out = []
+    for r in rows:
+        c = cyc.get(r["label"])
+        start, end = (c["start_date"], c["end_date"]) if c else R.quarter_window(r["label"])
+        r.update(start=start, end=end, status=c["status"] if c else None, closed_at=c["closed_at"] if c else None, closed_by=c["closed_by"] if c else None,
+                 recorded=recorded.get(r["label"], 0), pct_done=round(100.0 * (r["done"] + r["stale"]) / r["scope"], 1) if r["scope"] else None)
+        out.append(r)
+    out.sort(key=lambda r: (r["start"] or dt.date.min), reverse=True)
+    return {"quarters": out}
+
+
+def _quarter_snapshots(label):
+    return [r["as_of"] for r in _rows("SELECT DISTINCT as_of FROM pm_snapshot WHERE quarter_label = %s ORDER BY as_of DESC", [label])]
+
+
+def history_assets(label, as_of=None, eng=None, status=None, q=None, limit=HISTORY_ROW_LIMIT):
+    """Asset-by-asset rows of one frozen snapshot, optionally narrowed to a status and/or a text search. Returns (rows, total, as_of, available dates)."""
+    dates = _quarter_snapshots(label)
+    if not dates:
+        raise PmError(f"There is no snapshot for {label}.", 404)
+    if as_of is None:
+        as_of = dates[0]
+    elif as_of not in dates:
+        raise PmError(f"{label} has no snapshot dated {as_of:%d %b %Y}.", 404)
+    where, p = ["quarter_label = %(label)s", "as_of = %(as_of)s"], {"label": label, "as_of": as_of, "eng": eng, "lim": limit}
+    if eng:
+        where.append("engineer_name = %(eng)s")
+    if status:
+        if status not in STATUS_WORDS:
+            raise PmError("Unknown PM status.")
+        where.append("pm_status = %(status)s")
+        p["status"] = status
+    if q and q.strip():
+        where.append("(asset_key ILIKE %(q)s OR engineer_name ILIKE %(q)s OR location_code ILIKE %(q)s OR asset_class ILIKE %(q)s OR pm_done_by ILIKE %(q)s OR pm_signed_by ILIKE %(q)s)")
+        p["q"] = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    w = " AND ".join(where)
+    rows = _rows(f"SELECT asset_key, asset_class, engineer_name, location_code, pm_status, pm_date, pm_done_by, pm_signed_by, cover_status FROM pm_snapshot WHERE {w} ORDER BY asset_key LIMIT %(lim)s", p)
+    total = db.one(f"SELECT count(*) AS n FROM pm_snapshot WHERE {w}", p)["n"]
+    return rows, total, as_of, dates
+
+
+def history_detail(label, as_of=None, eng=None, status=None, q=None):
+    """One past quarter as it stood on a snapshot date: totals, breakdowns, the PM actually recorded in that quarter, and the asset list."""
+    rows, total, as_of, dates = history_assets(label, as_of, eng, status, q)
+    p = {"label": label, "as_of": as_of, "eng": eng}
+    base = f"quarter_label = %(label)s AND as_of = %(as_of)s{_snap_scope(eng)}"
+    k = db.one(f"""SELECT count(*) AS scope, count(*) FILTER (WHERE pm_status = 'DONE') AS done, count(*) FILTER (WHERE pm_status = 'DONE_OUTSIDE_QUARTER') AS stale,
+                          count(*) FILTER (WHERE pm_status = 'PENDING') AS pending, count(*) FILTER (WHERE pm_status = 'PENDING' AND engineer_name IS NULL) AS unassigned
+                   FROM pm_snapshot WHERE {base}""", p)
+    k["pct_done"] = round(100.0 * (k["done"] + k["stale"]) / k["scope"], 1) if k["scope"] else None
+
+    def by(col, name):
+        return _rows(f"""SELECT coalesce({col}, '{name}') AS label, count(*) AS scope, count(*) FILTER (WHERE pm_status = 'DONE') AS done,
+                                count(*) FILTER (WHERE pm_status = 'DONE_OUTSIDE_QUARTER') AS stale, count(*) FILTER (WHERE pm_status = 'PENDING') AS pending
+                         FROM pm_snapshot WHERE {base} GROUP BY 1 ORDER BY pending DESC, 1""", p)
+    cyc = db.one("SELECT start_date, end_date, status, closed_at, closed_by FROM pm_cycle WHERE quarter_label = %s", [label])
+    start, end = (cyc["start_date"], cyc["end_date"]) if cyc else R.quarter_window(label)
+    recorded = _rows(f"""SELECT pm_id AS id, asset_key, pm_date, done_by, signed_by, remarks, recorded_by, recorded_at FROM pm_record WHERE quarter_label = %(label)s
+                        {"AND asset_key IN (SELECT asset_key FROM pm_snapshot WHERE quarter_label = %(label)s AND engineer_name = %(eng)s)" if eng else ""} ORDER BY pm_date, pm_id LIMIT 500""", p)
+    return {"label": label, "as_of": as_of, "snapshots": dates, "start": start, "end": end, "status": cyc["status"] if cyc else None,
+            "closed_at": cyc["closed_at"] if cyc else None, "closed_by": cyc["closed_by"] if cyc else None,
+            "kpi": k, "by_engineer": by("engineer_name", "UNASSIGNED"), "by_class": by("asset_class", "UNKNOWN"), "by_location": by("location_code", "UNKNOWN"),
+            "recorded": recorded, "assets": {"rows": rows, "total": total, "limit": HISTORY_ROW_LIMIT, "status": status, "q": q}}
+
+
+def history_tables(label, as_of, eng=None, status=None, q=None):
+    """The same picture as printable tables (Excel / PDF / CSV): first the asset list, then the breakdowns."""
+    d = history_detail(label, as_of, eng, status, q)
+    for r in d["assets"]["rows"]:
+        r["pm_status"] = STATUS_WORDS.get(r["pm_status"], r["pm_status"])
+    cols = [("label", "Name"), ("scope", "In scope"), ("done", "Completed"), ("stale", "Completed late"), ("pending", "Scheduled")]
+    k = d["kpi"]
+    tables = [{"title": "Assets", "columns": [("asset_key", "Asset"), ("asset_class", "Class"), ("engineer_name", "Engineer"), ("location_code", "Location"), ("pm_status", "PM status"),
+                                              ("pm_date", "PM date"), ("pm_done_by", "Done by"), ("pm_signed_by", "Signed by")], "rows": d["assets"]["rows"]},
+              {"title": "By engineer", "columns": [("label", "Engineer")] + cols[1:], "rows": d["by_engineer"]},
+              {"title": "By class", "columns": [("label", "Class")] + cols[1:], "rows": d["by_class"]},
+              {"title": "By location", "columns": [("label", "Location")] + cols[1:], "rows": d["by_location"]}]
+    kpis = [("Quarter", label), ("Snapshot taken", f"{d['as_of']:%d %b %Y}"), ("Assets in scope", k["scope"]), ("PM completed", k["done"]), ("Completed late", k["stale"]),
+            ("PM scheduled (not done)", k["pending"]), ("Completion (%)", k["pct_done"])]
+    return d, tables, kpis
+
+
 # ---------------------------------------------------------------- recording
 def record(keys, pm_date, done_by, signed_by, remarks, user, ip):
     """Record a completed PM for one or many assets in a single transaction."""

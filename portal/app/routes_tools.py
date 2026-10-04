@@ -143,6 +143,41 @@ async def pm_dashboard(request):
     return json_response(await run_in_threadpool(pm.dashboard, eng))
 
 
+def _pm_scope(u):
+    """None for an administrator; otherwise the user's own engineer_key. A user with no linked engineer sees nothing (never everything)."""
+    return None if u["role"] == "ADMIN" else (u.get("engineer_key") or "~no-engineer~")
+
+
+def _history_args(request, source):
+    g = source.get
+    as_of = dt.date.fromisoformat(str(g("as_of"))[:10]) if g("as_of") else None
+    return str(g("quarter") or ""), as_of, _pm_scope(request.state.user), g("status") or None, str(g("q") or "")[:60] or None
+
+
+async def pm_history(request):
+    return json_response(await run_in_threadpool(pm.history, _pm_scope(request.state.user)))
+
+
+async def pm_history_detail(request):
+    label, as_of, eng, status, q = _history_args(request, request.query_params)
+    return json_response(await run_in_threadpool(pm.history_detail, label, as_of, eng, status, q))
+
+
+async def pm_history_export(request):
+    b, u = request.state.body, request.state.user
+    label, as_of, eng, status, q = _history_args(request, b)
+    fmt = b.get("format", "xlsx")
+
+    def run():
+        d, tables, kpis = pm.history_tables(label, as_of, eng, status, q)
+        title = f"PM - {label}"
+        data, mime, ext = export.render(fmt, title.upper(), f"Snapshot of {d['as_of']:%d %b %Y} - {d['assets']['total']:,} assets - {dt.date.today():%d %b %Y} - {u['display_name']}", tables, kpis, footer=u["username"])
+        return data, mime, f"{export.safe_name(title)}_{d['as_of']:%Y%m%d}.{ext}"
+    data, mime, name = await run_in_threadpool(run)
+    await _log(request, "EXPORT_PM_HISTORY", name, {"format": fmt, "quarter": label})
+    return _file(data, mime, name)
+
+
 async def pm_cycles(request):
     d = await run_in_threadpool(pm.cycles)
     d["rollover"] = await run_in_threadpool(pm.rollover_preview)
@@ -319,6 +354,9 @@ routes = [
     Route("/api/dashboard/share", W_(dash_share), methods=["POST"]),                    # sends a real e-mail - stays blocked for a read-only account
     Route("/api/pm/dashboard", R_(pm_dashboard)),
     Route("/api/pm/cycles", R_(pm_cycles, admin=True)),
+    Route("/api/pm/history", R_(pm_history)),
+    Route("/api/pm/history/detail", R_(pm_history_detail)),
+    Route("/api/pm/history/export", W_(pm_history_export, mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/pm/record", W_(pm_record), methods=["POST"]),
     Route("/api/pm/snapshot", W_(pm_snapshot, admin=True), methods=["POST"]),
     Route("/api/pm/rollover", W_(pm_rollover, admin=True), methods=["POST"]),
