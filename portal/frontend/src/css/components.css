@@ -208,7 +208,7 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: underline; }
 .kv > div { padding: 6px 12px; border-bottom: 1px solid var(--c-border); min-height: 32px; display: flex; align-items: center; overflow-wrap: anywhere; }
 .kv > div:nth-last-child(-n+2) { border-bottom: 0; }
 .kv > .k { background: var(--c-surface-2); color: var(--c-text-2); font-size: 12.5px; }
-.kv > .v, .kv > .v .mono, .kv > .v a { font-size: 14px; line-height: 20px; }
+.kv > .v, .kv > .v .mono, .kv > .v a { font-family: var(--font-mono); font-size: 14px; line-height: 20px; letter-spacing: 0; }
 .flags { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ---------- misc ---------- */
