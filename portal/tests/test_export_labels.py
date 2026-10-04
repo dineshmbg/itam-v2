@@ -16,3 +16,18 @@ def test_status_columns_use_display_wording():
 def test_other_columns_and_unknown_values_pass_through():
     assert export.shown("asset_class", "PENDING") == "PENDING"
     assert export.shown("asset_status", "SURPLUS") == "SURPLUS"
+
+
+def test_spare_and_rma_columns():
+    assert export.shown("spare_status", "PART_PENDING") == "Awaiting part"
+    assert export.shown("spare_status", "NO_SPARE_NEEDED") == "No part required"
+    assert export.shown("return_status", "PENDING") == "Awaiting return"
+    assert export.shown("faulty_spare_status", "SENT") == "Returned to OEM"
+
+
+def test_call_register_defaults_to_raised_and_blank_with_grouped_status_facet():
+    from app import datasets
+    ds = datasets.DATASETS["calls"]
+    assert ds["defaults"]["call_status"] == ["OPEN", "~blank"]
+    f = next(x for x in ds["facets"] if x["key"] == "call_status")
+    assert f["order"] == ["~blank", "OPEN", "CLOSED"] and f["labels"]["~blank"] == "Blank" and f["kind"] == "single"

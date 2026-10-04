@@ -21,7 +21,7 @@ let el = null, timer = null, hideTimer = null, owner = null;
 
 function fmt(key, v) {
   if (v == null || v === '') return h('span', { class: 'faint' }, '—');
-  if (BADGE_KEYS.has(key)) return badge(v);
+  if (BADGE_KEYS.has(key)) return badge(v, key);
   if (key.endsWith('_date') || key.startsWith('date_')) return date(v);
   if (typeof v === 'number') return key.endsWith('_no') || key === 'cpf_no' ? String(v) : (Number.isInteger(v) ? int(v) : dec(v));
   return /email/.test(key) ? h('span', { class: 'email' }, v) : String(v);

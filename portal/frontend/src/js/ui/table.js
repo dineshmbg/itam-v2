@@ -61,7 +61,7 @@ export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage
       case 'date': td.append(date(v)); break;
       case 'int': td.append(int(v)); break;
       case 'money': td.append(Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })); break;
-      case 'badge': td.append(badge(v)); break;
+      case 'badge': td.append(badge(v, col.key)); break;
       default:
         td.title = v;
         if (col.key === 'asset_class') {

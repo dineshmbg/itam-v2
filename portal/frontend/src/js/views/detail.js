@@ -39,7 +39,7 @@ export function value(key, v, self) {
   if (key === 'hostname' && (v == null || v === '') && self) return h('span', { class: 'mono faint', title: 'No hostname recorded - showing the Asset (CI) number' }, self);
   if (v == null || v === '') return h('span', { class: 'faint' }, '—');
   if (REF[key] && !(self && v === self)) return entity(REF[key], v, NAME_KEYS.has(key) ? person(String(v)) : String(v), { mono: !NAME_KEYS.has(key) });
-  if (BADGE_KEYS.has(key)) return badge(v);
+  if (BADGE_KEYS.has(key)) return badge(v, key);
   if (key.endsWith('_date') || key === 'date') return date(v);
   if (typeof v === 'number') return key.endsWith('_days') || key === 'rate_value' || key === 'purchase_cost' ? dec(v) : (key.endsWith('_no') || key === 'cpf_no' ? String(v) : int(v));
   if (NAME_KEYS.has(key)) return person(String(v));

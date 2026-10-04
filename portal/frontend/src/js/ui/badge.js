@@ -16,15 +16,23 @@ const MAP = {
   // calls
   OPEN: ['warn', 'in-progress', 'Raised'], CLOSED: ['ok', 'checkmark--filled', 'Resolved'],
   P1: ['bad', 'error--filled', 'P1'], P2: ['info', 'information--filled', 'P2'], P3: ['mute', 'circle-dash', 'P3'],
-  NO_SPARE_NEEDED: ['mute', 'circle-dash', 'Not needed'], PART_RECEIVED: ['ok', 'checkmark--filled', 'Part received'], PART_PENDING: ['warn', 'hourglass', 'Part pending'],
+  NO_SPARE_NEEDED: ['mute', 'circle-dash', 'No part required'], PART_RECEIVED: ['ok', 'checkmark--filled', 'Part received'], PART_PENDING: ['warn', 'hourglass', 'Awaiting part'],
   // rma / engineers
   RETURNED: ['ok', 'checkmark--filled', 'Returned'], COMPLETE: ['ok', 'checkmark--filled', 'Complete'], PARTIAL: ['warn', 'in-progress', 'Partial'], NOT_STARTED: ['bad', 'circle-dash', 'Not started'],
   LEFT_ROSTER: ['warn', 'warning--alt--filled', 'Left roster'], RESIGNED: ['mute', 'close--outline', 'Resigned'],
 };
 
-export function badge(value) {
+// Wording that depends on the column: the same stored code means something different in a different register (PENDING is a PM
+// status on an asset, but an RMA's faulty part still awaiting return). Looked up first; falls back to MAP.
+const BY_COLUMN = {
+  return_status: { PENDING: ['warn', 'pending', 'Awaiting return'] },
+  faulty_spare_status: { SENT: ['ok', 'checkmark--filled', 'Returned to OEM'], NOT_SENT: ['warn', 'pending', 'Not yet returned'] },
+};
+const pick = (value, key) => (key && BY_COLUMN[key] && BY_COLUMN[key][value]) || MAP[value];
+
+export function badge(value, key) {
   if (value == null || value === '') return h('span', { class: 'faint' }, '—');
-  const m = MAP[value];
+  const m = pick(value, key);
   if (!m) return h('span', { class: 'badge mute' }, humanize(value));
   return h('span', { class: 'badge ' + m[0] }, icon(m[1]), m[2]);
 }
@@ -41,7 +49,7 @@ export function genderGlyph(g) {
 
 export const TONE_VAR = { ok: '--c-ok', warn: '--c-warn', bad: '--c-bad', info: '--c-info', mute: '--c-text-3' };
 export const toneOf = (value) => (MAP[value] ? MAP[value][0] : 'mute');
-export const labelOf = (value) => (MAP[value] ? MAP[value][2] : humanize(value));
+export const labelOf = (value, key) => { const m = pick(value, key); return m ? m[2] : humanize(value); };
 
 // asset_class -> --chart-N: a stable colour per class (see edit.py CLASSES), used only as a small identifying dot next to the
 // class name (register table, hover card) - never as the badge's own background, so it stays legible at hundreds of rows.

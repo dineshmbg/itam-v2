@@ -32,6 +32,9 @@ STATUS_LABELS = {
     "cover_status": {"EXPIRING_90D": "Renewal due", "EXPIRED": "Lapsed"},
     "pm_status": {"PENDING": "Scheduled", "DONE": "Completed", "DONE_OUTSIDE_QUARTER": "Completed late"},
     "call_status": {"OPEN": "Raised", "CLOSED": "Resolved"},
+    "spare_status": {"NO_SPARE_NEEDED": "No part required", "PART_PENDING": "Awaiting part"},
+    "return_status": {"PENDING": "Awaiting return"},
+    "faulty_spare_status": {"SENT": "Returned to OEM", "NOT_SENT": "Not yet returned"},
 }
 
 

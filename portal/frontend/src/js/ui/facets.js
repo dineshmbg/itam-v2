@@ -11,11 +11,11 @@ const BAD = new Set(['Pending', 'Missing', 'Not sent', 'Not linked']);
 const titleCase = (s) => String(s).toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase());
 
 export function optionLabel(key, v, labels = {}) {
-  if (v === BLANK) return '(blank)';
   if (labels[v]) return labels[v];
+  if (v === BLANK) return '(blank)';
   if (RAW.has(key)) return v;
   if (NAMES.has(key)) return titleCase(v);
-  return labelOf(v);
+  return labelOf(v, key);
 }
 
 export function createFacets({ facets, onChange }) {

@@ -62,7 +62,7 @@ def test_register_totals_match_database(client):
         "rma": sql_count("SELECT count(*) n FROM oem_rma WHERE is_current=1"),
     }
     for name, n in expected.items():
-        assert client.get(f"/api/registers/{name}?limit=1").json()["total"] == n, name
+        assert client.get(f"/api/registers/{name}?limit=1" + ("&f.call_status=" if name == "calls" else "")).json()["total"] == n, name
 
 
 def test_filter_matches_sql(client):
@@ -73,7 +73,7 @@ def test_filter_matches_sql(client):
 
 
 def test_facet_counts_sum_to_total(client):
-    d = client.get("/api/registers/calls?limit=1&facets=1").json()
+    d = client.get("/api/registers/calls?limit=1&facets=1&f.call_status=").json()   # empty = all calls (the register defaults to Raised + blank)
     for key in ("call_status", "priority", "spare_status"):
         assert sum(i["n"] for i in d["facets"][key]) == d["total"], key
 
