@@ -14,6 +14,17 @@ def search_expr(cols):
 ADMIN_ONLY_DATASETS = {"calls", "inward", "outward", "rma"}
 
 
+def _case(expr, order):
+    """SQL that ranks rows into the listed groups (a '~blank' entry matches NULL; anything unlisted goes last)."""
+    whens = " ".join(f"WHEN ({expr}) IS NULL THEN {i}" if v == "~blank" else f"WHEN ({expr}) = '{v}' THEN {i}" for i, v in enumerate(order))
+    return f"CASE {whens} ELSE {len(order)} END"
+
+
+def _group(key, on, order, expr=None):
+    """Group heading rows: counts come from facet `key` (values in `order`), shown while the list is sorted by column `on`."""
+    return {"key": key, "col": on, "order": order}
+
+
 def col(key, label, kind="text", expr=None, sort=None, align=None, ref=None, ref_id=None):
     """ref: hover-card kind (asset | call | cpf | engineer) for this column; ref_id: SQL expression for the id when it differs from the shown value."""
     return {"key": key, "label": label, "kind": kind, "expr": expr or key, "sort": sort or expr or key, "align": align, "ref": ref, "ref_id": ref_id}
@@ -36,10 +47,19 @@ RMA_SEARCH = ["rma_line_id", "rma_no", "vendor_case_id", "vendor", "device_model
 EMPLOYEE_SEARCH = ["cpf_no", "employee_name", "designation", "level", "discipline", "sub_discipline", "org_unit_name", "position_name", "location", "qualification"]
 ENGINEER_SEARCH = ["engineer_key", "display_name", "ecode", "designation", "skill_category", "deployed_at", "company_email"]
 
+CALL_GROUP = ["~blank", "OPEN", "CLOSED"]
+ASSET_GROUP = ["IN_USE", "IN_STORE", "STANDBY", "NOT_IN_USE", "NOT_ON_NETWORK", "SURPLUS", "TRANSFERRED", "REMOVED_FROM_AMC", "~blank"]
+PM_GROUP = ["PENDING", "DONE_OUTSIDE_QUARTER", "DONE", "NA", "~blank"]
+RMA_GROUP = ["PENDING", "RETURNED", "~blank"]
+ENGINEER_GROUP = ["ACTIVE", "LEFT_ROSTER", "RESIGNED", "~blank"]
+RECEIPT_GROUP = ["Pending", "Received"]
+DISPATCH_GROUP = ["Not sent", "Sent"]
+
 DATASETS = {
     "assets": {
         "table": "asset", "pk": "asset_key", "base": "is_current = 1", "label": "Assets", "search": ASSET_SEARCH,
-        "sort": ("asset_key", "asc"), "defaults": {"record_level": ["ASSET"]},
+        "sort": ("asset_status", "asc"), "then": "asset_key", "defaults": {"record_level": ["ASSET"]},
+        "group": _group("asset_status", "asset_status", ASSET_GROUP),
         "columns": [
             col("asset_key", "Asset (CI)", "mono", ref="asset"),
             col("asset_class", "Class", "text"),
@@ -49,7 +69,7 @@ DATASETS = {
             col("user_name", "User", "name", ref="cpf", ref_id="cpf_no"),
             col("location_code", "Location", "text"),
             col("engineer_name", "Engineer", "name", ref="engineer"),
-            col("asset_status", "Status", "badge"),
+            col("asset_status", "Status", "badge", sort=_case("asset_status", ASSET_GROUP)),
             col("cover_status", "Cover", "badge"),
             col("cover_expiry_date", "Cover ends", "date"),
             col("pm_status", "PM", "badge"),
@@ -71,7 +91,7 @@ DATASETS = {
     "calls": {
         "table": "svc_call", "pk": "sr_id", "base": "is_current = 1", "label": "Calls", "search": CALL_SEARCH,
         "sort": ("call_status", "asc"), "then": "cipl_call_date DESC NULLS LAST", "defaults": {},
-        "group": {"key": "call_status", "order": ["~blank", "OPEN", "CLOSED"]},   # heading rows while sorted by this column   # grouped Blank, Raised, Resolved; newest first within each
+        "group": _group("call_status", "call_status", CALL_GROUP),   # heading rows while sorted by this column   # grouped Blank, Raised, Resolved; newest first within each
         "columns": [
             col("sr_id", "SR ID", "mono", ref="call"),
             col("cipl_call_date", "Logged", "date"),
@@ -80,7 +100,7 @@ DATASETS = {
             col("problem_description", "Problem", "text"),
             col("engineer", "Engineer", "name", ref="engineer"),
             col("priority", "Priority", "badge"),
-            col("call_status", "Status", "badge", sort="CASE WHEN call_status IS NULL THEN 0 WHEN call_status = 'OPEN' THEN 1 ELSE 2 END"),
+            col("call_status", "Status", "badge", sort=_case("call_status", CALL_GROUP)),
             col("age_days", "Age / TAT (d)", "int", expr="coalesce(ageing_days, tat_days)", align="right"),
             col("spare_status", "Spare", "badge"),
         ],
@@ -97,11 +117,12 @@ DATASETS = {
     },
     "inward": {
         "table": "spare_inward", "pk": "inward_id", "base": "is_current = 1", "label": "Inward", "search": INWARD_SEARCH,
-        "sort": ("inward_date", "desc"), "defaults": {},
+        "sort": ("received_date", "asc"), "then": "inward_date DESC NULLS LAST", "defaults": {},
+        "group": _group("receipt", "received_date", RECEIPT_GROUP),
         "columns": [
             col("inward_id", "ID", "mono"), col("inward_date", "Date", "date"), col("sr_id", "SR ID", "mono", ref="call"), col("asset_key", "Asset (CI)", "mono", ref="asset"),
             col("part_description", "Part", "text"), col("bill_no", "Bill", "text"), col("courier_awb", "AWB", "mono"),
-            col("received_by", "Received by", "name"), col("received_date", "Received", "date"), col("transit_days", "Transit (d)", "int", align="right"),
+            col("received_by", "Received by", "name"), col("received_date", "Received", "date", sort="CASE WHEN received_date IS NULL THEN 0 ELSE 1 END"), col("transit_days", "Transit (d)", "int", align="right"),
         ],
         "facets": [
             facet("receipt", "Receipt", kind="bool", expr="CASE WHEN received_date IS NULL THEN 'Pending' ELSE 'Received' END"),
@@ -112,11 +133,12 @@ DATASETS = {
     },
     "outward": {
         "table": "spare_outward", "pk": "outward_id", "base": "is_current = 1", "label": "Outward", "search": OUTWARD_SEARCH,
-        "sort": ("outward_date", "desc"), "defaults": {},
+        "sort": ("sent_date", "asc"), "then": "outward_date DESC NULLS LAST", "defaults": {},
+        "group": _group("dispatch", "sent_date", DISPATCH_GROUP),
         "columns": [
             col("outward_id", "ID", "mono"), col("outward_date", "Date", "date"), col("sr_id", "SR ID", "mono", ref="call"), col("asset_key", "Asset (CI)", "mono", ref="asset"),
             col("part_description", "Part", "text"), col("part_serial_no", "Part serial", "mono"), col("gatepass_no", "Gate pass", "mono"),
-            col("sent_date", "Sent", "date"), col("sent_location", "Sent to", "text"),
+            col("sent_date", "Sent", "date", sort="CASE WHEN sent_date IS NULL THEN 0 ELSE 1 END"), col("sent_location", "Sent to", "text"),
         ],
         "facets": [
             facet("gatepass", "Gate pass", kind="bool", expr="CASE WHEN gatepass_no IS NULL THEN 'Missing' ELSE 'Recorded' END"),
@@ -127,11 +149,12 @@ DATASETS = {
     },
     "pm": {
         "table": "asset", "pk": "asset_key", "base": "is_current = 1 AND record_level = 'ASSET' AND pm_status <> 'NOT_TRACKED'", "label": "PM worklist", "search": ASSET_SEARCH,
-        "detail": "assets", "sort": ("asset_key", "asc"), "defaults": {"pm_status": ["PENDING"]},
+        "detail": "assets", "sort": ("pm_status", "asc"), "then": "asset_key", "defaults": {"pm_status": ["PENDING"]},
+        "group": _group("pm_status", "pm_status", PM_GROUP),
         "columns": [
             col("asset_key", "Asset (CI)", "mono", ref="asset"), col("asset_class", "Class", "text"), col("make_model", "Make / model", "text", expr="trim(coalesce(make,'') || ' ' || coalesce(model,''))"),
             col("location_code", "Location", "text"), col("engineer_name", "Engineer", "name", ref="engineer"), col("user_name", "User", "name", ref="cpf", ref_id="cpf_no"),
-            col("pm_status", "PM", "badge"), col("pm_date", "PM date", "date"), col("pm_done_by", "Done by", "name"), col("pm_signed_by", "Signed by", "name"), col("cover_status", "Cover", "badge"),
+            col("pm_status", "PM", "badge", sort=_case("pm_status", PM_GROUP)), col("pm_date", "PM date", "date"), col("pm_done_by", "Done by", "name"), col("pm_signed_by", "Signed by", "name"), col("cover_status", "Cover", "badge"),
         ],
         "facets": [
             facet("pm_status", "PM this quarter", kind="radio"), facet("asset_class", "Class"), facet("engineer_name", "Engineer"), facet("location_code", "Location", limit=25),
@@ -154,10 +177,11 @@ DATASETS = {
     },
     "engineers": {
         "table": "v_engineer", "pk": "engineer_key", "base": "true", "label": "Engineers", "search": ENGINEER_SEARCH, "readonly": True,
-        "sort": ("display_name", "asc"), "defaults": {},
+        "sort": ("employment_status", "asc"), "then": "display_name", "defaults": {},
+        "group": _group("employment_status", "employment_status", ENGINEER_GROUP),
         "columns": [
             col("ecode", "ECODE", "mono", ref="engineer", ref_id="engineer_key"), col("display_name", "Name", "name", ref="engineer", ref_id="engineer_key"), col("designation", "Designation", "text"),
-            col("employment_status", "Roster status", "badge"), col("skill_category", "Skill", "text"), col("deployed_at", "Deployed at", "text"),
+            col("employment_status", "Roster status", "badge", sort=_case("employment_status", ENGINEER_GROUP)), col("skill_category", "Skill", "text"), col("deployed_at", "Deployed at", "text"),
             col("assets", "Assets", "int", align="right"), col("open_calls", "Open calls", "int", align="right"), col("onboarding_status", "Onboarding", "badge"),
         ],
         "facets": [
@@ -167,12 +191,13 @@ DATASETS = {
     },
     "rma": {
         "table": "oem_rma", "pk": "rma_line_id", "base": "is_current = 1", "label": "OEM RMA", "search": RMA_SEARCH,
-        "sort": ("call_log_date", "desc"), "defaults": {},
+        "sort": ("return_status", "asc"), "then": "call_log_date DESC NULLS LAST", "defaults": {},
+        "group": _group("return_status", "return_status", RMA_GROUP),
         "columns": [
             col("rma_line_id", "Line", "mono"), col("rma_no", "RMA no.", "mono"), col("vendor", "Vendor", "text"), col("device_model", "Model", "text"),
             col("asset_key", "Asset (CI)", "mono", ref="asset"), col("fault_item", "Fault", "text"), col("fault_category", "Category", "text"),
             col("call_log_date", "Logged", "date"), col("replacement_received_date", "Replaced", "date"), col("faulty_return_date", "Returned", "date"),
-            col("return_status", "Return", "badge"), col("days_to_replacement", "Days to replace", "int", align="right"),
+            col("return_status", "Return", "badge", sort=_case("return_status", RMA_GROUP)), col("days_to_replacement", "Days to replace", "int", align="right"),
         ],
         "facets": [
             facet("return_status", "Faulty part return", kind="radio"),

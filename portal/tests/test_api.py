@@ -236,10 +236,23 @@ def test_every_dataset_column_and_facet_is_queryable(client):
             assert client.get(f"/api/registers/{name}?limit=1&sort={col['key']}").status_code == 200, (name, col["key"])
 
 
-def test_call_register_is_grouped_blank_raised_resolved_by_default(client):
-    rows = client.get("/api/registers/calls?limit=500").json()["rows"]
-    grp = [0 if r["call_status"] is None else 1 if r["call_status"] == "OPEN" else 2 for r in rows]
-    assert grp == sorted(grp) and len(set(grp)) == 3
-    for g in (0, 1, 2):
-        dates = [str(r["cipl_call_date"]) for r, x in zip(rows, grp) if x == g and r["cipl_call_date"]]
-        assert dates == sorted(dates, reverse=True)
+
+def test_grouped_registers_default_to_group_order_and_counts_add_up(client):
+    """Every register with heading rows lists its rows contiguously in group order, and the facet counts that size the headings
+    add up to the list total (otherwise the table draws no headings rather than wrong ones)."""
+    from app import datasets
+    for name, ds in datasets.DATASETS.items():
+        g = ds.get("group")
+        if not g:
+            continue
+        d = client.get(f"/api/registers/{name}?limit=500&facets=1").json()
+        order = g["order"]
+        rank = lambda v: order.index("~blank" if v is None else v) if ("~blank" if v is None else v) in order else len(order)
+        col = ds["sort"][0]
+        # Inward/outward rank by whether the date is filled in; the rest by the status value itself
+        key = (lambda r: 0 if r[col] is None else 1) if name in ("inward", "outward") else (lambda r: rank(r[col]))
+        ranks = [key(r) for r in d["rows"]]
+        assert ranks == sorted(ranks), name
+        counts = d["facets"][g["key"]]
+        wanted = [i["n"] for i in counts if i["v"] in order or (i["v"] == "~blank" and "~blank" in order)]
+        assert sum(wanted) == d["total"], (name, counts, d["total"])
