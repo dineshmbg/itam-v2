@@ -16,7 +16,7 @@ let view = null;
 let running = false;
 let lastPath = '';
 
-const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', work: 'PM work orders', wo: 'PM work order', findings: 'PM findings', checklists: 'PM checklists', reports: 'Report builder', import: 'Data import', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
+const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', reports: 'Report builder', import: 'Data import', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
   integrity: 'Data integrity', audit: 'Change log', users: 'Users and security', activity: 'Activity log' };
 
 // Views are loaded on demand so the first screen stays small.
@@ -29,10 +29,6 @@ const VIEWS = {
   pm: () => import('./views/dash-pm.js').then((m) => m.mountPmDash),
   'pm/cycles': () => import('./views/pm-cycles.js').then((m) => m.mountPmCycles),
   'pm/history': () => import('./views/pm-history.js').then((m) => m.mountPmHistory),
-  'pm/work': () => import('./views/pm-work.js').then((m) => m.mountPmWork),
-  'pm/wo': () => import('./views/pm-wo.js').then((m) => m.mountPmWo),
-  'pm/findings': () => import('./views/pm-findings.js').then((m) => m.mountPmFindings),
-  'pm/checklists': () => import('./views/pm-checklists.js').then((m) => m.mountPmChecklists),
   reports: () => import('./views/reports.js').then((m) => m.mountReports),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),
   'admin/backup': () => import('./views/admin-backup.js').then((m) => m.mountBackup),

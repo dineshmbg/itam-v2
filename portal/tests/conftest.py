@@ -27,12 +27,12 @@ def _fresh_ip_throttle():
 @pytest.fixture()
 def box(monkeypatch):
     """One database transaction shared by the code under test, rolled back at the end: the real data is never changed."""
-    from portal.app import auth, config, db, mailer, pm, pmwo, reports, importer, backup, views_pref, lifecycle   # noqa: F401
+    from portal.app import auth, config, db, mailer, pm, reports, importer, backup, views_pref, lifecycle   # noqa: F401
     import itam_locks
     con = psycopg.connect(psycopg.conninfo.make_conninfo(**config.PG, password=db.password(), connect_timeout=8))
     itam_locks.ensure_tables(con)
     auth.ensure_tables(con)
-    for stmt in backup.DDL + pm.DDL + pmwo.DDL + mailer.DDL + importer.DDL + reports.DDL + views_pref.DDL + lifecycle.DDL:
+    for stmt in backup.DDL + pm.DDL + mailer.DDL + importer.DDL + reports.DDL + views_pref.DDL + lifecycle.DDL:
         con.execute(stmt)
     con.commit()
     con.execute("SELECT 1")        # open the transaction: every write() below is then a savepoint of it and is rolled back, never committed

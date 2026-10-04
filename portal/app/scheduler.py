@@ -9,7 +9,7 @@ import os
 import threading
 import time
 
-from . import auth, backup, db, mailer, pm, pmwo
+from . import auth, backup, db, mailer, pm
 
 log = logging.getLogger("itam.scheduler")
 DEFAULT_BACKUP = {"enabled": True, "time": "02:00", "keep": 14}
@@ -74,12 +74,6 @@ def tick(now=None):
                     label = pm.active_quarter(con)["label"]      # the quarter the figures belong to, not the calendar one
                     n = pm.capture_snapshot(con, label, now.date())
                     auth.log("SCHEDULER", None, "PM_SNAPSHOT", label, {"assets": n})
-            g = pmwo.generate("scheduler")
-            if g["created"]:
-                auth.log("SCHEDULER", None, "PM_WO_GENERATED", g["quarter"], g)
-            d = pmwo.deem_overdue_acks()
-            if d:
-                auth.log("SCHEDULER", None, "PM_WO_DEEMED", None, {"work_orders": d})
         job("pm", do_pm)
         st["last_pm"] = today; changed = True
 
