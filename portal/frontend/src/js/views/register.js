@@ -103,7 +103,7 @@ export function mountRegister(root, name, opts = {}) {
   // up to the list's total, otherwise no headings are drawn rather than wrong ones.
   function groupHeadings(res) {
     const g = ds.group;
-    if (!g || sort.key !== g.key || !res.facets?.[g.key]) return [];
+    if (!g || sort.key !== (g.col || g.key) || !res.facets?.[g.key]) return [];
     const n = Object.fromEntries(res.facets[g.key].map((i) => [i.v, i.n]));
     const sel = filters[g.key] || [];
     const order = (sort.dir === 'desc' ? [...g.order].reverse() : g.order).filter((v) => n[v] > 0 && (!sel.length || sel.includes(v)));

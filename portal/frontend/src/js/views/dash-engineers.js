@@ -102,7 +102,9 @@ export function mountEngineersDash(root) {
 
   async function showEngineer(key) {
     drawer?.close(true);
-    drawer = openDrawer({ title: 'Engineer', subtitle: 'Loading…', onClose: () => patchParam('eng', null) });
+    const mark = (on) => document.querySelectorAll('tr[data-id]').forEach((tr) => { if (on && tr.dataset.id === String(key)) tr.setAttribute('aria-selected', 'true'); else tr.removeAttribute('aria-selected'); });
+    mark(true);
+    drawer = openDrawer({ title: 'Engineer', subtitle: 'Loading…', onClose: () => { mark(false); patchParam('eng', null); } });
     try {
       const e = await get('/api/engineers/' + encodeURIComponent(key));
       drawer.setTitle(e.display_name, [e.designation, e.ecode].filter(Boolean).join(' · ') || 'Not on the CIPL roster');

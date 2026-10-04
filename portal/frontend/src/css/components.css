@@ -154,7 +154,10 @@ button.gt-th:hover { background: var(--c-surface-3); color: var(--c-text); }
 .gt-gcell .n { color: var(--c-text-3); font-variant-numeric: tabular-nums; }
 .gt-row.row-self { background: var(--c-ok-bg); box-shadow: inset 3px 0 0 var(--c-ok); }
 .gt-row:hover { background: var(--c-surface-2); }
-.gt-row[aria-selected="true"] { background: var(--c-accent-bg); box-shadow: inset 3px 0 0 var(--c-accent); }
+/* The record whose details window is open: stays bright above the dimmed page (scrim is z 50, window 51) */
+.gt-row[aria-selected="true"] { background: var(--c-accent-bg); box-shadow: inset 4px 0 0 var(--c-accent), 0 0 0 2px var(--c-accent); z-index: 51; font-weight: 600; }
+.tbl tr[aria-selected="true"] { position: relative; z-index: 51; box-shadow: inset 4px 0 0 var(--c-accent), 0 0 0 2px var(--c-accent); }
+.tbl tr[aria-selected="true"] td { background: var(--c-accent-bg); }
 .gt-row.active { outline: 2px solid var(--c-focus); outline-offset: -2px; }
 .gt-td { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 13px; }
 .gt-td.right { text-align: right; }

@@ -19,7 +19,7 @@ const NAV = [
     ['registers/outward', 'Outward', 'box', 'parts', 'spr'], ['registers/rma', 'OEM RMA', 'tools', 'parts', 'spr'],
   ]],
   ['People', [['registers/engineers', 'Engineers', 'user--avatar', false, 'eng']]],
-  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true, 'pm']]],
+  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/history', 'Past quarters', 'time', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true, 'pm']]],
   ['Reports', [['reports', 'Report builder', 'report', false, 'rep']]],
   ['Control', [['integrity', 'Data integrity', 'security', 'strict', 'adm'], ['audit', 'Change log', 'catalog', 'strict', 'adm']]],
   ['Data tools', [['admin/import', 'Data import', 'upload', 'strict', 'data'], ['admin/backup', 'Backup and restore', 'data--base', 'strict', 'data'], ['admin/update', 'Software update', 'restart', 'strict', 'data']]],
