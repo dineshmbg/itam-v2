@@ -226,6 +226,23 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 /* the edit / new-record forms: each field group becomes a card, laid out in a responsive grid */
 .drawer.wide .eform, dialog.modal.large .eform { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; }
 .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { margin: 0; padding: 14px 16px 4px; border: 1px solid var(--c-border); border-radius: 12px; background: var(--c-surface); }
+/* card headings: a solid, saturated strip in a rotating palette colour so each section is easy to spot. White text on every light-theme hue and
+   near-black on the brighter dark-theme hues both clear 4.5:1; the section name is text, so colour is never the only cue. */
+.drawer .dsec, .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { --hc: var(--chart-1); --hc-ink: var(--c-on-accent); }
+.drawer .dpane > :nth-child(8n+2), .eform > :nth-child(8n+2) { --hc: var(--chart-3); }
+.drawer .dpane > :nth-child(8n+3), .eform > :nth-child(8n+3) { --hc: var(--chart-7); }
+.drawer .dpane > :nth-child(8n+4), .eform > :nth-child(8n+4) { --hc: var(--chart-2); }
+.drawer .dpane > :nth-child(8n+5), .eform > :nth-child(8n+5) { --hc: var(--chart-4); }
+.drawer .dpane > :nth-child(8n+6), .eform > :nth-child(8n+6) { --hc: var(--chart-6); }
+.drawer .dpane > :nth-child(8n+7), .eform > :nth-child(8n+7) { --hc: var(--chart-10); }
+.drawer .dpane > :nth-child(8n+8), .eform > :nth-child(8n+8) { --hc: var(--chart-8); }
+.drawer .dsec > h3, .drawer .eform .fgroup > h3, dialog.modal.large .eform .fgroup > h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; background: var(--hc); color: var(--hc-ink); font-size: 13px; line-height: 20px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 0; border-radius: 8px 8px 0 0; }
+.drawer .dsec > h3::before, .drawer .eform .fgroup > h3::before, dialog.modal.large .eform .fgroup > h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.85; flex: none; }
+.drawer .eform .fgroup > h3::after, dialog.modal.large .eform .fgroup > h3::after { display: none; }
+.drawer .dsec > .kv, .drawer .dsec > .tbl-wrap { border-radius: 0 0 8px 8px; border-top: 0; }
+.drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { padding: 0 0 4px; overflow: hidden; }
+.drawer .eform .fgroup > .frow, dialog.modal.large .eform .fgroup > .frow { margin-left: 16px; margin-right: 16px; }
+.drawer .eform .fgroup > h3 + .frow, dialog.modal.large .eform .fgroup > h3 + .frow { margin-top: 14px; }
 dialog.modal.large { width: 80vw; height: 80vh; min-width: min(640px, calc(100vw - 24px)); }
 .dsec { margin-top: 20px; }
 .dsec > h3 { font-size: 14px; line-height: 20px; letter-spacing: 0.02em; color: var(--c-text); margin-bottom: 8px; font-weight: 700; padding-left: 10px; border-left: 3px solid var(--c-accent); }
