@@ -24,7 +24,7 @@ function baseOptions(extra = {}) {
       legend: { display: false },
       tooltip: {
         backgroundColor: () => token('--c-surface'), titleColor: () => token('--c-text'), bodyColor: () => token('--c-text-2'), borderColor: () => token('--c-border-strong'),
-        borderWidth: 1, cornerRadius: 2, padding: 10, boxPadding: 4, displayColors: true, titleFont: { family: fontFamily(), weight: '600' }, bodyFont: { family: fontFamily() },
+        borderWidth: 1, cornerRadius: 10, padding: 12, boxPadding: 5, boxWidth: 8, boxHeight: 8, usePointStyle: true, displayColors: true, titleFont: { family: fontFamily(), weight: '600' }, bodyFont: { family: fontFamily() },
         callbacks: { label: (c) => ` ${c.dataset.label ? c.dataset.label + ': ' : ''}${int(c.parsed.x ?? c.parsed.y ?? c.parsed)}` },
       },
     },
@@ -32,7 +32,7 @@ function baseOptions(extra = {}) {
   };
 }
 const axis = (over = {}) => ({
-  grid: { color: () => token('--chart-grid'), drawTicks: false }, border: { display: false },
+  grid: { color: () => token('--chart-grid'), drawTicks: false, tickBorderDash: [3, 3] }, border: { display: false, dash: [3, 3] },
   ticks: { color: () => token('--c-text-2'), font: { family: fontFamily(), size: 12 }, padding: 6, precision: 0 }, ...over,
 });
 
@@ -53,7 +53,7 @@ export async function barH(canvas, labels, datasets, { stacked = false, onPick, 
     data: {
       labels: U(labels),
       datasets: datasets.map((d, i) => ({
-        label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, barPercentage: 0.72, categoryPercentage: 0.9,
+        label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, borderRadius: stacked ? 3 : 6, borderSkipped: false, barPercentage: 0.66, categoryPercentage: 0.9,
         backgroundColor: (ctx) => (colors ? color(colors[ctx.dataIndex]) : color(d.color ?? i)),
         hoverBackgroundColor: (ctx) => (colors ? color(colors[ctx.dataIndex]) : color(d.color ?? i)),
       })),
@@ -72,12 +72,12 @@ export async function barH(canvas, labels, datasets, { stacked = false, onPick, 
 export async function monthly(canvas, labels, bars, line, { onPick } = {}) {
   const C = await Chart();
   const datasets = bars.map((d, i) => ({
-    type: 'bar', label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, stack: 's', order: 2, barPercentage: 0.7, categoryPercentage: 0.8,
+    type: 'bar', label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, borderRadius: 3, borderSkipped: false, stack: 's', order: 2, barPercentage: 0.62, categoryPercentage: 0.8,
     backgroundColor: () => color(d.color ?? i),
   }));
   if (line) {
     datasets.push({
-      type: 'line', label: String(line.label).toUpperCase(), data: line.data, yAxisID: 'y1', order: 1, tension: 0, pointRadius: 3.5, pointHoverRadius: 5, borderWidth: 2,
+      type: 'line', label: String(line.label).toUpperCase(), data: line.data, yAxisID: 'y1', order: 1, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2.5, borderCapStyle: 'round',
       borderColor: () => token('--c-text'), backgroundColor: () => token('--c-surface'), pointBorderColor: () => token('--c-text'), pointBackgroundColor: () => token('--c-surface'),
     });
   }
@@ -101,9 +101,9 @@ export async function doughnut(canvas, labels, data, { colors, onPick } = {}) {
   const C = await Chart();
   const chart = new C(canvas, {
     type: 'doughnut',
-    data: { labels: U(labels), datasets: [{ data, borderWidth: 2, borderColor: () => token('--c-surface'), backgroundColor: (ctx) => color(colors ? colors[ctx.dataIndex] : ctx.dataIndex), hoverOffset: 4 }] },
+    data: { labels: U(labels), datasets: [{ data, borderWidth: 3, borderRadius: 6, spacing: 2, borderColor: () => token('--c-surface'), backgroundColor: (ctx) => color(colors ? colors[ctx.dataIndex] : ctx.dataIndex), hoverOffset: 6 }] },
     options: baseOptions({
-      cutout: '66%',
+      cutout: '74%',
       plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: (c) => ` ${c.label}: ${int(c.parsed)}` } } },
       onClick: (_e, els) => { if (onPick && els.length) onPick(els[0].index); },
       onHover: (e, els) => { e.native.target.style.cursor = onPick && els.length ? 'pointer' : 'default'; },

@@ -105,3 +105,40 @@ dialog.modal { border-radius: 18px; box-shadow: var(--shadow-float); }
 ::-webkit-scrollbar-thumb { border-radius: var(--r-pill); }
 
 @media (prefers-reduced-motion: reduce) { .btn, .kpi, a.kpi { transition: none; transform: none !important; } }
+
+/* ---------- dashboards: cards and charts ---------- */
+.page-head h1 { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.01em; }
+.grid { gap: var(--sp-4); }
+.panel { overflow: hidden; transition: box-shadow 160ms var(--ease); }
+.panel-h { background: none; border-bottom: 0; padding: 16px 20px 0; min-height: 0; }
+.panel-h h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
+.panel-h .hint { font-size: 12px; }
+.panel-h + .panel-b { padding-top: 12px; }
+.panel-b.flush { padding: 8px 0 0; }
+.panel-b.flush .tbl th { background: none; border-top: 1px solid var(--c-border); }
+
+/* KPI: accent hairline on top in the page's module colour, big light figure */
+.kpi { overflow: hidden; }
+.kpi::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--page-mod, var(--c-accent)); opacity: 0.85; }
+.kpi[data-tone="bad"]::before { background: var(--c-bad); }
+.kpi[data-tone="warn"]::before { background: var(--c-warn); }
+.kpi[data-tone="ok"]::before { background: var(--c-ok); }
+.kpi-l { font-weight: 500; }
+.kpi-v { font-size: 34px; line-height: 44px; font-weight: 300; letter-spacing: -0.02em; }
+
+/* chart helpers */
+.chart-box { margin: 0 -4px; }
+.bars { gap: 12px; }
+.bar-t { height: 10px; background: var(--c-surface-3); }
+.bar-t > i { background: linear-gradient(90deg, color-mix(in srgb, var(--chart-1) 78%, transparent), var(--chart-1)); transition: width 400ms var(--ease); }
+.stack { height: 10px; border-radius: var(--r-pill); gap: 2px; background: var(--c-surface-3); }
+.stack i { border-radius: var(--r-pill); }
+.legend { gap: 8px; margin-top: 14px; }
+.legend a, .legend span { padding: 3px 10px 3px 8px; border-radius: var(--r-pill); background: var(--c-surface-2); border: 1px solid var(--c-border); }
+.legend a:hover { background: var(--c-accent-bg); border-color: transparent; text-decoration: none; }
+.sw { width: 8px; height: 8px; border-radius: 50%; }
+a.bar-row { border-radius: var(--r-1); margin: 0 -8px; padding: 4px 8px; }
+a.bar-row:hover { background: var(--c-surface-2); }
+a.bar-row:hover .bar-l { text-decoration: none; }
+.cb-track { height: 12px; }
+.cycle-bar { padding: 16px 20px 18px; }
