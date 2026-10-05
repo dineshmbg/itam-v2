@@ -63,6 +63,8 @@ ACTIONS = {
     "lifecycle: candidates": ("GET", "/api/lifecycle/candidates?q=ab", None, FULL_ADMIN),
     "lifecycle: replace": ("POST", "/api/lifecycle/replace", {}, who("admin")),
     "lifecycle: redeploy": ("POST", "/api/lifecycle/redeploy", {}, who("admin")),
+    # bulk (re)assignment of up to thousands of assets to an engineer in one click
+    "assets: bulk assign to an engineer": ("POST", "/api/edit/assets/reassign", {}, who("admin", "user+asset_full", "user+extended")),
     "calls: create": ("POST", "/api/edit/calls/create", {"values": {}}, who("admin", "user+parts_full", "user+extended")),
     "assets: create": ("POST", "/api/edit/assets/create", {"values": {}}, who("admin", "user+asset_full", "user+extended")),
     "assets: archive": ("POST", "/api/edit/assets/archive", "OWN_ARCHIVE", who("admin", "user+asset_full", "user+extended")),
