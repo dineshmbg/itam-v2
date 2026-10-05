@@ -228,7 +228,7 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { margin: 0; padding: 14px 16px 4px; border: 1px solid var(--c-border); border-radius: 12px; background: var(--c-surface); }
 /* card headings: a solid, saturated strip in a rotating palette colour so each section is easy to spot. White text on every light-theme hue and
    near-black on the brighter dark-theme hues both clear 4.5:1; the section name is text, so colour is never the only cue. */
-.drawer .dsec, .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { --hc: var(--chart-1); --hc-ink: var(--c-on-accent); }
+:where(.drawer .dsec, .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup) { --hc: var(--chart-1); --hc-ink: var(--c-on-accent); }
 .drawer .dpane > :nth-child(8n+2), .eform > :nth-child(8n+2) { --hc: var(--chart-3); }
 .drawer .dpane > :nth-child(8n+3), .eform > :nth-child(8n+3) { --hc: var(--chart-7); }
 .drawer .dpane > :nth-child(8n+4), .eform > :nth-child(8n+4) { --hc: var(--chart-2); }
