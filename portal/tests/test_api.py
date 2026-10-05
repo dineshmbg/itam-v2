@@ -254,5 +254,8 @@ def test_grouped_registers_default_to_group_order_and_counts_add_up(client):
         ranks = [key(r) for r in d["rows"]]
         assert ranks == sorted(ranks), name
         counts = d["facets"][g["key"]]
-        wanted = [i["n"] for i in counts if i["v"] in order or (i["v"] == "~blank" and "~blank" in order)]
+        # A register that opens with a default filter on its grouping column (the PM worklist shows PENDING only) lists just those groups, and the
+        # front end sizes its headings from the same selection - so the facet counts to compare are the selected groups', not every group's.
+        selected = (ds.get("defaults") or {}).get(g["key"]) or []
+        wanted = [i["n"] for i in counts if (i["v"] in order or (i["v"] == "~blank" and "~blank" in order)) and (not selected or i["v"] in selected)]
         assert sum(wanted) == d["total"], (name, counts, d["total"])

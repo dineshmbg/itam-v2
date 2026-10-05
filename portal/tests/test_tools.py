@@ -201,6 +201,9 @@ def test_closing_a_quarter_after_it_has_ended_closes_that_quarter_not_the_new_on
     cur = pm.quarter(today)
     old = pm.quarter(cur["start"] - dt.timedelta(days=1))
     _put_assets_in(box, old)
+    # Start from a clean slate: the dev database may already hold PM completed this quarter (it did, 179 assets, on 2026-10-04). Those would
+    # rightly survive a roll-over and make the "exactly one kept" figures below depend on today's data. Rolled back with everything else.
+    box.execute(f"UPDATE asset SET pm_date = NULL, pm_done_by = NULL, pm_signed_by = NULL, pm_status = 'PENDING' WHERE {pm.IN_SCOPE}")
     box.execute("DELETE FROM pm_cycle WHERE quarter_label = %s", (cur["label"],))
     kept, wiped = [r[0] for r in box.execute(f"SELECT asset_key FROM asset WHERE {pm.IN_SCOPE} ORDER BY asset_key LIMIT 2").fetchall()]
     box.execute("UPDATE asset SET pm_date = %s, pm_done_by = 'SOMEONE' WHERE asset_key = %s", (today, kept))                 # done already, in the new quarter
