@@ -546,7 +546,7 @@ def reassign_assets(keys, engineer, from_engineer, editor, ip, reason=None):
     """Assign many assets to one engineer in a single transaction (engineer=None/'' clears the assignment). `from_engineer`, when
     given, restricts the move to assets currently with that engineer - the "old engineer -> new engineer" hand-over. Each asset goes
     through update(), so it is validated, locked against re-import overwrite and audited exactly like a hand edit."""
-    keys = [str(k).strip().upper() for k in dict.fromkeys(keys or []) if str(k).strip()][:1000]
+    keys = [str(k).strip().upper() for k in dict.fromkeys(keys or []) if str(k).strip()][:5000]
     if not keys:
         raise Invalid("Select at least one asset.")
     engineer = (engineer or "").strip().upper() or None

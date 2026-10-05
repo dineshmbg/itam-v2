@@ -157,7 +157,7 @@ export function mountRegister(root, name, opts = {}) {
         recordPmDialog({ keys, onDone: () => table.refresh() });
       } }, icon('checkmark'), 'Record PM for listed assets'));
       if (name === 'assets' && (isAdmin() || sessionUser()?.asset_access === 'FULL')) tools.push(h('button', { class: 'btn', type: 'button', title: 'Assign every asset matching the current search and filters to an engineer, or hand over one engineer’s assets to another', onClick: async () => {
-        const keys = await api.allKeys(1000);
+        const keys = await api.allKeys(5000);
         if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
         assignEngineerDialog({ keys, onDone: () => table.refresh() });
       } }, icon('user--multiple'), 'Assign engineer'));
