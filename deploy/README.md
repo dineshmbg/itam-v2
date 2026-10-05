@@ -95,7 +95,7 @@ alone cannot make the server run other code. The portal (inside its container) o
 Each step is shown live on the page and written to a log; nothing is ever half-done silently.
 
 ### Each release (three steps, nothing to type on a server)
-1. **Development PC:** `.\deploy\build-release.ps1 -Notes "what changed"` - rebuilds, runs the tests (a failing test stops the release), builds the image, signs it. Result: `deploy\releases\itam-release-<version>.itamrel`.
+1. **Development PC:** `.\deploy\build-release.ps1 -Notes "what changed"` - rebuilds, runs the tests (a failing test stops the release), builds the image, signs it. It also **refuses to build while the working folder has uncommitted changes** (`-AllowDirty` overrides; run `.\check.ps1` first) so a release always matches a commit, and it writes that commit id into the signed notes. Docker Desktop (or Podman) must be running. Result: `deploy\releases\itam-release-<version>.itamrel`.
 2. **In the portal** (as an administrator): **Data tools > Software update > Choose file > Upload package**. The page checks the file (signature, checksum) and lists it. Alternatively copy the file to `/var/lib/itam-updates/incoming/` on the VM and it appears in the same list.
 3. Press **Install...**, read what will happen, type `UPDATE`. Watch the progress on the same page. The portal is unavailable for about a minute; the page reconnects by itself and shows "Updated". If the new version fails, it says "Rolled back" and you are on the old version again.
    *Go back later:* the page has a **Go back to <previous version>** button (typed confirmation, database backed up first).
@@ -105,7 +105,7 @@ The same update service can be driven from the VM's command line if the portal i
 ### One-time setup (existing VM: do this once to switch over)
 1. **Development PC:** `.\deploy\make-release-key.ps1` (already done on this PC: private key in `%USERPROFILE%\.itam-release\release-private.pem`, public key in `deploy\release-public.pem`). **Back the private key up** (USB stick, safe place). If it is lost, new packages cannot be signed until a new key is made and installed on the VM again.
 2. `.\deploy\build-release.ps1` once, and copy the whole `deploy/` folder to the VM (with `release-public.pem`, `updater/`, and `images/itam-portal.tar`).
-3. **On the VM, once:** `cd deploy && sudo DB_HOST=10.205.64.46 ./vm-install.sh` - it installs the update service (systemd path unit + heartbeat timer), the release public key, the shared folder `/var/lib/itam-updates`, and loads this first image. The VM needs `python3` and `openssl` (Ubuntu has them).
+3. **On the VM, once:** `cd deploy && sudo DB_HOST=10.205.64.47 ./vm-install.sh` - it installs the update service (systemd path unit + heartbeat timer), the release public key, the shared folder `/var/lib/itam-updates`, and loads this first image. The VM needs `python3` and `openssl` (Ubuntu has them).
    After this, every later update is done from the portal page. The page shows *"Update service running"* when the VM side is alive; if it says *"not answering"*, nothing can be installed until it is (`systemctl status itam-updater.path itam-updater-heartbeat.timer`).
 
 ### What happens to the database

@@ -2,6 +2,48 @@
 
 Locally hosted, offline web portal over the PostgreSQL inventory (`ongc_ank`): live dashboards, editable registers, preventive maintenance, reports, data import, backup and restore, e-mail alerts and user management. Everything is served from this folder - no CDN, no internet at run time.
 
+## At a glance (updated 2026-10-05)
+
+**What it is.** ONGC Ankleshwar's IT asset management system: a login-protected, fully offline web app - Starlette API, vanilla-JavaScript front end bundled by esbuild (IBM Plex type, Carbon icons, light/dark/automatic themes) - over one PostgreSQL 18 database, `ongc_ank`. It holds the asset register (whole assets and component lines), service calls, spare-part Inward/Outward lines, OEM RMA cases, the CIPL engineers/roster, preventive maintenance (PM) and the audit trail. Python 3.14; packages are vendored in `vendor/wheels`, so nothing is ever downloaded at run time.
+
+**Where it runs**
+
+| Environment | What it is |
+|---|---|
+| Development PC (this repo) | Windows. The portal runs as the Scheduled Task **ITAM Portal** on port 8420 against a local dev database. All work, tests and release builds happen here. It cannot reach production. |
+| Production server, `10.205.64.47` | Windows Server 2019. PostgreSQL 18 runs natively here and holds the real data; scheduled backups. |
+| Production VM, `10.205.64.25` | Hyper-V Ubuntu VM on that server. The portal runs here as **one Podman container** (HTTPS), talking to the database on the server. Updated with signed release packages. |
+
+**Menu** (what each page is for): *Dashboards* - Assets, Call tracker, Engineers. *Registers* - Assets, Calls, Inward, Outward, OEM RMA. *People* - Engineers. *Preventive maintenance* - PM dashboard, PM worklist, Past quarters, Cycles and snapshots. *Reports* - Report builder (Excel/CSV/PDF). *Control* - Data integrity, Change log. *Data tools* - Data import, Backup and restore, Software update. *Administration* - Users and security, E-mail and alerts, Activity log. Every register can be searched, filtered, sorted, exported to CSV and laid out per person; a record opens in a floating detail window.
+
+**Who can do what** - two groups, **Administrator** and **User**, plus a read-only demo login and optional per-person grants for a User (Calls/Inward/Outward/RMA access, Asset access, Extended access). The full table is in "Who can do what" below and is executable (`tests/test_permission_matrix.py`). In short: a User sees and edits only the assets assigned to them (everything except the Contract and Lifecycle fields); Control, Data tools and Administration are for real administrators only.
+
+**Safety nets** (each is described in its own section below)
+- Every change is validated, written to the change log and audit trail, and a manual edit is remembered so a later import cannot silently overwrite it.
+- Nothing is deleted from the portal: Archive hides a record; Replace/Redeploy keep a retired machine's history.
+- Every import is **rehearsed first** (the check runs the real load and rolls it back), has safety stops against mass removals, and takes an automatic backup before it loads.
+- Inward/Outward/RMA lines are matched by what they are, not by the spreadsheet's serial column.
+- Daily automatic backup (second copy on another disk when one exists), a **restore drill** that proves a backup really restores, and a signed one-click software update with automatic rollback.
+- Sign-in: scrypt hashes, lock-out, per-address throttle, optional two-factor, idle time-out, optional expiry of unused starting passwords.
+
+**Everyday commands**
+```powershell
+cd portal; .\run_portal.ps1                       # run in a terminal (the Scheduled Task does this permanently)
+.\check.ps1 [-Drill]                              # from the project root: is it safe to release? uncommitted work, front-end build, every test, optional restore drill
+cd portal; .\.venv\Scripts\python -m pytest -q    # the tests (about 540); they never change real data
+cd portal\frontend; node build.mjs                # rebuild the front end after any change under frontend\src
+python portal\db\restore_drill.py                 # restore a fresh dump into a scratch database and compare it with the live data
+.\deploy\build-release.ps1 -Notes "..."           # signed release package; needs a clean (committed) tree and Docker Desktop running
+```
+
+**Releasing.** Commit everything, run `.\check.ps1`, then `.\deploy\build-release.ps1`; it refuses to build from a dirty folder, runs the tests, builds the container image, signs the package and records the commit id in the signed notes. Carry `deploy\releases\itam-release-<version>.itamrel` to the VM and install it from *Data tools > Software update*, or run `sudo ./update-portal.sh releases/itam-release-<version>.itamrel` there. Take a fresh backup first; if the new version fails its health check the updater rolls back by itself. At the time of writing the newest package is `itam-release-20261004-1520.itamrel`, built from commit `879a3e0` (see `deploy/README.md`, "Updating").
+
+**Scheduled work inside the portal.** Daily automatic backup (default 02:00, keeps the newest 14); PM cycle bookkeeping daily and a PM snapshot every Monday; the e-mail rules (off until a mail server is configured and a rule is switched on).
+
+**Not built / known gaps** (so nobody assumes otherwise): ownership/custody history, document attachments (invoices, contracts), software and licence tracking, bulk edit, per-call SLA alerts, a scan-to-verify mobile flow, an "undo this load" button, automatic disabling of leavers' accounts, hosted CI and browser tests (the tests read the dev database's real data, so a hosted runner has nothing to test against), a measured accessibility audit (WCAG 2.2 AA is the design target, not a measured result), and an alert if the production portal goes down.
+
+**How to read the rest of this file.** The sections from "Who can do what" to "Rules built in" describe the current behaviour. The dated sections after that are the change history in the order things happened; where a later section changes an earlier one, **the later one wins** (for example, everyone now lands on the Call tracker after sign-in, and the OS family list is the closed list from 2026-09-23).
+
 ## Run
 
 ```powershell
@@ -59,6 +101,8 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Engineer record: create | yes (2026-09-23 - was roster sync only) | no | no |
 | Engineer record: archive | no one - roster sync/events only | no | no |
 | Record PM, PM worklist | yes | yes, own assets only | no |
+| Past quarters (closed PM quarters) | yes, whole fleet | yes, only assets that were on their own engineer key when the snapshot was taken | yes, everything (read-only) |
+| Replace asset / Redeploy asset | yes (real administrators only - not extended access) | no | no |
 | Personal data on hover cards (mobile, personal e-mail, date of birth) | yes | only their own | no |
 | Data import, backup and restore, PM roll-over, roster events | yes | no | no |
 | Users, security policy, e-mail set-up, activity log | yes | no | no |
@@ -291,8 +335,6 @@ no existing row was changed and no importer behaviour changed.
   whatever user names were tried (the per-account lock-out only stopped guessing one account; the roster accounts share a known starting
   password, so one PC could try them all). A successful sign-in does not reset the count. In memory: a server restart forgets it.
 - **Users and security** lists accounts that have never signed in (still on the starting password) in a warning above the table.
-- **Restore drill** (2026-10-03): the portal's *Verify* only checks a backup's checksum and that `pg_restore` can read it. `python portal/db/restore_drill.py` goes the whole way - it restores a backup into a brand-new scratch database (`ongc_ank_drill_<time>`), compares every table's row count with the live data, checks the search extension and views came back, runs a join over the restored data, and drops the scratch database again (it refuses to drop anything not named like that). Needs a login that may create databases: `postgres` from `~/.ongc_pgpass` on the dev PC, or `--admin-user` + `DRILL_ADMIN_PASSWORD` elsewhere. `--backup FILE` drills an existing backup instead of a fresh dump; `--keep` leaves the scratch copy for inspection. Run it monthly and before an important release; also part of the test suite (skipped where no such login exists). Checked against a stale backup: it reports the mismatches.
-  **Rehearsing an upload on a copy of production** (2026-10-03): download a production backup (*Backup and restore > Download*), copy it to the dev PC and run `python portal/db/restore_drill.py --backup <file> --keep`. The scratch copy it leaves is owned by the portal login like the real database, so set `PGDATABASE=<that name>` and `PGPASSWORD=<the portal login's password>` and run any converter with `--dry-run` against it (e.g. `python tools/call_tracking.py tracker --raw <file> --dry-run`). You see exactly what the upload would do to production's data - removals, edits, refusals - without touching it. Then `DROP DATABASE <that name>;`. Verified with the real 1 Oct tracker against a restored copy.
 - **Optional second backup location**: set the environment variable `PORTAL_BACKUP_COPY_DIR` (another disk or a network share) and every
   successful backup is also copied there; the result is written in the backup's note. Off by default; a failed copy never fails the backup.
 - **Sign out other sessions** in *My account* ends the account's sessions everywhere else (`POST /api/auth/logout-others`).
@@ -334,43 +376,52 @@ no existing row was changed and no importer behaviour changed.
 
 ## Preventive maintenance
 
-Financial-year quarters (Q1 APR-JUN ... Q4 JAN-MAR). The kick-off e-mail goes out **60 days after the quarter starts**; a weekly reminder follows. Record PM from an asset, or for every asset in the worklist. **Cycles and snapshots**: a snapshot is captured every Monday, after every asset import and when a quarter closes; *Close quarter* (administrator, typed confirmation, automatic backup first) freezes the snapshot and returns every in-scope asset to "PM pending" for the next quarter. Until a finished quarter is closed, the dashboard keeps showing it (marked "Not closed yet") rather than the new one - see "Closing a quarter after it has ended (2026-10-01)".
+Financial-year quarters (Q1 APR-JUN ... Q4 JAN-MAR). The kick-off e-mail goes out **60 days after the quarter starts**; a weekly reminder follows. Record PM from an asset, or for every asset in the worklist. **Cycles and snapshots**: a snapshot is captured every Monday, after every asset import and when a quarter closes; *Close quarter* (administrator, typed confirmation, automatic backup first) freezes the snapshot and returns every in-scope asset to "PM pending" for the next quarter. Until a finished quarter is closed, the dashboard keeps showing it (marked "Not closed yet") rather than the new one - see "Closing a quarter after it has ended (2026-10-01)". **Past quarters** (PM menu) browses closed quarters from their frozen snapshots - see "Past quarters page". The *Close quarter* confirmation accepts ROLL OVER in any letter case (the page shows every typed letter in capitals, so an exact-case match used to reject a correctly typed word).
 
 ## Data import
 
-*Data tools > Data import* (administrator): upload the raw file as received (asset inventory, HR manpower export, CIPL roster, call tracker, OEM RMA log). Step 1 runs the converter without touching the database and shows its report; step 2 takes a safety backup and loads. The converters are the same `tools/*.py` used from the command line, so every rule decided for the templates applies. Needs the Python that made the virtual environment to have pandas (it does on this PC).
+*Data tools > Data import* (administrator): upload the raw file as received (asset inventory, HR manpower export, CIPL roster, call tracker, OEM RMA log). Step 1 runs the converter and **rehearses the load without saving anything** (since 2026-10-03 - see "The import check is a rehearsal of the load"), then shows its report and any warning; step 2 takes a safety backup and loads. The converters are the same `tools/*.py` used from the command line, so every rule decided for the templates applies. Needs the Python that made the virtual environment to have pandas (it does on this PC).
 
 ## Backup and restore
 
 `pg_dump` custom-format files in `backups/` (override with `PORTAL_BACKUP_DIR`). Automatic daily backup (default 02:00, keeps the newest 14; manual and safety copies are never removed automatically), manual backup, verify (checksum + readable), download, restore. Restore needs the typed word RESTORE, verifies the file, takes a safety backup of today's data and replaces everything in one all-or-nothing transaction. Verified by restoring a real backup into a scratch database: every table, view and trigger came across identically.
 
+- **Restore drill** (2026-10-03): the portal's *Verify* only checks a backup's checksum and that `pg_restore` can read it. `python portal/db/restore_drill.py` goes the whole way - it restores a backup into a brand-new scratch database (`ongc_ank_drill_<time>`), compares every table's row count with the live data, checks the search extension and views came back, runs a join over the restored data, and drops the scratch database again (it refuses to drop anything not named like that). Needs a login that may create databases: `postgres` from `~/.ongc_pgpass` on the dev PC, or `--admin-user` + `DRILL_ADMIN_PASSWORD` elsewhere. `--backup FILE` drills an existing backup instead of a fresh dump; `--keep` leaves the scratch copy for inspection. Run it monthly and before an important release; also part of the test suite (skipped where no such login exists). Checked against a stale backup: it reports the mismatches.
+  **Rehearsing an upload on a copy of production** (2026-10-03): download a production backup (*Backup and restore > Download*), copy it to the dev PC and run `python portal/db/restore_drill.py --backup <file> --keep`. The scratch copy it leaves is owned by the portal login like the real database, so set `PGDATABASE=<that name>` and `PGPASSWORD=<the portal login's password>` and run any converter with `--dry-run` against it (e.g. `python tools/call_tracking.py tracker --raw <file> --dry-run`). You see exactly what the upload would do to production's data - removals, edits, refusals - without touching it. Then `DROP DATABASE <that name>;`. Verified with the real 1 Oct tracker against a restored copy.
+
 ## E-mail
 
-*Administration > E-mail and alerts*: mail server, then per-rule switches (PM kick-off, PM reminder, new asset assigned, asset removed, cover expired, cover expiring, call assigned, overdue calls, part received). Rules e-mail the assigned engineer (`company_email` from the roster, or the linked user's e-mail); each has "Preview" (shows what would be sent). Nothing is sent until e-mail is switched on and a rule is enabled; every message and failure is in the log and the same event is never sent twice. The SMTP password lives in `~/.itam_smtp_secret`.
+*Administration > E-mail and alerts*: mail server, then per-rule switches (PM kick-off, PM reminder, quarter needs closing (a daily reminder to administrators while a finished quarter has not been closed - it never closes it itself), new asset assigned, asset removed, cover expired, cover expiring, call assigned, overdue calls, part received). Rules e-mail the assigned engineer (`company_email` from the roster, or the linked user's e-mail); each has "Preview" (shows what would be sent). Nothing is sent until e-mail is switched on and a rule is enabled; every message and failure is in the log and the same event is never sent twice. The SMTP password lives in `~/.itam_smtp_secret`.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `app/` | Starlette API: `web.py` (access control), `auth.py`, `edit.py`, `pm.py`, `reports.py`, `export.py`, `packs.py`, `mailer.py`, `scheduler.py`, `backup.py`, `importer.py`, `cards.py`, `queries.py`, `datasets.py` (whitelist of tables/columns/facets) |
+| `app/` | Starlette API: `main.py` (routes, response cache, live updates), `web.py` (access control), `auth.py` + `routes_auth.py` (sign-in, accounts, permissions), `edit.py` + `routes_edit.py` (validated, audited editing), `lifecycle.py` + `routes_lifecycle.py` (Replace/Redeploy asset), `queries.py`, `datasets.py` (whitelist of tables/columns/facets, status grouping), `dashboards.py`, `engineers.py`, `cards.py` (hover cards), `pm.py`, `reports.py`, `export.py`, `packs.py` (report packs), `mailer.py`, `scheduler.py`, `backup.py`, `importer.py` + `routes_tools.py` (data import, reports, PM, backups), `update.py` + `routes_update.py` (software update), `integrity.py`, `views_pref.py` (per-person column layout), `netid.py` (client host name), `live.py` (live-update hub), `db.py`, `config.py` |
+| `db/` | `setup.py` (idempotent schema/trigger/first-admin set-up, run at every start), `restore_drill.py` (real restore test), `reset_admin.py` (break-glass administrator recovery) |
 | `db/setup.py` | Idempotent, non-destructive: indexes, live-update triggers, upper-case trigger, tables, first administrator |
 | `frontend/` | Source + `build.mjs` (esbuild). `node build.mjs` rebuilds `static/` offline |
 | `static/` | Built site (hashed assets, IBM Plex fonts, Carbon icon sprite, ONGC logo) |
 | `vendor/` | Offline Python wheels and the icon package |
-| `tests/` | `python -m pytest -q` - runs against the real database inside rolled-back transactions |
+| `tests/` | `python -m pytest -q` - about 540 tests in 24 files, run against the real database inside rolled-back transactions |
+| `../tools/` | The converters (`inventory_to_master.py`, `hr_export_to_template.py`, `cipl_roster.py`, `call_tracking.py`, `sdwan_match.py`) and the shared rules (`itam_rules.py`, `itam_locks.py`, `master_db.py`), used both from the command line and by *Data import* |
+| `../deploy/` | Container image, Podman unit, signed-release tooling (`build-release.ps1`, `make-release-key.ps1`), the VM update service, host scripts for the database server - see `deploy/README.md` |
+| `../check.ps1` | One command: is it safe to release? |
 
 ## Tests
 
 ```powershell
-cd portal; .\.venv\Scripts\python -m pytest -q     # 200 tests
+cd portal; .\.venv\Scripts\python -m pytest -q     # about 540 tests (538 passed, 1 skipped on 2026-10-04; it was 200 on 2026-09-23)
 ```
-Tests never change real data: each runs in one transaction that is rolled back.
+Tests never change real data: each runs in one transaction that is rolled back. From the project root, `.\check.ps1` runs them together with the front-end build and a clean-tree check (see "Checks and tests").
 
 ## Serving to other PCs
 
 `.venv\Scripts\python serve.py --host 0.0.0.0` makes the portal reachable on the LAN. Sign-in is required, but the connection is plain HTTP: put it behind an HTTPS reverse proxy if the network is not trusted (the session cookie becomes `Secure` automatically when the proxy sends `X-Forwarded-Proto: https`).
 
 ## Deploying to the production server (offline, no internet on either side)
+
+> **Which route is current?** Production today uses the **container route** described in the next section and in `deploy/README.md`: PostgreSQL on the Windows Server, the portal in a Podman container on the Ubuntu VM, updated with signed release packages. The steps in this section are the original Windows-native alternative (the portal as a Scheduled Task on a Windows machine); they remain valid if that route is ever needed, but they are not how production is updated now.
 
 The production server is on the office LAN, has no internet access, and cannot be reached from this
 machine either - everything below is a **copy-and-run** procedure using files already in this repo,
@@ -555,6 +606,32 @@ The 1 Oct call tracker passed the import check and was only refused when *Load* 
 - The call-tracker converter now lists **what points at nothing** before loading: calls whose asset (CI) is not in the register, calls with no asset, spare lines whose call is not in the tracker. They still load (the portal flags them), but are named in the report instead of surfacing later on the integrity page.
 - Not built: an "undo this load" button. A load changes several tables and merges with manual edits made since, so a safe undo is not a simple reverse; the protection is the rehearsal, the automatic safety backup before every load, and the restore drill (`db/restore_drill.py`).
 - Tests: `tests/test_import_rehearsal.py`; the old check test now asserts the rehearsal saved nothing.
+
+## Detail window, group headings and status wording (2026-10-04)
+
+- **Floating detail window.** A record opens as an inset, rounded window that can be dragged by its title bar (shared `ui/drawer.js`), not a full-height panel on the right edge. The row being viewed stays highlighted above the dimmed page, on every register including Engineers. Every value in the window is IBM Plex Mono at one size, with bold section headings.
+- **Group heading rows with counts.** Each register's default sort keeps its rows in status groups, with a heading row per group showing the **whole group's** count (taken from the status facet, not just the rows loaded so far). Headings appear only while the table is sorted by the grouping column; sort another column and they go away. The order is set per register in `datasets.py` (`_group(...)`):
+
+  | Register | Grouped by | Order |
+  |---|---|---|
+  | Calls | call status | Blank, Raised, Resolved (newest first within each) |
+  | Assets | asset status | Deployed, In stock, Standby, Not in use, Offline, Surplus, Transferred, Out of AMC, blank |
+  | PM worklist | PM status | Scheduled, Completed late, Completed, N/A, blank |
+  | Inward / Outward | received / sent | pending first, then received / sent |
+  | OEM RMA | return status | Awaiting return, Returned, blank |
+  | Engineers | employment status | Active, Left roster, Resigned, blank |
+- **Friendlier status wording, labels only.** The screens show the words below; the **stored codes are unchanged**, so an Excel upload that uses the old codes still loads. CSV, Excel and PDF exports and report packs use the same words (applied only when the file is written, `export.py` `STATUS_LABELS`), so a re-importable stored value is never rewritten.
+
+  | Field | Stored code -> shown as |
+  |---|---|
+  | Asset status | IN_USE -> Deployed, IN_STORE -> In stock, NOT_ON_NETWORK -> Offline, REMOVED_FROM_AMC -> Out of AMC |
+  | Cover | EXPIRING_90D -> Renewal due, EXPIRED -> Lapsed |
+  | PM | PENDING -> Scheduled, DONE -> Completed, DONE_OUTSIDE_QUARTER -> Completed late |
+  | Call | OPEN -> Raised, CLOSED -> Resolved |
+  | Spare part | NO_SPARE_NEEDED -> No part required, PART_PENDING -> Awaiting part |
+  | OEM RMA return | PENDING -> Awaiting return |
+  | Faulty spare | SENT -> Returned to OEM, NOT_SENT -> Not yet returned |
+  The wording is column-aware (an asset's PM "Scheduled" is not reused for an RMA's return status). The Calls register briefly defaulted to "Raised + blank" with checkbox groups; that was reverted at the user's request - **all calls show by default** with the radio status filter, and the grouping is only the default sort.
 
 ## Past quarters page (2026-10-04)
 
