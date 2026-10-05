@@ -349,7 +349,7 @@ def _clear_roster_accounts(sandbox):
     """Accounts made by a previous real sync are permanent (production data, with real activity against them - password changes,
     live sessions - that grows over time); clear every table with a foreign key to portal_user.user_id first, inside this
     rolled-back transaction only, so a sync test sees a clean slate without touching the committed rows."""
-    for table in ("portal_password_history", "portal_session"):
+    for table in ("portal_password_history", "portal_session", "portal_reset_request"):
         sandbox.execute(f"""DELETE FROM {table} WHERE user_id IN
                             (SELECT user_id FROM portal_user WHERE username IN (SELECT ecode FROM cipl_employee WHERE ecode IS NOT NULL))""")
     sandbox.execute("DELETE FROM portal_user WHERE username IN (SELECT ecode FROM cipl_employee WHERE ecode IS NOT NULL)")
@@ -541,10 +541,11 @@ def test_forgot_password_without_email_waits_for_an_administrator(sandbox, monke
     with TestClient(app) as adm:
         post(adm, "/api/auth/login", {"username": "TESTER2", "password": STRONG})
         asks = adm.get("/api/admin/users").json()["reset_requests"]
-        assert [x["username"] for x in asks] == ["TESTER1"]
+        # the queue may already hold a real request made by someone trying the feature on the dev database - assert on this test's own entry
+        assert [x["username"] for x in asks].count("TESTER1") == 1 and "NOSUCHUSER" not in [x["username"] for x in asks]
         uid = n(sandbox, "SELECT user_id FROM portal_user WHERE username = 'TESTER1'")
         assert post(adm, "/api/admin/users/reset-password", {"user_id": uid}).status_code == 200
-        assert adm.get("/api/admin/users").json()["reset_requests"] == []
+        assert "TESTER1" not in [x["username"] for x in adm.get("/api/admin/users").json()["reset_requests"]]       # issuing the password closes this test's request
 
 
 def test_forgot_password_falls_back_to_the_administrator_when_mail_fails_or_is_off(sandbox, monkeypatch):
