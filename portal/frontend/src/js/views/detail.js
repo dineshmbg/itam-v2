@@ -91,7 +91,7 @@ export function renderDetail(ds, payload, ctx = {}) {
   (RELATED[ds] || []).forEach(([k, title, target, cols]) => {
     const rows = related[k];
     if (!rows || !rows.length) return;
-    out.push(h('div', { class: 'dsec' }, h('h3', null, `${title} (${rows.length})`), relTable(rows, cols, target)));
+    out.push(h('div', { class: 'dsec rel' }, h('h3', null, `${title} (${rows.length})`), relTable(rows, cols, target)));
   });
   return out;
 }

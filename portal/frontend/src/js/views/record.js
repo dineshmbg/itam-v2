@@ -21,6 +21,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
   const admin = isAdmin();
   let p = payload;
   let form = null;
+  let tab = 'details';
 
   const fieldSpec = (k) => spec.fields.find((f) => f.key === k);
   const canEditAny = () => spec.fields.some((f) => !f.readonly && !f.create_only);
@@ -60,11 +61,34 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
       bar.append(h('button', { class: 'btn', type: 'button', title: 'Print a QR label for this asset', onClick: labelDialog }, icon('qr-code'), 'Label'));
     }
     if (p.created_in_portal) bar.append(h('span', { class: 'badge info' }, icon('add'), 'Added in the portal'));
-    const parts = [bar, ...renderDetail(name, p, { overrides: p.overrides, onReset: resetField, canEdit: (k) => { const f = fieldSpec(k); return f && !f.readonly && !f.create_only; } })];
+    const nodes = renderDetail(name, p, { overrides: p.overrides, onReset: resetField, canEdit: (k) => { const f = fieldSpec(k); return f && !f.readonly && !f.create_only; } });
     const hist = p.related.audit || [];
-    if (hist.length) parts.push(history(hist));
-    drawer.body.replaceChildren(...parts);
+    const rel = nodes.filter((n) => n.classList.contains('rel'));
+    const tabs = [['details', 'Details', nodes.filter((n) => !n.classList.contains('rel')), 'two-col']];
+    if (rel.length) tabs.push(['related', name === 'assets' ? `Calls and parts (${relCount(rel)})` : 'Related', rel, '']);
+    if (hist.length) tabs.push(['history', `History (${hist.length})`, [history(hist)], '']);
+    if (!tabs.some((t) => t[0] === tab)) tab = 'details';
+    drawer.setFoot(bar.children.length ? bar : null);
+    if (tabs.length === 1) { drawer.setTabs(null); drawer.body.replaceChildren(...tabs[0][2]); return; }
+    const panes = tabs.map(([id, , content, cls]) => h('div', { class: 'dpane ' + cls, id: 'dpane-' + id, role: 'tabpanel', 'aria-labelledby': 'dtab-' + id, hidden: id !== tab }, content));
+    const btns = tabs.map(([id, text]) => h('button', { class: 'dtab', type: 'button', role: 'tab', id: 'dtab-' + id, 'aria-controls': 'dpane-' + id, 'aria-selected': String(id === tab), tabindex: id === tab ? '0' : '-1', onClick: () => pick(id) }, text));
+    function pick(id, focus) {
+      tab = id;
+      btns.forEach((b, i) => { const on = tabs[i][0] === id; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+      panes.forEach((x, i) => { x.hidden = tabs[i][0] !== id; });
+      drawer.body.scrollTop = 0;
+    }
+    const list = h('div', { class: 'dtabs', role: 'tablist', 'aria-label': 'Record sections' }, btns);
+    list.addEventListener('keydown', (e) => {
+      const i = tabs.findIndex((t) => t[0] === tab);
+      const to = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[e.key];
+      if (to != null) { e.preventDefault(); pick(tabs[to][0], true); }
+    });
+    drawer.setTabs(list);
+    drawer.body.replaceChildren(...panes);
   }
+
+  const relCount = (rel) => rel.reduce((n, el) => n + Number((el.querySelector('h3')?.textContent.match(/\((\d+)\)/) || [0, 0])[1]), 0);
 
   function history(rows) {
     return h('div', { class: 'dsec' }, h('h3', null, `Edit history (${rows.length})`), h('ol', { class: 'timeline' }, rows.map((r) => {
@@ -79,6 +103,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
   }
 
   function edit() {
+    drawer.setTabs(null); drawer.setFoot(null);
     form = buildForm({ fields: spec.fields.map((f) => ({ ...f, create_only: f.create_only })).filter((f) => !f.readonly), values: p.row, engineers: schema.engineers, onInput: () => { save.disabled = !Object.keys(form.changes()).length; } });
     const banner = h('div', { class: 'rec-note bad', role: 'alert', hidden: true });
     const reason = h('input', { type: 'text', id: 'rec-reason', maxlength: '200', placeholder: 'Optional: why is this being changed?' });
@@ -220,7 +245,7 @@ export async function newRecord({ name, label, onCreated, prefill = {} }) {
   const form = buildForm({ fields: spec.fields, values: baseValues, engineers: schema.engineers, create: true });
   const idNote = spec.id_auto ? h('p', { class: 'muted small' }, 'The ID is assigned automatically when you save.') : null;
   openModal({
-    title: `New ${label}`, wide: true, body: h('div', null, idNote, form.el),
+    title: `New ${label}`, large: true, body: h('div', null, idNote, form.el),
     actions: [{ label: 'Cancel' }, { label: 'Add', primary: true, icon: 'add', keepOpen: true, onClick: async (m) => {
       const miss = form.missing();
       if (Object.keys(miss).length) { form.setErrors(miss); throw new Error('Fill in the required fields (marked *).'); }

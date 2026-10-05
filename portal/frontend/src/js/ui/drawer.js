@@ -4,15 +4,18 @@ let current = null;
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
 
-/** Floating, rounded, draggable detail window with focus trap, Esc to close, scrim click to close, and focus return. */
-export function openDrawer({ title, subtitle, onClose }) {
+/** Floating, rounded, draggable detail window centred on screen, with focus trap, Esc to close, scrim click to close, and focus return.
+ *  `wide` gives the large fixed-size window used for full records; `tabs` / `foot` are optional fixed strips above and below the scrolling body. */
+export function openDrawer({ title, subtitle, onClose, wide = false }) {
   if (current) current.close(true);
   const previous = document.activeElement;
   const body = h('div', { class: 'drawer-b' });
   const titleEl = h('h2', { id: 'drawer-title' }, title);
   const subEl = h('div', { class: 'muted' }, subtitle || '');
   const closeBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': 'Close details' }, icon('close', 'lg'));
-  const panel = h('div', { class: 'drawer', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'drawer-title' }, h('div', { class: 'drawer-h' }, h('div', { class: 't' }, titleEl, subEl), closeBtn), body);
+  const tabs = h('div', { class: 'drawer-tabs' });
+  const foot = h('div', { class: 'drawer-f' });
+  const panel = h('div', { class: 'drawer' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'drawer-title' }, h('div', { class: 'drawer-h' }, h('div', { class: 't' }, titleEl, subEl), closeBtn), tabs, body, foot);
   const scrim = h('div', { class: 'scrim' });
   document.body.append(scrim, panel);
   document.body.style.overflow = 'hidden';
@@ -40,7 +43,7 @@ export function openDrawer({ title, subtitle, onClose }) {
   head.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button') || e.button !== 0) return;
     const r = panel.getBoundingClientRect();
-    Object.assign(panel.style, { right: 'auto', bottom: 'auto', left: r.left + 'px', top: r.top + 'px', height: r.height + 'px' });
+    Object.assign(panel.style, { right: 'auto', bottom: 'auto', margin: '0', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
     drag = { x: e.clientX, y: e.clientY, l: r.left, t: r.top };
     panel.classList.add('dragging'); head.setPointerCapture(e.pointerId);
   });
@@ -54,7 +57,8 @@ export function openDrawer({ title, subtitle, onClose }) {
   scrim.addEventListener('click', () => close());
   closeBtn.addEventListener('click', () => close());
   closeBtn.focus();
-  current = { close, body, setTitle(t, s) { titleEl.textContent = t; subEl.textContent = s || ''; } };
+  current = { close, body, setTitle(t, s) { titleEl.textContent = t; subEl.textContent = s || ''; },
+    setTabs(node) { tabs.replaceChildren(...(node ? [node] : [])); }, setFoot(node) { foot.replaceChildren(...(node ? [node] : [])); } };
   return current;
 }
 export const closeDrawer = () => current?.close(true);

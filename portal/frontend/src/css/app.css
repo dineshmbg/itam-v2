@@ -99,8 +99,8 @@ dialog.modal.busy { cursor: progress; }
 .tl-changes { margin: 4px 0 0; padding-left: 16px; color: var(--c-text-2); font-size: 13px; }
 
 /* ---------- references and hover cards ---------- */
-a.ent { color: var(--c-accent); text-decoration: none; border-bottom: 1px dotted var(--c-accent); }
-a.ent:hover { text-decoration: none; border-bottom-style: solid; }
+a.ent { color: var(--c-accent); text-decoration: none; }
+a.ent:hover { text-decoration: none; }
 .hcard { position: fixed; z-index: 90; background: var(--c-surface); color: var(--c-text); border-radius: var(--r-2); box-shadow: var(--shadow-pop); display: flex; flex-direction: column; overflow: hidden; animation: fade 100ms var(--ease); text-transform: uppercase; }
 .hcard.loading { padding: 12px 16px; color: var(--c-text-2); }
 .hc-h { padding: 12px 14px 8px; border-bottom: 1px solid var(--c-border); }
@@ -137,7 +137,9 @@ a.ent:hover { text-decoration: none; border-bottom-style: solid; }
   .usr-t { display: none; }
   .btn.usr { width: 36px; padding: 0; justify-content: center; }
   .hdr-tools .usr-wrap .btn { display: inline-flex; }
-  .drawer { top: 8px; right: 8px; bottom: 8px; width: calc(100vw - 16px); border-radius: 14px; }
+  .drawer, .drawer.wide { width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 14px; }
+  .drawer.wide { height: calc(100vh - 16px); min-width: 0; }
+  dialog.modal.large { width: calc(100vw - 16px); height: calc(100dvh - 16px); min-width: 0; }
   .frow.row-inline { grid-template-columns: 1fr; }
   .codes { columns: 1; }
   .kv, .kv.compact { grid-template-columns: 120px minmax(0, 1fr); }

@@ -3,8 +3,8 @@ import { h, icon } from '../core/dom.js';
 
 const open = new Set();
 
-/** openModal({title, lead, body, actions, locked, wide}) -> {el, close(), setBusy(b), error(msg)}. `actions`: [{label, primary, danger, onClick, keepOpen}] */
-export function openModal({ title, lead, body, actions = [], locked = false, wide = false, onClose }) {
+/** openModal({title, lead, body, actions, locked, wide, large}) -> {el, close(), setBusy(b), error(msg)}. `actions`: [{label, primary, danger, onClick, keepOpen}] */
+export function openModal({ title, lead, body, actions = [], locked = false, wide = false, large = false, onClose }) {
   const previous = document.activeElement;
   const err = h('div', { class: 'ferr modal-err', role: 'alert', hidden: true });
   const btns = actions.map((a) => {
@@ -23,7 +23,7 @@ export function openModal({ title, lead, body, actions = [], locked = false, wid
     return b;
   });
   const closeBtn = locked ? null : h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': 'Close' }, icon('close', 'lg'));
-  const dlg = h('dialog', { class: 'modal' + (wide ? ' wide' : ''), 'aria-labelledby': 'modal-title' },
+  const dlg = h('dialog', { class: 'modal' + (wide ? ' wide' : '') + (large ? ' large' : ''), 'aria-labelledby': 'modal-title' },
     h('div', { class: 'modal-h' }, h('h2', { id: 'modal-title' }, title), closeBtn),
     h('div', { class: 'modal-b' }, lead ? h('p', { class: 'muted' }, lead) : null, body, err),
     actions.length ? h('div', { class: 'modal-actions' }, btns) : null);

@@ -128,7 +128,7 @@ export function mountRegister(root, name, opts = {}) {
     rec = null; openId = id;
     patchParam('open', id);
     table?.setSelected(id);
-    drawer = openDrawer({ title: id, subtitle: 'Loading…', onClose: () => { openId = null; rec = null; patchParam('open', null); table?.setSelected(null); } });
+    drawer = openDrawer({ wide: true, title: id, subtitle: 'Loading…', onClose: () => { openId = null; rec = null; patchParam('open', null); table?.setSelected(null); } });
     try {
       const dn = ds.detail || name;                       // a worklist opens the record of the register it is drawn from
       const [d, schema] = await Promise.all([get(`/api/registers/${dn}/${encodeURIComponent(id)}`), getSchema()]);
