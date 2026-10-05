@@ -104,22 +104,23 @@ export function mountEngineersDash(root) {
     drawer?.close(true);
     const mark = (on) => document.querySelectorAll('tr[data-id]').forEach((tr) => { if (on && tr.dataset.id === String(key)) tr.setAttribute('aria-selected', 'true'); else tr.removeAttribute('aria-selected'); });
     mark(true);
-    drawer = openDrawer({ title: 'Engineer', subtitle: 'Loading…', onClose: () => { mark(false); patchParam('eng', null); } });
+    drawer = openDrawer({ wide: true, title: 'Engineer', subtitle: 'Loading…', onClose: () => { mark(false); patchParam('eng', null); } });
     try {
       const e = await get('/api/engineers/' + encodeURIComponent(key));
       drawer.setTitle(e.display_name, [e.designation, e.ecode].filter(Boolean).join(' · ') || 'Not on the CIPL roster');
       const b = drawer.body;
-      b.replaceChildren(
-        isAdmin() && e.ecode ? h('div', { class: 'dsec' }, h('button', { class: 'btn', type: 'button', onClick: () => rosterEvent(e) }, icon('user'), e.employment_status === 'ACTIVE' ? 'Record resignation / transfer…' : 'Record rejoining…')) : null,
-        h('div', { class: 'dsec' }, h('div', { class: 'kv' },
+      const card = (title, ...kids) => h('div', { class: 'dsec' }, h('h3', null, title), h('div', { class: 'dbody' }, ...kids));
+      if (isAdmin() && e.ecode) drawer.setFoot(h('div', { class: 'rec-bar' }, h('button', { class: 'btn', type: 'button', onClick: () => rosterEvent(e) }, icon('user'), e.employment_status === 'ACTIVE' ? 'Record resignation / transfer…' : 'Record rejoining…')));
+      b.replaceChildren(h('div', { class: 'dpane two-col' },
+        h('div', { class: 'dsec' }, h('h3', null, 'Profile'), h('div', { class: 'kv' },
           kv('Gender', genderGlyph(e.gender)), kv('Level', e.level || '—'), kv('Roster status', e.employment_status ? badge(e.employment_status === 'ACTIVE' ? 'ACTIVE' : e.employment_status) : h('span', { class: 'faint' }, 'Not on roster')),
           kv('Joined ONGC site', date(e.date_of_joining_ongc)), kv('Skill category', e.skill_category || '—'), kv('Deployed at', humanize(e.deployed_at)), kv('Work email', e.company_email || '—'),
           ...('mobile_no' in e ? kv('Mobile', e.mobile_no || '—') : []), ...('personal_email' in e ? kv('Personal e-mail', e.personal_email || '—') : []))),
-        e.checklist.length ? h('div', { class: 'dsec' }, h('h3', null, 'Onboarding checklist'), h('div', { class: 'checklist' }, e.checklist.map((c) => h('div', { class: 'row' }, tickCross(c.status !== 'PENDING', 'Complete', 'Pending'), ITEM_LABEL[c.item] || humanize(c.item))))) : null,
-        h('div', { class: 'dsec' }, h('h3', null, `Open calls (${e.open_calls.length})`), e.open_calls.length ? miniTable(e.open_calls, ['id', 'cipl_call_date', 'problem_description', 'ageing_days'], ['SR ID', 'Logged', 'Problem', 'Age (d)'], 'calls') : h('div', { class: 'muted' }, 'No open calls.')),
-        h('div', { class: 'dsec' }, h('h3', null, 'Recently closed'), e.recent_closed.length ? miniTable(e.recent_closed, ['id', 'closed_date', 'problem_description', 'tat_days'], ['SR ID', 'Closed', 'Problem', 'Days'], 'calls') : h('div', { class: 'muted' }, 'None.')),
-        h('div', { class: 'dsec' }, h('h3', null, 'Assets by class'), e.assets_by_class.length ? barRows(e.assets_by_class.map((a) => ({ label: `${humanize(a.label)}${a.pm_pending ? ` · ${a.pm_pending} PM pending` : ''}`, n: a.n, href: regHref('assets', { 'f.asset_class': a.label, 'f.engineer_name': e.id }) }))) : h('div', { class: 'muted' }, 'No assets assigned.')),
-      );
+        e.checklist.length ? card('Onboarding checklist', h('div', { class: 'checklist' }, e.checklist.map((c) => h('div', { class: 'row' }, tickCross(c.status !== 'PENDING', 'Complete', 'Pending'), ITEM_LABEL[c.item] || humanize(c.item))))) : null,
+        card(`Open calls (${e.open_calls.length})`, e.open_calls.length ? miniTable(e.open_calls, ['id', 'cipl_call_date', 'problem_description', 'ageing_days'], ['SR ID', 'Logged', 'Problem', 'Age (d)'], 'calls') : h('div', { class: 'muted' }, 'No open calls.')),
+        card('Recently closed', e.recent_closed.length ? miniTable(e.recent_closed, ['id', 'closed_date', 'problem_description', 'tat_days'], ['SR ID', 'Closed', 'Problem', 'Days'], 'calls') : h('div', { class: 'muted' }, 'None.')),
+        card('Assets by class', e.assets_by_class.length ? barRows(e.assets_by_class.map((a) => ({ label: `${humanize(a.label)}${a.pm_pending ? ` · ${a.pm_pending} PM pending` : ''}`, n: a.n, href: regHref('assets', { 'f.asset_class': a.label, 'f.engineer_name': e.id }) }))) : h('div', { class: 'muted' }, 'No assets assigned.')),
+      ));
     } catch (err) { drawer.body.replaceChildren(errorBlock(err)); }
   }
   const kv = (k, v) => [h('div', { class: 'k' }, k), h('div', { class: 'v' }, v)];

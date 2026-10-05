@@ -199,7 +199,7 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 
 /* ---------- drawer ---------- */
 .scrim { position: fixed; inset: 0; background: var(--c-scrim); z-index: 50; animation: fade 120ms var(--ease); }
-.drawer { position: fixed; inset: 0; margin: auto; width: min(760px, calc(100vw - 32px)); height: fit-content; max-height: calc(100vh - 32px); background: var(--c-surface); z-index: 51; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow-float); display: flex; flex-direction: column; animation: pop 180ms var(--ease); }
+.drawer { position: fixed; inset: 0; margin: auto; width: min(760px, calc(100vw - 32px)); height: fit-content; max-height: calc(100vh - 32px); background: var(--c-surface); z-index: 51; border-radius: 16px; overflow: hidden; overflow: clip; box-shadow: var(--shadow-float); display: flex; flex-direction: column; animation: pop 180ms var(--ease); }
 .drawer.wide { width: 80vw; height: 80vh; min-width: min(640px, calc(100vw - 32px)); }
 @keyframes fade { from { opacity: 0; } } @keyframes pop { from { transform: translateY(8px) scale(0.985); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .drawer { animation: none; } }
@@ -210,6 +210,7 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 .drawer-h .t { flex: 1; min-width: 0; }
 .drawer-h h2 { font-size: 16px; line-height: 24px; overflow-wrap: anywhere; }
 .drawer-b { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 16px 24px; }
+.drawer-h, .drawer-tabs, .drawer-f { flex: none; }
 .drawer-tabs:empty, .drawer-f:empty { display: none; }
 .drawer-tabs { border-bottom: 1px solid var(--c-border); padding: 0 16px; }
 .drawer-f { border-top: 1px solid var(--c-border); background: var(--c-surface-2); padding: 12px 16px; }
@@ -240,6 +241,7 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 .drawer .dsec > h3, .drawer .eform .fgroup > h3, dialog.modal.large .eform .fgroup > h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; background: var(--hc); color: var(--hc-ink); font-size: 13px; line-height: 20px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 0; border-radius: 8px 8px 0 0; }
 .drawer .dsec > h3::before, .drawer .eform .fgroup > h3::before, dialog.modal.large .eform .fgroup > h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.85; flex: none; }
 .drawer .eform .fgroup > h3::after, dialog.modal.large .eform .fgroup > h3::after { display: none; }
+.drawer .dsec > .dbody { border: 1px solid var(--c-border); border-top: 0; border-radius: 0 0 8px 8px; padding: 10px 14px; min-width: 0; }
 .drawer .dsec > .kv, .drawer .dsec > .tbl-wrap { border-radius: 0 0 8px 8px; border-top: 0; }
 .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { padding: 0 0 4px; overflow: hidden; }
 .drawer .eform .fgroup > .frow, dialog.modal.large .eform .fgroup > .frow { margin-left: 16px; margin-right: 16px; }
