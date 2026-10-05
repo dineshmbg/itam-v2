@@ -473,3 +473,96 @@ def test_recover_account_can_set_a_chosen_starting_password(sandbox):
     assert out["temporary_password"] == "*ongc123"
     row = sandbox.execute("SELECT password_hash, must_change, active FROM portal_user WHERE username = %s", (name,)).fetchone()
     assert auth.verify_password("*ongc123", row[0]) and row[1] is True and row[2] is True
+
+
+# ---------------------------------------------------------------- forgotten password (sign-in page)
+def _mail_on(monkeypatch, sent, fail=False):
+    from portal.app import mailer
+    cfg = {**mailer.DEFAULT_SMTP, "enabled": True, "host": "mail.local", "from_addr": "itam@example.com", "has_password": False}
+    monkeypatch.setattr(mailer, "get_smtp", lambda: cfg)
+
+    def send(to, subject, text, html_body=None, cfg=None):
+        if fail:
+            raise mailer.MailError("connection refused")
+        sent.append((to, text))
+    monkeypatch.setattr(mailer, "send", send)
+
+
+def test_forgot_password_emails_a_temporary_password_and_keeps_the_old_one_until_used(sandbox, monkeypatch):
+    sent = []
+    _mail_on(monkeypatch, sent)
+    make(sandbox, "TESTER1", "USER")
+    with TestClient(app) as c:
+        r = post(c, "/api/auth/forgot", {"username": "tester1"})
+        assert r.status_code == 200 and "temporary password" in r.json()["message"]
+        temp = sent[0][1].split("Temporary password: ")[1].split("\n")[0]
+        assert sent[0][0] == "t@example.com"
+        assert post(c, "/api/auth/login", {"username": "TESTER1", "password": STRONG}).status_code == 200     # old password still works...
+    sandbox.execute("UPDATE portal_user SET reset_expires_at = now() + interval '1 hour', reset_hash = reset_hash")
+    # ...but a normal sign-in discards the unused temporary one
+    assert n(sandbox, "SELECT reset_hash IS NULL FROM portal_user WHERE username = 'TESTER1'") is True
+    sandbox.execute("UPDATE portal_user SET reset_requested_at = NULL")
+    post(TestClient(app), "/api/auth/forgot", {"username": "TESTER1"})
+    temp = sent[1][1].split("Temporary password: ")[1].split("\n")[0]
+    with TestClient(app) as c:
+        r = post(c, "/api/auth/login", {"username": "TESTER1", "password": temp})
+        assert r.status_code == 200 and r.json()["state"] == "change_password"
+        assert n(sandbox, "SELECT must_change FROM portal_user WHERE username = 'TESTER1'") is True
+        assert post(TestClient(app), "/api/auth/login", {"username": "TESTER1", "password": STRONG}).status_code == 401   # replaced
+
+
+def test_forgot_password_temp_expires_and_unlocks_a_locked_account(sandbox, monkeypatch):
+    sent = []
+    _mail_on(monkeypatch, sent)
+    make(sandbox, "TESTER1", "USER")
+    auth.request_password_reset("TESTER1", "10.0.0.1")
+    temp = sent[0][1].split("Temporary password: ")[1].split("\n")[0]
+    sandbox.execute("UPDATE portal_user SET reset_expires_at = now() - interval '1 minute'")
+    with TestClient(app) as c:
+        assert post(c, "/api/auth/login", {"username": "TESTER1", "password": temp}).status_code == 401
+    sandbox.execute("UPDATE portal_user SET reset_expires_at = now() + interval '5 minutes', locked_until = now() + interval '1 hour'")
+    with TestClient(app) as c:
+        assert post(c, "/api/auth/login", {"username": "TESTER1", "password": temp}).status_code == 200
+
+
+def test_forgot_password_without_email_waits_for_an_administrator(sandbox, monkeypatch):
+    sent = []
+    _mail_on(monkeypatch, sent)
+    make(sandbox, "TESTER1", "USER")
+    make(sandbox, "TESTER2", "ADMIN")
+    sandbox.execute("UPDATE portal_user SET email = NULL WHERE username = 'TESTER1'")
+    with TestClient(app) as c:
+        a = post(c, "/api/auth/forgot", {"username": "TESTER1"})
+        b = post(c, "/api/auth/forgot", {"username": "NOSUCHUSER"})
+        assert a.status_code == b.status_code == 200 and a.json() == b.json()        # the page cannot tell who exists
+    assert not sent
+    assert n(sandbox, "SELECT count(*) FROM portal_reset_request WHERE username = 'TESTER1' AND handled_at IS NULL") == 1
+    assert n(sandbox, "SELECT count(*) FROM portal_reset_request WHERE username = 'NOSUCHUSER'") == 0
+    with TestClient(app) as adm:
+        post(adm, "/api/auth/login", {"username": "TESTER2", "password": STRONG})
+        asks = adm.get("/api/admin/users").json()["reset_requests"]
+        assert [x["username"] for x in asks] == ["TESTER1"]
+        uid = n(sandbox, "SELECT user_id FROM portal_user WHERE username = 'TESTER1'")
+        assert post(adm, "/api/admin/users/reset-password", {"user_id": uid}).status_code == 200
+        assert adm.get("/api/admin/users").json()["reset_requests"] == []
+
+
+def test_forgot_password_falls_back_to_the_administrator_when_mail_fails_or_is_off(sandbox, monkeypatch):
+    sent = []
+    _mail_on(monkeypatch, sent, fail=True)
+    make(sandbox, "TESTER1", "USER")
+    assert auth.request_password_reset("TESTER1", "10.0.0.1") == "queued"
+    assert n(sandbox, "SELECT reset_hash IS NULL FROM portal_user WHERE username = 'TESTER1'") is True
+    assert auth.request_password_reset("TESTER1", "10.0.0.1") == "ignored"           # cooling-off: asking again within minutes adds nothing
+    assert n(sandbox, "SELECT count(*) FROM portal_reset_request WHERE username = 'TESTER1'") == 1
+
+
+def test_forgot_password_is_throttled_per_computer(sandbox, monkeypatch):
+    _mail_on(monkeypatch, [])
+    auth._forgot.clear()
+    for _ in range(auth.FORGOT_MAX):
+        auth.request_password_reset("NOSUCHUSER", "10.9.9.9")
+    with pytest.raises(auth.AuthError) as e:
+        auth.request_password_reset("NOSUCHUSER", "10.9.9.9")
+    assert e.value.status == 429
+    auth._forgot.clear()

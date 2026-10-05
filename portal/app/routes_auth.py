@@ -36,6 +36,13 @@ async def login(request):
     return _set_cookie(request, json_response(_me(user)), token)
 
 
+async def forgot_password(request):
+    """Same answer whether or not the user name exists, has an address, or the mail went - the page must not reveal which accounts exist."""
+    await run_in_threadpool(auth.request_password_reset, str(request.state.body.get("username") or ""), client_ip(request))
+    return json_response({"ok": True, "message": "If that user name is valid, a temporary password has been e-mailed to the address on the account. "
+                          "If the account has no e-mail address, your request has been passed to the portal administrator, who will give you a temporary password."})
+
+
 async def second_factor(request):
     token = request.cookies.get(auth.COOKIE)
     await run_in_threadpool(auth.verify_second_factor, token, str(request.state.body.get("code") or ""), client_ip(request))
@@ -96,7 +103,7 @@ async def view_log(request):
 
 # ---------------------------------------------------------------- administration
 async def users_list(request):
-    return json_response({"users": await run_in_threadpool(auth.list_users), "settings": await run_in_threadpool(auth.settings, True), "policy": auth.policy_text(),
+    return json_response({"users": await run_in_threadpool(auth.list_users), "settings": await run_in_threadpool(auth.settings, True), "policy": auth.policy_text(), "reset_requests": await run_in_threadpool(auth.reset_requests),
                           "engineers": [r["engineer_key"] for r in await run_in_threadpool(db.query, "SELECT engineer_key FROM portal_engineer ORDER BY 1")]})
 
 
@@ -174,6 +181,7 @@ async def activity_list(request):
 routes = [
     Route("/api/auth/me", guarded(me)),
     Route("/api/auth/login", public_write(login), methods=["POST"]),
+    Route("/api/auth/forgot", public_write(forgot_password), methods=["POST"]),
     Route("/api/auth/totp", public_write(second_factor), methods=["POST"]),
     Route("/api/auth/logout", public_write(logout), methods=["POST"]),
     Route("/api/auth/logout-others", write(logout_others), methods=["POST"]),

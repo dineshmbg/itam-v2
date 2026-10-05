@@ -5,6 +5,11 @@ import * as session from '../core/session.js';
 import { openModal } from '../ui/modal.js';
 import { toast } from '../core/editor.js';
 
+const FAIL_LIMIT = 3;           // wrong passwords before Sign in is swapped for Forgot password
+const failKey = 'itam.loginFails';
+const readFails = () => { try { return Number(sessionStorage.getItem(failKey)) || 0; } catch (_) { return 0; } };
+const writeFails = (n) => { try { sessionStorage.setItem(failKey, String(n)); } catch (_) { /* private mode: the count just lives in memory */ } };
+
 /** Full-page sign-in. Resolves when the person is fully signed in (password changed, second factor done). */
 export function mountLogin(root, { message, startAt2fa = false } = {}) {
   root.replaceChildren();
@@ -24,6 +29,15 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
   const step1 = h('div', null,
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'lg-user' }, 'User name'), user),
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'lg-pass' }, 'Password'), h('div', { class: 'pwbox' }, pass, eye)));
+  const forgotBtn = h('button', { class: 'btn primary block', type: 'button', hidden: true }, icon('reset'), 'Forgot password');
+  const forgotUser = h('input', { id: 'fp-user', type: 'text', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false' });
+  const forgotMsg = h('div', { class: 'login-note', role: 'status', hidden: true });
+  const forgotErr = h('div', { class: 'ferr', role: 'alert', hidden: true });
+  const forgotSend = h('button', { class: 'btn primary block', type: 'submit' }, 'Send me a temporary password');
+  const forgotBack = h('button', { class: 'btn ghost block', type: 'button' }, 'Back to sign in');
+  const forgotPane = h('div', { hidden: true },
+    h('p', { class: 'muted' }, 'Enter your user name. If your account has an e-mail address, a temporary password is sent there. If it has none, the request goes to the portal administrator, who will give you one.'),
+    h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'fp-user' }, 'User name'), forgotUser), forgotMsg, forgotErr, forgotSend, forgotBack);
   const step2 = h('div', { hidden: true },
     h('p', { class: 'muted' }, 'Enter the 6-digit code from your authenticator app, or one of your recovery codes.'),
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'lg-code' }, 'Verification code'), code));
@@ -31,28 +45,54 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
     h('img', { class: 'login-logo', src: '/static/assets/ongc-logo.png', alt: 'ONGC' }),
     h('div', { class: 'login-title' }, h('strong', null, 'ITAM PORTAL'), h('span', null, 'IT ASSET MANAGEMENT · ANKLESHWAR ASSET')),
     message ? h('div', { class: 'login-note', role: 'status' }, icon('information--filled'), message) : null,
-    step1, step2, err, go,
+    step1, step2, err, go, forgotBtn, forgotPane,
     h('div', { class: 'login-foot' }, 'Authorised users only. Activity is recorded.'));
   root.append(h('div', { class: 'login-page' }, form));
   let stage = 1;
+  const showForgotButton = () => { const on = stage === 1 && readFails() >= FAIL_LIMIT; go.hidden = on; forgotBtn.hidden = !on; };
+  const openForgot = () => {
+    step1.hidden = true; go.hidden = true; forgotBtn.hidden = true; err.hidden = true; forgotPane.hidden = false;
+    forgotUser.value = user.value.trim(); forgotMsg.hidden = true; forgotErr.hidden = true; forgotSend.hidden = false; forgotSend.disabled = false;
+    forgotUser.focus();
+  };
+  forgotBtn.addEventListener('click', openForgot);
+  forgotBack.addEventListener('click', () => {
+    writeFails(0); forgotPane.hidden = true; step1.hidden = false; err.hidden = true; pass.value = ''; showForgotButton(); (user.value ? pass : user).focus();
+  });
+  forgotSend.addEventListener('click', async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    forgotErr.hidden = true;
+    if (!forgotUser.value.trim()) { forgotErr.textContent = 'Enter your user name.'; forgotErr.hidden = false; forgotUser.focus(); return; }
+    forgotSend.disabled = true;
+    try {
+      const r = await send('/api/auth/forgot', { username: forgotUser.value.trim() });
+      forgotMsg.replaceChildren(icon('information--filled'), r.message); forgotMsg.hidden = false; forgotSend.hidden = true; user.value = forgotUser.value.trim();
+    } catch (ex) { forgotErr.textContent = ex.message; forgotErr.hidden = false; forgotSend.disabled = false; }
+  });
   if (startAt2fa) { stage = 2; step1.hidden = true; step2.hidden = false; go.textContent = 'Verify'; setTimeout(() => code.focus(), 30); }
 
+  showForgotButton();
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!forgotPane.hidden) { forgotSend.click(); return; }
     err.hidden = true;
     go.disabled = true;
     try {
       if (stage === 1) {
         if (!user.value.trim() || !pass.value) throw new Error('Enter your user name and password.');
         const me = await session.signIn(user.value.trim(), pass.value);
+        writeFails(0);
         if (me.state === '2fa') { stage = 2; step1.hidden = true; step2.hidden = false; go.textContent = 'Verify'; code.focus(); }
       } else {
         await session.secondFactor(code.value);
       }
     } catch (ex) {
       err.textContent = ex.message; err.hidden = false;
+      if (stage === 1 && ex.code === 'bad_credentials') writeFails(readFails() + 1);
+      if (stage === 1 && ex.code === 'locked') writeFails(FAIL_LIMIT);
+      showForgotButton();
       if (stage === 2 && ex.code === 'expired') { stage = 1; step1.hidden = false; step2.hidden = true; go.textContent = 'Sign in'; pass.value = ''; }
-      (stage === 1 ? pass : code).focus();
+      (stage === 1 ? (forgotBtn.hidden ? pass : forgotBtn) : code).focus();
     } finally { go.disabled = false; }
   });
   if (!startAt2fa) setTimeout(() => user.focus(), 30);

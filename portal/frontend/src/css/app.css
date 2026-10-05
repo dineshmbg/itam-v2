@@ -45,7 +45,7 @@ input[type="password"], #lg-code, #tf-code, #td-code, #lg-user { letter-spacing:
 .frow.bad input, .frow.bad select, .frow.bad textarea { border-color: var(--c-bad); border-bottom-width: 2px; }
 .req { color: var(--c-bad); }
 .ferr { color: var(--c-bad); font-size: 12.5px; display: flex; gap: 6px; }
-.ferr[hidden] { display: none; }
+.ferr[hidden], .login-card .btn[hidden], .login-note[hidden] { display: none; }
 .modal-err { margin-top: 8px; padding: 8px 10px; background: var(--c-bad-bg); border-radius: var(--r-1); }
 .frow.row-inline { grid-template-columns: minmax(0, 1fr) 190px; align-items: center; gap: 12px; }
 .frow .unit { display: flex; align-items: center; gap: 8px; }

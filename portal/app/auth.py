@@ -60,6 +60,15 @@ DDL = [
     "ALTER TABLE portal_user DROP CONSTRAINT IF EXISTS portal_user_asset_access_check",
     "ALTER TABLE portal_user ADD CONSTRAINT portal_user_asset_access_check CHECK (asset_access IN ('NONE','READ','FULL'))",
     "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS role_locked BOOLEAN NOT NULL DEFAULT FALSE",
+    # Forgotten password (2026-10-05): a temporary password e-mailed to the account is stored here, NOT in password_hash, so the old password
+    # keeps working until the temporary one is actually used (a stranger typing someone's user name cannot lock them out). With no usable
+    # e-mail the request waits in portal_reset_request for an administrator.
+    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS reset_hash TEXT",
+    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS reset_expires_at TIMESTAMPTZ",
+    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS reset_requested_at TIMESTAMPTZ",
+    """CREATE TABLE IF NOT EXISTS portal_reset_request (
+         request_id SERIAL PRIMARY KEY, user_id INT NOT NULL REFERENCES portal_user(user_id), username TEXT NOT NULL, requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+         ip TEXT, reason TEXT NOT NULL, handled_at TIMESTAMPTZ, handled_by TEXT)""",
     "CREATE TABLE IF NOT EXISTS portal_password_history (user_id INT NOT NULL REFERENCES portal_user(user_id), password_hash TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())",
     """CREATE TABLE IF NOT EXISTS portal_session (
          token_hash TEXT PRIMARY KEY, user_id INT NOT NULL REFERENCES portal_user(user_id), stage TEXT NOT NULL CHECK (stage IN ('PENDING_2FA','ACTIVE')),
@@ -449,8 +458,9 @@ def reset_password(user_id, editor, email=False):
         u = _row(con, "SELECT * FROM portal_user WHERE user_id = %s FOR UPDATE", (user_id,))
         if not u:
             raise AuthError("User not found.", 404)
-        con.execute("UPDATE portal_user SET password_hash = %s, must_change = TRUE, password_changed_at = now(), failed_attempts = 0, locked_until = NULL WHERE user_id = %s", (hash_password(temp), user_id))
+        con.execute("UPDATE portal_user SET password_hash = %s, must_change = TRUE, password_changed_at = now(), failed_attempts = 0, locked_until = NULL, reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s", (hash_password(temp), user_id))
         con.execute("DELETE FROM portal_session WHERE user_id = %s", (user_id,))
+        _close_reset_requests(con, user_id, editor)
         if not email:
             return {"username": u["username"], "temporary_password": temp}
         if not u["email"]:
@@ -476,6 +486,81 @@ def reset_password(user_id, editor, email=False):
         except mailer.MailError as e:
             raise mailer.MailError(f"The e-mail could not be sent, so the password was not changed. {e}") from e
     return {"username": u["username"], "emailed_to": u["email"]}
+
+
+RESET_VALID_MIN, RESET_COOLDOWN_MIN = 60, 5
+FORGOT_MAX, FORGOT_WINDOW_S = 10, 600
+_forgot, _forgot_lock = {}, threading.Lock()
+
+
+def _close_reset_requests(con, user_id, by):
+    con.execute("UPDATE portal_reset_request SET handled_at = now(), handled_by = %s WHERE user_id = %s AND handled_at IS NULL", (by, user_id))
+
+
+def reset_requests():
+    """Forgotten-password requests that could not be e-mailed (no address on the account, e-mail off, or the mail server refused), oldest first."""
+    return db.query("""SELECT r.request_id, r.username, u.display_name, r.requested_at, r.reason, (u.email IS NOT NULL) AS has_email
+                       FROM portal_reset_request r JOIN portal_user u USING (user_id) WHERE r.handled_at IS NULL AND u.active ORDER BY r.requested_at""")
+
+
+def request_password_reset(username, ip):
+    """Forgotten password, asked for from the sign-in page. -> "emailed" | "queued" | "ignored" - for the log and tests only: the caller shows
+    the same words for all three, so the page never says whether a user name exists.
+      emailed: a new temporary password (valid RESET_VALID_MIN minutes) went to the account's e-mail address. The current password is
+               untouched until the temporary one is used at sign-in.
+      queued:  no usable address - an administrator sees the request in Users and security and issues the password."""
+    from . import mailer
+    now = time.monotonic()
+    with _forgot_lock:
+        q = [t for t in _forgot.get(ip or "", []) if now - t < FORGOT_WINDOW_S]
+        if len(q) >= FORGOT_MAX:
+            _forgot[ip or ""] = q
+            raise AuthError("Too many reset requests from this computer. Try again in a few minutes.", 429, code="throttled")
+        _forgot[ip or ""] = [*q, now]
+    uname = re.sub(r"\s+", "", (username or "")).upper()
+    u = db.one("SELECT * FROM portal_user WHERE username = %s", [uname]) if uname else None
+    if not u or not u["active"] or u["read_only"]:
+        log("(UNKNOWN USER)" if not u else uname, ip, "PASSWORD_RESET_REQUESTED", detail={"result": "ignored"}, ok=False)
+        return "ignored"
+    if u["reset_requested_at"] and (_now() - u["reset_requested_at"]).total_seconds() < RESET_COOLDOWN_MIN * 60:
+        return "ignored"                                  # asked again within minutes: the first answer (mail or queue entry) is still good
+    with db.write() as con:
+        con.execute("UPDATE portal_user SET reset_requested_at = now() WHERE user_id = %s", (u["user_id"],))
+    reason = "no e-mail address on the account"
+    if u["email"]:
+        cfg = mailer.get_smtp()
+        if not cfg["enabled"]:
+            reason = "e-mail is switched off"
+        else:
+            temp = generate_temp_password()
+            url = cfg["portal_url"]
+            text = (f"Hello {u['display_name']},\n\nSomeone (hopefully you) asked to reset the ITAM Portal password for {u['username']}.\n\n"
+                    f"Temporary password: {temp}\n\n"
+                    f"Sign in{(' at ' + url) if url else ''} with it within {RESET_VALID_MIN} minutes; you will be asked to choose a new password straight away.\n"
+                    "Your current password still works until then. If you did not ask for this, ignore this message - nothing has changed.\n")
+            esc = mailer.html.escape
+            link = (' at <a href="' + esc(url) + '">' + esc(url) + '</a>') if url else ''
+            body = (f"<p style='font-family:Arial;font-size:13px'>Hello {esc(u['display_name'])},</p>"
+                    f"<p style='font-family:Arial;font-size:13px'>Someone (hopefully you) asked to reset the ITAM Portal password for <b>{esc(u['username'])}</b>.</p>"
+                    f"<p style='font-family:Arial;font-size:13px'>Temporary password: <span style='font-family:Consolas,monospace;font-size:15px'><b>{esc(temp)}</b></span></p>"
+                    f"<p style='font-family:Arial;font-size:13px'>Sign in{link} with it within {RESET_VALID_MIN} minutes; "
+                    "you will be asked to choose a new password straight away. Your current password still works until then.</p>"
+                    "<p style='font-family:Arial;font-size:11px;color:#777'>If you did not ask for this, ignore this message - nothing has changed.</p>")
+            try:
+                mailer.send(u["email"], "ITAM Portal - your temporary password", text, body, cfg=cfg)
+            except mailer.MailError as e:
+                reason = f"the e-mail could not be sent ({str(e)[:120]})"
+            else:
+                with db.write() as con:
+                    con.execute("UPDATE portal_user SET reset_hash = %s, reset_expires_at = now() + make_interval(mins => %s) WHERE user_id = %s",
+                                (hash_password(temp), RESET_VALID_MIN, u["user_id"]))
+                log(u["username"], ip, "PASSWORD_RESET_REQUESTED", detail={"result": "emailed"})
+                return "emailed"
+    with db.write() as con:
+        if not con.execute("SELECT 1 FROM portal_reset_request WHERE user_id = %s AND handled_at IS NULL", (u["user_id"],)).fetchone():
+            con.execute("INSERT INTO portal_reset_request (user_id, username, ip, reason) VALUES (%s,%s,%s,%s)", (u["user_id"], u["username"], ip, reason))
+    log(u["username"], ip, "PASSWORD_RESET_REQUESTED", detail={"result": "queued", "reason": reason})
+    return "queued"
 
 
 def recover_account(username, ip="console", password=None):
@@ -538,6 +623,10 @@ def _ip_throttle_fail(ip):
         _ip_fails.setdefault(ip, []).append(time.monotonic())
 
 
+def _temp_password_ok(u, password):
+    return bool(u["reset_hash"] and u["reset_expires_at"] and u["reset_expires_at"] > _now() and verify_password(password or "", u["reset_hash"]))
+
+
 def login(username, password, ip, user_agent):
     """-> (token, state). Raises AuthError. The failure message never says whether the user exists."""
     generic = AuthError("Sign-in failed. Check your user name and password.", 401, code="bad_credentials")
@@ -550,6 +639,12 @@ def login(username, password, ip, user_agent):
         if not u or not u["active"]:
             verify_password(password or "", _DUMMY)
             failure = ("(UNKNOWN USER)" if not u else uname, 0, False)      # never write down what was typed for an unknown name: it may be a password
+        elif _temp_password_ok(u, password):
+            con.execute("INSERT INTO portal_password_history (user_id, password_hash) VALUES (%s,%s)", (u["user_id"], u["password_hash"]))
+            con.execute("""UPDATE portal_user SET password_hash = reset_hash, must_change = TRUE, password_changed_at = now(), failed_attempts = 0, locked_until = NULL,
+                           reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s""", (u["user_id"],))
+            con.execute("DELETE FROM portal_session WHERE user_id = %s", (u["user_id"],))
+            failure = None
         elif u["locked_until"] and u["locked_until"] > _now():
             mins = int((u["locked_until"] - _now()).total_seconds() // 60) + 1
             raise AuthError(f"This account is locked for about {mins} more minute(s) after repeated failed sign-ins. An administrator can unlock it.", 423, code="locked")
@@ -569,6 +664,9 @@ def login(username, password, ip, user_agent):
         _ip_throttle_fail(ip or "")
         log(failure[0], ip, "LOGIN_FAILED", detail={"attempt": failure[1], "locked": failure[2]}, ok=False)
         raise generic
+    with db.write() as con:                            # the right password was typed: an unused e-mailed one is no longer needed, and a waiting request is moot
+        con.execute("UPDATE portal_user SET reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s AND reset_hash IS NOT NULL AND NOT must_change", (u["user_id"],))
+        _close_reset_requests(con, u["user_id"], "(signed in)")
     token = secrets.token_urlsafe(32)
     stage = "PENDING_2FA" if u["totp_enabled"] else "ACTIVE"
     life = dt.timedelta(minutes=5) if stage == "PENDING_2FA" else dt.timedelta(hours=s["session_max_hours"])
@@ -692,7 +790,7 @@ def change_password(user, current, new, token):
         if problems:
             raise AuthError("The new password does not meet the policy: " + "; ".join(problems) + ".", 400, fields={"new": "; ".join(problems)})
         con.execute("INSERT INTO portal_password_history (user_id, password_hash) VALUES (%s,%s)", (u["user_id"], u["password_hash"]))
-        con.execute("UPDATE portal_user SET password_hash = %s, must_change = FALSE, password_changed_at = now() WHERE user_id = %s", (hash_password(new), u["user_id"]))
+        con.execute("UPDATE portal_user SET password_hash = %s, must_change = FALSE, password_changed_at = now(), reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s", (hash_password(new), u["user_id"]))
         con.execute("DELETE FROM portal_session WHERE user_id = %s AND token_hash <> %s", (u["user_id"], _token_hash(token)))
 
 

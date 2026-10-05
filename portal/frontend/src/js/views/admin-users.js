@@ -97,7 +97,13 @@ export function mountUsers(root) {
     const notice = idle.length ? h('div', { class: 'rec-note warn', style: { margin: '12px' } }, icon('warning'),
       `${idle.length} active account${idle.length === 1 ? ' has' : 's have'} never signed in and still ${idle.length === 1 ? 'uses' : 'use'} the starting password: ${idle.map((u) => u.username).join(', ')}. `
       + 'Ask each person to sign in and choose a password, or use Manage > Reset password for a one-time password, or deactivate accounts that are not needed.') : null;
-    body.replaceChildren(...(notice ? [notice] : []), h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
+    // people who pressed Forgot password on the sign-in page and could not be e-mailed a temporary password (no address, e-mail off, or the mail failed)
+    const asks = data.reset_requests || [];
+    const resets = asks.length ? h('div', { class: 'rec-note warn', style: { margin: '12px' } }, icon('reset'),
+      h('div', null, h('strong', null, `${asks.length} forgotten-password request${asks.length === 1 ? '' : 's'} waiting`),
+        h('ul', { class: 'sync-list' }, asks.map((r) => h('li', null, `${r.username} (${person(r.display_name)}) - ${r.reason}, asked ${when(r.requested_at)} `,
+          h('button', { class: 'btn', type: 'button', onClick: () => { const u = data.users.find((x) => x.username === r.username); if (u) resetPassword(u); } }, icon('reset'), 'Reset password')))))) : null;
+    body.replaceChildren(...(resets ? [resets] : []), ...(notice ? [notice] : []), h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
       h('thead', null, h('tr', null, ['User name', 'Name', 'Group', 'Status', 'Two-factor', 'E-mail', 'Last sign-in', ''].map((t) => h('th', null, t)))),
       h('tbody', null, data.users.map((u) => h('tr', null,
         h('td', { class: 'mono' }, u.username, u.user_id === me.user_id ? h('span', { class: 'faint' }, ' (you)') : null), h('td', null, person(u.display_name)),

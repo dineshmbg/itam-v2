@@ -650,3 +650,11 @@ WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is a
 ## Bulk assign / hand over assets (2026-10-05)
 
 Assets register -> **Assign engineer** (administrators and Users with full asset access). It acts on everything matching the current search and filters (up to 5,000 assets): pick the **New engineer**, and optionally an **Old engineer** - then only listed assets currently held by the old engineer move, the rest are left alone. To hand over a whole workload, filter by the old engineer and assign to the new one. Each asset goes through the normal edit engine (`edit.reassign_assets` -> `edit.update`), so it is validated, protected from re-import overwrite and written to the change log; the whole batch is one transaction and is logged as `REASSIGN_ASSETS`. API: `POST /api/edit/assets/reassign`. Tests: `tests/test_bulk_assign.py`.
+
+## Forgotten password (2026-10-05)
+
+After **3 wrong passwords** on the sign-in page (counted per browser tab, kept across a reload; also when the account is locked) the **Sign in** button is replaced by **Forgot password**. The person enters their user name:
+
+- **Account has an e-mail address and e-mail is on** - a new temporary password is e-mailed (valid 60 minutes). It is stored beside, not over, the real password (`portal_user.reset_hash`), so someone typing another person's user name cannot lock them out: the old password keeps working until the temporary one is used, and a normal sign-in discards an unused one. Signing in with the temporary password also lifts a lock-out, then forces a new password.
+- **No address, e-mail off, or the mail failed** - the request waits in `portal_reset_request`; administrators see it as a banner on **Users and security** with a *Reset password* button. Any reset, or the person signing in, closes it.
+- The page always shows the same wording, so it never reveals whether a user name exists. Limits: 10 requests per computer per 10 minutes, one per account per 5 minutes. Two-factor still applies after the temporary password. Every request is in the activity log (`PASSWORD_RESET_REQUESTED`). Needs `db/setup.py` (adds the columns/table) - it runs on the normal update.
