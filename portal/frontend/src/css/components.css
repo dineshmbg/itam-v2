@@ -229,13 +229,14 @@ a.bar-row:hover .bar-l { color: var(--c-accent); text-decoration: none; }
 /* card headings: a solid, saturated strip in a rotating palette colour so each section is easy to spot. White text on every light-theme hue and
    near-black on the brighter dark-theme hues both clear 4.5:1; the section name is text, so colour is never the only cue. */
 :where(.drawer .dsec, .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup) { --hc: var(--chart-1); --hc-ink: var(--c-on-accent); }
-.drawer .dpane > :nth-child(8n+2), .eform > :nth-child(8n+2) { --hc: var(--chart-3); }
-.drawer .dpane > :nth-child(8n+3), .eform > :nth-child(8n+3) { --hc: var(--chart-7); }
-.drawer .dpane > :nth-child(8n+4), .eform > :nth-child(8n+4) { --hc: var(--chart-2); }
-.drawer .dpane > :nth-child(8n+5), .eform > :nth-child(8n+5) { --hc: var(--chart-4); }
-.drawer .dpane > :nth-child(8n+6), .eform > :nth-child(8n+6) { --hc: var(--chart-6); }
-.drawer .dpane > :nth-child(8n+7), .eform > :nth-child(8n+7) { --hc: var(--chart-10); }
-.drawer .dpane > :nth-child(8n+8), .eform > :nth-child(8n+8) { --hc: var(--chart-8); }
+.drawer .dpane > :nth-child(9n+2), .eform > :nth-child(9n+2) { --hc: var(--chart-3); }
+.drawer .dpane > :nth-child(9n+3), .eform > :nth-child(9n+3) { --hc: var(--chart-7); }
+.drawer .dpane > :nth-child(9n+4), .eform > :nth-child(9n+4) { --hc: var(--chart-2); }
+.drawer .dpane > :nth-child(9n+5), .eform > :nth-child(9n+5) { --hc: var(--chart-4); }
+.drawer .dpane > :nth-child(9n+6), .eform > :nth-child(9n+6) { --hc: var(--chart-6); }
+.drawer .dpane > :nth-child(9n+7), .eform > :nth-child(9n+7) { --hc: var(--chart-10); }
+.drawer .dpane > :nth-child(9n+8), .eform > :nth-child(9n+8) { --hc: var(--chart-8); }
+.drawer .dpane > :nth-child(9n+9), .eform > :nth-child(9n+9) { --hc: var(--chart-5); }
 .drawer .dsec > h3, .drawer .eform .fgroup > h3, dialog.modal.large .eform .fgroup > h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; background: var(--hc); color: var(--hc-ink); font-size: 13px; line-height: 20px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 0; border-radius: 8px 8px 0 0; }
 .drawer .dsec > h3::before, .drawer .eform .fgroup > h3::before, dialog.modal.large .eform .fgroup > h3::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.85; flex: none; }
 .drawer .eform .fgroup > h3::after, dialog.modal.large .eform .fgroup > h3::after { display: none; }
