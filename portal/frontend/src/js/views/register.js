@@ -11,9 +11,10 @@ import { errorBlock, pageHead } from './common.js';
 import { getSchema } from '../core/editor.js';
 import { mountRecord, newRecord } from './record.js';
 import { recordPmDialog } from './pm-record.js';
+import { assignEngineerDialog } from './assign-engineer.js';
 import { toast } from '../core/editor.js';
 import { columnsDialog, loadColumns } from '../ui/columns.js';
-import { user as sessionUser } from '../core/session.js';
+import { user as sessionUser, isAdmin } from '../core/session.js';
 
 const TABLE_OF = { assets: 'asset', pm: 'asset', calls: 'svc_call', inward: 'spare_inward', outward: 'spare_outward', rma: 'oem_rma', employees: 'employee', engineers: 'portal_engineer' };
 let metaP;
@@ -155,6 +156,11 @@ export function mountRegister(root, name, opts = {}) {
         if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
         recordPmDialog({ keys, onDone: () => table.refresh() });
       } }, icon('checkmark'), 'Record PM for listed assets'));
+      if (name === 'assets' && (isAdmin() || sessionUser()?.asset_access === 'FULL')) tools.push(h('button', { class: 'btn', type: 'button', title: 'Assign every asset matching the current search and filters to an engineer, or hand over one engineer’s assets to another', onClick: async () => {
+        const keys = await api.allKeys(1000);
+        if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
+        assignEngineerDialog({ keys, onDone: () => table.refresh() });
+      } }, icon('user--multiple'), 'Assign engineer'));
       if (schema?.can_create[name]) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: () => newRecord({ name, label: ds.label.replace(/s$/, ''), onCreated: (id) => { table.refresh(); openDetail(id); } }) }, icon('add'), `New ${ds.label.replace(/s$/, '').toLowerCase()}`));
       let cols = await loadColumns(name, ds.columns);
       const colsBtn = h('button', { class: 'btn', type: 'button', onClick: () => columnsDialog({ name, columns: cols, onApply: (next) => { cols = next || ds.columns.map((c) => ({ ...c, visible: true })); rebuildTable(); } }) }, icon('settings'), 'Columns');

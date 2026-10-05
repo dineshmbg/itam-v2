@@ -646,3 +646,7 @@ The 1 Oct call tracker passed the import check and was only refused when *Load* 
 ## Design basis
 
 WCAG 2.2 AA (contrast, focus, keyboard, target size, reduced motion; status is always icon + text), ISO 9241-210, ISO/IEC 19770-1 asset vocabulary, ITIL 4 incident/asset practices. Type: IBM Plex. Icons: Carbon (Apache-2.0). Charts: Chart.js (MIT, tree-shaken, lazy). Colour: one accent per module plus a 10-hue categorical chart palette (`tokens.css`), status colour always paired with an icon and a text label.
+
+## Bulk assign / hand over assets (2026-10-05)
+
+Assets register -> **Assign engineer** (administrators and Users with full asset access). It acts on everything matching the current search and filters (up to 1,000 assets): pick the **New engineer**, and optionally an **Old engineer** - then only listed assets currently held by the old engineer move, the rest are left alone. To hand over a whole workload, filter by the old engineer and assign to the new one. Each asset goes through the normal edit engine (`edit.reassign_assets` -> `edit.update`), so it is validated, protected from re-import overwrite and written to the change log; the whole batch is one transaction and is logged as `REASSIGN_ASSETS`. API: `POST /api/edit/assets/reassign`. Tests: `tests/test_bulk_assign.py`.

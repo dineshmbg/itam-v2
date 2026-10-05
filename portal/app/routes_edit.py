@@ -63,6 +63,18 @@ async def update(request):
     return json_response(await run_in_threadpool(run))
 
 
+async def reassign(request):
+    """Bulk (re)assignment of assets to an engineer. Administrators and Users with full asset access only."""
+    b, u, ip = request.state.body, request.state.user, client_ip(request)
+    if not (auth.is_admin(u) or u.get("asset_access") == "FULL"):
+        raise auth.AuthError("Only administrators can assign assets to engineers in bulk.", 403, code="forbidden")
+    def run():
+        r = edit.reassign_assets(b.get("asset_keys"), b.get("engineer"), b.get("from_engineer"), u["username"], ip, b.get("reason"))
+        _act(u, ip, "REASSIGN_ASSETS", f"assets:{r['changed']}", {"to": b.get("engineer"), "from": b.get("from_engineer"), "skipped": r["skipped"]})
+        return r
+    return json_response(await run_in_threadpool(run))
+
+
 async def create(request):
     name, b, u, ip = _ctx(request)
     auth.check_create(u, name)
@@ -248,6 +260,7 @@ async def rates(request):
 routes = [
     Route("/api/edit/schema", read(schema)),
     Route("/api/edit/assets/rates", read(rates)),
+    Route("/api/edit/assets/reassign", write(reassign), methods=["POST"]),
     Route("/api/edit/assets/verify", write(verify), methods=["POST"]),
     Route("/api/assets/{key:path}/qr", read(qr_label)),
     Route("/api/edit/assets/lookup", read(lookup)),

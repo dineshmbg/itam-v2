@@ -542,6 +542,32 @@ def update(dataset, key, changes, expected, editor, ip, reason=None, con=None):
         return {"changed": sorted(locked), "derived": sorted(c for c in write if c not in locked)}
 
 
+def reassign_assets(keys, engineer, from_engineer, editor, ip, reason=None):
+    """Assign many assets to one engineer in a single transaction (engineer=None/'' clears the assignment). `from_engineer`, when
+    given, restricts the move to assets currently with that engineer - the "old engineer -> new engineer" hand-over. Each asset goes
+    through update(), so it is validated, locked against re-import overwrite and audited exactly like a hand edit."""
+    keys = [str(k).strip().upper() for k in dict.fromkeys(keys or []) if str(k).strip()][:1000]
+    if not keys:
+        raise Invalid("Select at least one asset.")
+    engineer = (engineer or "").strip().upper() or None
+    from_engineer = (from_engineer or "").strip().upper() or None
+    if engineer and engineer == from_engineer:
+        raise Invalid("The old and new engineer are the same.")
+    moved, skipped = [], 0
+    with db.write() as con:
+        for k in keys:
+            row = _rows(con, "SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", (k,))
+            if not row:
+                raise NotFound(f"{k} is not in the asset register.")
+            cur_eng = row[0]["engineer_name"]
+            if (from_engineer and cur_eng != from_engineer) or cur_eng == engineer:
+                skipped += 1
+                continue
+            update("assets", k, {"engineer_name": engineer}, {}, editor, ip, reason or "bulk engineer assignment", con=con)
+            moved.append(k)
+    return {"changed": len(moved), "skipped": skipped, "keys": moved}
+
+
 def _next_id(con, dataset):
     sp = SPEC[dataset]
     pre, col, table = sp["id_prefix"], sp["pk"], sp["table"]
