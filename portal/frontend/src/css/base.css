@@ -9,7 +9,13 @@ h1, h2, h3, h4, p { margin: 0; }
 h1 { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: 0; }
 h2 { font-size: 14px; line-height: 20px; font-weight: 600; }
 a { color: var(--c-accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:hover { text-decoration: none; }
+/* Text links (references, identifiers, plain links, link-style buttons) are never underlined; on hover a soft tint and a deeper colour show they are live.
+   Buttons, menu items and dashboard tiles have their own hover and are left alone. The tint is a box-shadow ring, so nothing moves or reflows. */
+a.ent, a.mono:not(.btn), a:not([class]), .link-btn { border-radius: 3px; transition: color 120ms var(--ease), background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+a.ent:hover, a.mono:not(.btn):hover, a:not([class]):hover, .link-btn:hover:not(:disabled) { color: var(--c-accent-hover); background-color: var(--c-accent-bg); box-shadow: 0 0 0 2px var(--c-accent-bg); }
+/* Without an underline, colour alone must not be the only cue inside a sentence (WCAG 1.4.1): links in running text are semi-bold. */
+:is(p, .hint, .note, .rec-note, .cb-over, .lead, .muted) a:not(.btn):not(.kpi) { font-weight: 600; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--c-focus); outline-offset: 2px; }
