@@ -17,11 +17,28 @@ export function kpiStrip(items) {
   items.forEach((k) => el.append(kpiCell(k)));
   return el;
 }
+// Whole-number figures count up to their value (first paint) or from the old value (live refresh); anything else (percentages, text) is set as is.
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function countTo(el, from, to, text) {
+  if (reduced() || !Number.isFinite(to) || from === to) { el.textContent = text; return; }
+  cancelAnimationFrame(el._raf);
+  const t0 = performance.now(), dur = Math.min(1100, 450 + Math.abs(to - from) * 2);
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+    el.textContent = p < 1 ? int(Math.round(from + (to - from) * e)) : text;
+    if (p < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+const asInt = (v) => (/^\d[\d,]*$/.test(String(v)) ? Number(String(v).replace(/,/g, '')) : NaN);
+
 export function kpiCell(k) {
   const tag = k.href ? 'a' : 'div';
   const c = h(tag, { class: 'kpi', 'data-id': k.id, 'data-tone': k.tone || null, href: k.href || null },
     h('span', { class: 'kpi-l' }, k.ico ? icon(k.ico) : null, k.label), h('span', { class: 'kpi-v' }, k.value), h('span', { class: 'kpi-s' }, k.sub || ''));
   c.dataset.raw = String(k.value);
+  const n = asInt(k.value);
+  if (Number.isFinite(n)) { const v = c.querySelector('.kpi-v'); v.textContent = int(0); countTo(v, 0, n, String(k.value)); }
   return c;
 }
 /** Update KPI cells in place and flash the ones whose value changed (live refresh). */
@@ -30,7 +47,8 @@ export function kpiUpdate(strip, items) {
     const c = strip.querySelector(`[data-id="${k.id}"]`);
     if (!c) return;
     const changed = c.dataset.raw !== String(k.value);
-    c.querySelector('.kpi-v').textContent = k.value;
+    const v = c.querySelector('.kpi-v'), from = asInt(c.dataset.raw), to = asInt(k.value);
+    if (changed && Number.isFinite(from) && Number.isFinite(to)) countTo(v, from, to, String(k.value)); else v.textContent = k.value;
     c.querySelector('.kpi-s').textContent = k.sub || '';
     c.dataset.raw = String(k.value);
     if (k.tone) c.dataset.tone = k.tone; else delete c.dataset.tone;

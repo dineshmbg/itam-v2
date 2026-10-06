@@ -18,7 +18,7 @@ export const colorVar = (i) => `var(${PALETTE[i % PALETTE.length]})`;
 const fontFamily = () => getComputedStyle(document.body).fontFamily;
 function baseOptions(extra = {}) {
   return {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 220 }, layout: { padding: 0 },
+    responsive: true, maintainAspectRatio: false, animation: { duration: 900, easing: 'easeOutQuart' }, layout: { padding: 0 },
     interaction: { mode: 'nearest', intersect: true },
     plugins: {
       legend: { display: false },
