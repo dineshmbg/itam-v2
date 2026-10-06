@@ -522,3 +522,29 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .usr-n { font-weight: 700; letter-spacing: 0.02em; }
 .usr-r { font-weight: 500; }
 @media (max-width: 900px) { .btn.usr { padding: 0; width: 40px; justify-content: center; } .brand-mark { width: 28px; height: 28px; } }
+
+/* ---------- footer ---------- */
+:root { --ftr-h: 30px; }
+.shell { grid-template-rows: var(--hdr-h) minmax(0, 1fr) var(--ftr-h); }
+.app-foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 0 var(--sp-4); height: var(--ftr-h);
+  background: color-mix(in srgb, var(--c-surface) 86%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--c-border); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; color: var(--c-text-3); white-space: nowrap; overflow: hidden; position: relative; z-index: 10; }
+.app-foot::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--chart-1), var(--chart-6), var(--chart-4), transparent); opacity: 0.6; }
+.af-l, .af-r { display: inline-flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; }
+.af-l { color: var(--c-text-2); font-weight: 600; }
+.af-dot { width: 7px; height: 7px; border-radius: 50%; background: linear-gradient(135deg, var(--chart-1), var(--chart-6)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-1) 18%, transparent); flex: none; }
+.af-sep { opacity: 0.6; }
+.register { height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - var(--sp-5) * 2 - 56px); }
+.rp-side, .rp .results { max-height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - 110px); }
+@media (max-width: 900px) { .shell, .shell.nav-min { grid-template-rows: var(--hdr-h) minmax(0, 1fr) var(--ftr-h); } .af-r { display: none; } .register { height: auto; } .rp-side, .rp .results { max-height: none; } }
+@media print { .app-foot { display: none; } }
+
+/* ---------- page titles ---------- */
+.page-head { align-items: center; margin-bottom: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--c-border); position: relative; }
+.page-head::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 72px; height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--page-mod, var(--chart-1)), var(--chart-6)); }
+.page-head h1 { font-size: 26px; line-height: 34px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
+  background: linear-gradient(90deg, var(--c-text) 55%, var(--page-mod, var(--c-accent))); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.page-head .sub { margin-top: 2px; font-size: 13px; font-weight: 500; letter-spacing: 0.03em; color: var(--c-text-2); }
+.page-head .sub::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--page-mod, var(--c-accent)); vertical-align: 1px; }
+.page-tools { gap: 8px; }
+@media (max-width: 900px) { .page-head h1 { font-size: 21px; line-height: 28px; } }

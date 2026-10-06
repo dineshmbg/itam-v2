@@ -103,6 +103,12 @@ export function buildShell(app) {
   });
   nav.append(h('div', { class: 'nav-foot' }, h('div', null, 'Live view of the IT asset inventory.')));
 
+  if (!shell.querySelector('.app-foot')) {
+    shell.append(h('footer', { class: 'app-foot', role: 'contentinfo' },
+      h('span', { class: 'af-l' }, h('span', { class: 'af-dot' }), 'ITAM Portal', h('span', { class: 'af-sep' }, '·'), 'IT asset management · Ankleshwar Asset'),
+      h('span', { class: 'af-r' }, 'Authorised users only · activity is recorded')));
+  }
+
   nav.addEventListener('click', () => shell.classList.remove('nav-open'));
   return {
     setActive(path) {
