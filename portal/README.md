@@ -680,3 +680,13 @@ agents, name mismatches, devices not in the register, duplicates, full match) an
 and engineer tables, the 25 worst machines). Each analysis is stored (`portal_match_run`, kept; nothing is deleted) and can be reopened
 from *Earlier analyses*. Code: `app/inventory_match.py`, routes `/api/match/*` in `app/routes_tools.py`, view `inventory-match.js`,
 tests `tests/test_inventory_match.py`. Uploaded files are staged in `uploads/inventory-match/`.
+
+### Each engineer gets their own list (2026-10-06)
+
+From a finished analysis, **E-mail engineers...** shows who would be mailed (engineer, address, machines, no agent, deployed, silent) and sends
+nothing until *Send now*. Each engineer receives only the machines assigned to them (`asset.engineer_name`): a short e-mail with their most urgent
+machines and their own Excel file (action list, silent agents, wrong-name cases). Tick **E-mail each engineer their own list when the match
+finishes** on the upload form to do it automatically. Rules: the address is the engineer's CIPL company e-mail (same lookup as the alerts);
+engineers with nothing urgent (only machines in store) or no address, and machines with no engineer, are listed but not mailed; sending is
+once per analysis and engineer (`notify_log`, rule `MATCH_REPORT`), so a second press never double-mails and a failed one can be retried;
+needs e-mail switched on under Administration > E-mail.

@@ -279,6 +279,23 @@ async def match_run(request):
     b, u = request.state.body, request.state.user
     out = await run_in_threadpool(inventory_match.run, str(b.get("stage_id") or ""), b.get("mapping") or {}, b.get("params") or {}, u["username"])
     await _log(request, "MATCH_RUN", out["filename"], {"tool": out["summary"]["tool"], "coverage": out["summary"]["coverage"]})
+    if (b.get("params") or {}).get("notify"):          # "e-mail each engineer their own list when the match finishes" - a mail problem never fails the analysis itself
+        try:
+            m = await run_in_threadpool(inventory_match.send_to_engineers, out["run_id"], u)
+            out["engineer_mail"] = m
+            await _log(request, "MATCH_MAIL", out["filename"], {"run": out["run_id"], "sent": sum(1 for x in m["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in m["plan"] if x["status"] == "FAILED")})
+        except mailer.MailError as e:
+            out["engineer_mail_error"] = str(e)
+    return json_response(out)
+
+
+async def match_engineers(request):
+    """dry_run (default): who would get what. Otherwise mails each engineer their own list."""
+    b, u = request.state.body, request.state.user
+    only = [str(x) for x in (b.get("only") or [])] or None
+    out = await run_in_threadpool(inventory_match.send_to_engineers, str(b.get("run_id") or ""), u, bool(b.get("dry_run", True)), only)
+    if not b.get("dry_run", True):
+        await _log(request, "MATCH_MAIL", b.get("run_id"), {"sent": sum(1 for x in out["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in out["plan"] if x["status"] == "FAILED")})
     return json_response(out)
 
 
@@ -416,6 +433,7 @@ routes = [
     Route("/api/match/meta", R_(match_meta, admin="strict")),
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
     Route("/api/match/run", W_(match_run, admin="strict"), methods=["POST"]),
+    Route("/api/match/engineers", W_(match_engineers, admin="strict"), methods=["POST"]),
     Route("/api/match/runs/{run}", R_(match_get, admin="strict")),
     Route("/api/match/export", W_(match_export, admin="strict", mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/admin/import", R_(import_meta, admin="strict")),

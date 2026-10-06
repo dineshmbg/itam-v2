@@ -12,7 +12,7 @@ import uuid
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from . import db
+from . import db, export
 from .importer import UPLOADS
 
 MAX_BYTES = 40 * 1024 * 1024
@@ -429,7 +429,6 @@ def kpis(s):
 
 
 def render(d, fmt, user):
-    from . import export
     s = d["summary"]
     ch = [{"title": "Coverage by class (%)", "rows": [{"label": x["label"].title(), "n": x["coverage"]} for x in s["by_class"]]},
           {"title": "Machines without the agent, by engineer", "rows": [{"label": x["label"].title(), "n": x["missing"]} for x in s["by_engineer"] if x["missing"]][:12]},
@@ -439,3 +438,90 @@ def render(d, fmt, user):
     title = f"{s['tool']} coverage - {', '.join(s['prefixes'])}"
     sub = f"Report file: {d['filename']} - {s['assets']:,} register machines checked - {dt.date.today():%d %b %Y}"
     return export.render(fmt, title, sub, tables(d, management=fmt == "pdf"), kpis(s), ch, footer=user["username"])
+
+
+# ---------------------------------------------------------------- each engineer's own list, by e-mail
+MAIL_RULE = "MATCH_REPORT"      # notify_log.rule_key: a re-send of the same analysis never mails the same engineer twice
+UNASSIGNED = "UNASSIGNED"
+
+
+def _work(d, eng):
+    """What one engineer has to do: machines without the agent (most urgent first), silent agents, wrong-name cases. Low-priority gaps (in store) are listed but do not by themselves trigger a mail."""
+    mine = [r for r in d["assets"] if r["engineer"] == eng]
+    miss = sorted((r for r in mine if not r["installed"]), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["ci"]))
+    quiet = sorted((r for r in mine if r["reporting"] in ("Stale", "Dormant")), key=lambda r: -(r["r_age"] or 0))
+    named = [r for r in miss if r["possible"]]
+    needs = [r for r in miss if r["priority"] != LOW] + quiet
+    return {"mine": mine, "miss": miss, "quiet": quiet, "named": named, "needs": bool(needs)}
+
+
+def engineer_workbook(d, eng, user):
+    s, w = d["summary"], _work(d, eng)
+    inst = len(w["mine"]) - len(w["miss"])
+    k = [("Machines assigned to you (checked)", len(w["mine"])), (f"{s['tool']} installed", inst), ("Not installed", len(w["miss"])), ("Coverage (%)", _pct(inst, len(w["mine"]))),
+         ("Deployed, no agent", sum(1 for r in w["miss"] if r["priority"] == HIGH)), ("Installed but silent", len(w["quiet"])), ("Name differs from register", len(w["named"]))]
+    t = [_t("Not installed - your action list", ASSET_COLS, w["miss"]), _t("Installed but not reporting", INSTALLED_COLS, w["quiet"]),
+         _t("Name differs from register", [("ci", "Asset (CI)"), ("possible", "Seen in report as"), ("possible_by", "Matched by"), ("action", "Action")], w["named"])]
+    return export.xlsx_bytes(t, f"{s['tool']} - {eng.title()}", k, f"Report file: {d['filename']} - {dt.date.today():%d %b %Y}", generated_by=user["username"])
+
+
+def engineer_plan(d):
+    """One line per engineer with something to do: who, how many, which address (or why there is none). Nothing is sent."""
+    from . import mailer
+    names = {r["engineer_key"]: r["display_name"] for r in db.query("SELECT engineer_key, display_name FROM portal_engineer")}
+    sent = {r["event_key"]: r["status"] for r in db.query("SELECT event_key, status FROM notify_log WHERE rule_key = %s AND event_key LIKE %s", [MAIL_RULE, d["run_id"] + ":%"])}
+    out = []
+    for eng in sorted({r["engineer"] for r in d["assets"]}):
+        w = _work(d, eng)
+        if not w["miss"] and not w["quiet"]:
+            continue
+        item = {"engineer": eng, "name": names.get(eng) or eng.title(), "machines": len(w["mine"]), "missing": len(w["miss"]), "high": sum(1 for r in w["miss"] if r["priority"] == HIGH),
+                "silent": len(w["quiet"]), "email": None, "status": "READY", "earlier": sent.get(f"{d['run_id']}:{eng}")}
+        if eng == UNASSIGNED:
+            item["status"] = "NO_ENGINEER"          # nobody to mail: these machines have no engineer in the register - fix that first
+        elif not w["needs"]:
+            item["status"] = "NOTHING_URGENT"
+        else:
+            item["email"] = mailer.engineer_email(eng)
+            if not item["email"]:
+                item["status"] = "NO_ADDRESS"
+            elif item["earlier"] == "SENT":
+                item["status"] = "ALREADY_SENT"
+        out.append(item)
+    return out
+
+
+def send_to_engineers(run_id, user, dry_run=False, only=None):
+    """Mail each engineer their own machines (summary in the body, Excel attached). Idempotent per analysis and engineer; a failure for one never stops the rest."""
+    from . import mailer
+    d = get(run_id)
+    cfg = mailer.get_smtp()
+    if not cfg["enabled"] and not dry_run:
+        raise mailer.MailError("E-mail is not switched on. Ask an administrator to set it up (Administration > E-mail).")
+    plan = engineer_plan(d)
+    if dry_run:
+        return {"mail_enabled": cfg["enabled"], "plan": plan}
+    s = d["summary"]
+    for item in plan:
+        if item["status"] != "READY" or (only and item["engineer"] not in only):
+            continue
+        w = _work(d, item["engineer"])
+        urgent = [r for r in w["miss"] if r["priority"] != LOW][:15]
+        subject = f"{s['tool']}: {item['missing']} of your {item['machines']} machines have no agent" + (f", {item['silent']} not reporting" if item["silent"] else "") + f" - {dt.date.today():%d %b %Y}"
+        intro = (f"Dear {item['name'].title()}, the centre's {s['tool']} report ({d['filename']}) was matched with the asset register. Of the {item['machines']} machines assigned to you, "
+                 f"{item['missing']} do not appear in the report ({item['high']} of them deployed to users)" + (f" and {item['silent']} have an agent that has stopped reporting" if item["silent"] else "") +
+                 ". The first ones to fix are below; your full list is in the attached Excel file. Please install or repair the agent, or tell us if the machine is retired or the CI is wrong.")
+        body, text = mailer.page(subject, intro, [{**r, "class": r["class"].title()} for r in urgent], [("ci", "Asset (CI)"), ("class", "Class"), ("model", "Model"), ("user", "User"), ("location", "Location"), ("action", "Action")],
+                                 footer=f"Automatic message from the ITAM Portal (inventory match, sent by {user['username']})." + (f" {cfg['portal_url']}" if cfg["portal_url"] else ""))
+        status, err = "SENT", None
+        try:
+            fname = f"{export.safe_name(s['tool'])}_{export.safe_name(item['engineer'])}_{s['as_of'].replace('-', '')}.xlsx"
+            mailer.send(item["email"], subject, text, body, [(fname, engineer_workbook(d, item["engineer"], user), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")], cfg=cfg)
+        except mailer.MailError as e:
+            status, err = "FAILED", str(e)[:300]
+        with db.write() as con:
+            con.execute("""INSERT INTO notify_log (rule_key, event_key, recipient, subject, status, error) VALUES (%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (rule_key, event_key, recipient) DO UPDATE SET status = EXCLUDED.status, error = EXCLUDED.error, at = now(), attempts = notify_log.attempts + 1""",
+                        (MAIL_RULE, f"{run_id}:{item['engineer']}", item["email"], subject, status, err))
+        item["status"], item["error"] = status, err
+    return {"mail_enabled": True, "plan": plan}

@@ -6,6 +6,7 @@ import { toast } from '../core/editor.js';
 import { int, pct, titleCase } from '../core/format.js';
 import { errorBlock, kpiStrip, pageHead, panel, barRows } from './common.js';
 import { when } from './audit.js';
+import { openModal } from '../ui/modal.js';
 
 const SEV = { Critical: 'bad', 'Needs attention': 'warn', Good: 'ok', Information: 'info' };
 const FIELDS = [['name', 'Computer name', true], ['ip', 'IP address'], ['os', 'Operating system'], ['seen', 'Last report / check-in time'], ['type', 'Device type']];
@@ -20,6 +21,7 @@ export function mountInventoryMatch(root) {
   const tool = h('input', { id: 'mt-tool', type: 'text', value: 'BigFix', maxlength: 40 });
   const prefix = h('input', { id: 'mt-prefix', type: 'text', value: 'ANK', maxlength: 40 });
   const target = h('input', { id: 'mt-target', type: 'number', value: 95, min: 1, max: 100 });
+  const notify = h('input', { id: 'mt-notify', type: 'checkbox' });
   const file = h('input', { id: 'mt-file', type: 'file', accept: '.xlsx,.xlsm,.csv' });
   const classes = new Set();
   const stepEl = h('div', { class: 'stack-v' });
@@ -44,6 +46,8 @@ export function mountInventoryMatch(root) {
         frow('mt-prefix', 'Site prefix of the Asset (CI)', prefix, 'Only register machines starting with this are checked (several allowed: ANK, ANKA).'),
         h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Asset classes to check'), chips, h('div', { class: 'hint' }, 'Printers, switches and UPS units cannot run an agent, so they are off by default.')),
         frow('mt-target', 'Target coverage (%)', target),
+        h('div', { class: 'frow' }, h('label', { class: 'opt', for: 'mt-notify' }, notify, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'E-mail each engineer their own list when the match finishes')),
+          h('div', { class: 'hint' }, 'Each engineer gets only the machines assigned to them, with an Excel file. Leave it off to look first; you can send from the results page.')),
         h('button', { class: 'btn primary', type: 'button', onClick: doUpload }, icon('upload'), 'Read the file'))),
       panel('2 · Check the columns and match', { cls: 'span-7' }, stepEl),
       h('div', { class: 'span-12 stack-v' }, out),
@@ -76,8 +80,9 @@ export function mountInventoryMatch(root) {
     if (!classes.size) { toast('Choose at least one asset class.', 'bad'); return; }
     out.replaceChildren(h('div', { class: 'loading-line' }, 'Matching…'));
     try {
-      result = await send('/api/match/run', { stage_id: staged.stage_id, mapping, params: { tool: tool.value, prefix: prefix.value, classes: [...classes], target: Number(target.value) || 95 } });
+      result = await send('/api/match/run', { stage_id: staged.stage_id, mapping, params: { tool: tool.value, prefix: prefix.value, classes: [...classes], target: Number(target.value) || 95, notify: notify.checked } });
       showResult(); load2();
+      if (result.engineer_mail) { toast(`E-mailed ${result.engineer_mail.plan.filter((x) => x.status === 'SENT').length} engineers`); engineerDialog(result.engineer_mail); } else if (result.engineer_mail_error) toast(result.engineer_mail_error, 'bad');
     } catch (e) { out.replaceChildren(errorBlock(e)); }
   }
 
@@ -86,6 +91,29 @@ export function mountInventoryMatch(root) {
   async function open(id) {
     out.replaceChildren(h('div', { class: 'loading-line' }, 'Opening…'));
     try { result = await get('/api/match/runs/' + id); showResult(); out.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { out.replaceChildren(errorBlock(e)); }
+  }
+
+  const MAILSTATE = { READY: ['info', 'Ready to send'], SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], ALREADY_SENT: ['mute', 'Already sent'], NO_ADDRESS: ['warn', 'No e-mail address'], NO_ENGINEER: ['warn', 'No engineer in the register'], NOTHING_URGENT: ['mute', 'Nothing urgent'] };
+
+  // Who would get what, then (after a click) send. `done` is a result already in hand (sent automatically after the match).
+  async function engineerDialog(done) {
+    let data = done;
+    try { if (!data) data = await send('/api/match/engineers', { run_id: result.run_id, dry_run: true }); } catch (e) { toast(e.message, 'bad'); return; }
+    const list = h('div', null);
+    const draw = (d) => {
+      const ready = d.plan.filter((x) => x.status === 'READY');
+      list.replaceChildren(
+        !d.mail_enabled ? h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), 'E-mail is not switched on (Administration > E-mail). You can see who would be mailed, but nothing can be sent yet.') : null,
+        d.plan.length ? table([['name', 'Engineer', null, (r) => titleCase(r.name)], ['email', 'Address', null, (r) => r.email || '—'], ['machines', 'Machines', 'right'], ['missing', 'No agent', 'right'], ['high', 'Deployed', 'right'], ['silent', 'Silent', 'right'],
+          ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], d.plan, 200) : h('p', { class: 'muted' }, 'No engineer has anything to do.'),
+        h('p', { class: 'hint' }, `${ready.length} engineer(s) will be mailed. Each message lists only that engineer's machines and carries their own Excel file. An engineer already mailed for this analysis is skipped, so pressing Send twice is safe.`));
+      return ready.length && d.mail_enabled;
+    };
+    const can = draw(data);
+    openModal({ title: 'E-mail each engineer their own list', lead: 'Nothing is sent until you press Send.', body: list,
+      actions: [{ label: 'Close' }, ...(can ? [{ label: 'Send now', primary: true, onClick: async () => {
+        try { const r = await send('/api/match/engineers', { run_id: result.run_id, dry_run: false }); toast(`Sent to ${r.plan.filter((x) => x.status === 'SENT').length} engineers` + (r.plan.some((x) => x.status === 'FAILED') ? '; some failed - see the list' : '')); draw(r); return false; } catch (e) { toast(e.message, 'bad'); return false; }
+      } }] : [])] });
   }
 
   const dl = (fmt) => async () => { try { await download('/api/match/export', { run_id: result.run_id, format: fmt }, 'coverage.' + fmt); } catch (e) { toast(e.message, 'bad'); } };
@@ -103,7 +131,7 @@ export function mountInventoryMatch(root) {
 
   function showResult() {
     const s = result.summary, t = s.tool;
-    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
+    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: () => engineerDialog(null) }, icon('email'), 'E-mail engineers…'), h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
     const tone = s.rag === 'green' ? 'ok' : s.rag === 'amber' ? 'warn' : 'bad';
     const missing = result.assets.filter((r) => !r.installed).sort((a, b) => ['High', 'Medium', 'Low'].indexOf(a.priority) - ['High', 'Medium', 'Low'].indexOf(b.priority));
     const quiet = result.assets.filter((r) => r.reporting === 'Stale' || r.reporting === 'Dormant').sort((a, b) => b.r_age - a.r_age);

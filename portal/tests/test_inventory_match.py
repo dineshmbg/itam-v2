@@ -135,3 +135,37 @@ def test_endpoints_need_a_full_administrator(box, monkeypatch, tmp_path):
         assert c.post("/api/match/export", json={"run_id": rid, "format": "pdf"}, headers=HDR).headers["content-type"] == "application/pdf"
         assert c.post("/api/match/export", json={"run_id": rid, "format": "csv"}, headers=HDR).status_code == 400
         assert c.post("/api/match/run", json={"stage_id": "bad", "mapping": {"name": "x"}}, headers=HDR).status_code == 400
+
+
+def test_each_engineer_gets_only_their_own_list_once(box, tmp_path, monkeypatch):
+    from portal.app import mailer
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                          AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 400""").fetchall()
+    if len({r[1] for r in rows}) < 2:
+        pytest.skip("needs desktops with at least two engineers")
+    pre = _prefix(rows[0][0])
+    st = m.stage("c.csv", _csv([[rows[0][0], "", "", ""]]), "ADMIN1")           # only one machine is in the report: everyone else has gaps
+    r = m.run(st["stage_id"], st["mapping"], {"prefix": pre, "classes": ["DESKTOP"]}, "ADMIN1")
+    sent = []
+    monkeypatch.setattr(mailer, "engineer_email", lambda key: f"{key.replace(' ', '.').lower()}@example.com")
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, att=(), cfg=None: sent.append((to, subject, att)))
+    monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": True, "host": "h", "from_addr": "a@b.c", "has_password": False})
+    user = {"username": "ADMIN1"}
+    dry = m.send_to_engineers(r["run_id"], user, dry_run=True)
+    assert not sent and all(p["status"] in ("READY", "NO_ENGINEER", "NOTHING_URGENT") for p in dry["plan"]) and any(p["status"] == "READY" for p in dry["plan"])
+    out = m.send_to_engineers(r["run_id"], user)
+    ready = [p for p in out["plan"] if p["status"] == "SENT"]
+    assert ready and len(sent) == len(ready) and len({s[0] for s in sent}) == len(sent)
+    from openpyxl import load_workbook
+    for to, subject, att in sent:                                            # each attachment holds only that engineer's machines
+        eng = next(p["engineer"] for p in ready if p["email"] == to)
+        wb = load_workbook(io.BytesIO(att[0][1]))
+        ws = wb[next(n for n in wb.sheetnames if n.startswith("NOT INSTALLED"))]      # sheet names are upper-cased and cut to 31 characters
+        cis = [row[0] for row in ws.iter_rows(min_row=2, values_only=True) if row[0]]
+        assert cis and all(next(a for a in r["assets"] if a["ci"] == c)["engineer"] == eng for c in cis) and "no agent" in subject
+    again = m.send_to_engineers(r["run_id"], user)
+    assert len(sent) == len(ready) and all(p["status"] in ("ALREADY_SENT", "NO_ENGINEER", "NOTHING_URGENT") for p in again["plan"])     # a second send mails nobody twice
+    monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": False})
+    with pytest.raises(mailer.MailError):
+        m.send_to_engineers(r["run_id"], user)
