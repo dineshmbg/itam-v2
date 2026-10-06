@@ -506,7 +506,16 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .brand-mark::after { top: 19px; right: 13px; }
 .brand strong { font-size: 16px; font-weight: 800; letter-spacing: 0.08em; }
 .brand-sub { font-weight: 500; letter-spacing: 0.1em; font-size: 12px; text-transform: uppercase; }
-.brand-sig { font-size: 10px; font-weight: 700; }
+.brand-sig {
+  font-size: 10px; font-weight: 700; text-transform: none;    /* the name is already proper case in markup; only the page's all-caps text rule was overriding it */
+  background-size: 200% auto; animation: sig-shine 600s linear infinite;      /* a brief sweep roughly every 10 minutes, resting the rest of the time */
+}
+@keyframes sig-shine {
+  0%, 94% { background-position: 0% 0; }
+  97% { background-position: 200% 0; }
+  100% { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) { .brand-sig { animation: none; } }
 .gsearch .field input { background: var(--c-surface-3); border-color: transparent; height: 38px; }
 .gsearch .field input:hover { background: var(--c-surface-2); border-color: var(--c-border); }
 .gsearch .field input:focus-visible { background: var(--c-surface); border-color: var(--c-focus); }
