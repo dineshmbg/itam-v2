@@ -658,3 +658,25 @@ After **3 wrong passwords** on the sign-in page (counted per browser tab, kept a
 - **Account has an e-mail address and e-mail is on** - a new temporary password is e-mailed (valid 60 minutes). It is stored beside, not over, the real password (`portal_user.reset_hash`), so someone typing another person's user name cannot lock them out: the old password keeps working until the temporary one is used, and a normal sign-in discards an unused one. Signing in with the temporary password also lifts a lock-out, then forces a new password.
 - **No address, e-mail off, or the mail failed** - the request waits in `portal_reset_request`; administrators see it as a banner on **Users and security** with a *Reset password* button. Any reset, or the person signing in, closes it.
 - The page always shows the same wording, so it never reveals whether a user name exists. Limits: 10 requests per computer per 10 minutes, one per account per 5 minutes. Two-factor still applies after the temporary password. Every request is in the activity log (`PASSWORD_RESET_REQUESTED`). Needs `db/setup.py` (adds the columns/table) - it runs on the normal update.
+
+
+## Inventory match (2026-10-06)
+
+**Data tools > Inventory match** (full administrators). Upload a report or inventory received from the centre - BigFix, antivirus, patch,
+EDR, anything with a computer name per row - as `.xlsx` or `.csv`, exactly as received. Every machine in the asset register whose Asset (CI)
+starts with the chosen site prefix (default `ANK`) and whose class is Desktop / Laptop / Workstation / Server (changeable) is checked:
+**Asset (CI) = computer name means the tool is installed, otherwise not.** Matching ignores case and a domain suffix (`host.domain.local`).
+The report is only read - nothing is loaded into the register.
+
+Steps: upload -> the portal guesses the columns (computer name, IP, OS, last report time) and you confirm -> *Match against the register*.
+Findings, with what to do about each: coverage against a target (default 95%), machines deployed to users that have no agent (High
+priority; stored/surplus machines are Low), installed machines that stopped reporting (active <= 7 days, stale <= 30, dormant beyond),
+machines that are in the report under a *different* name (same IP address or host name - rename or correct the CI; not counted as
+installed), report names that are not in the register at all, Windows 10 and older, duplicate records in the report; broken down by
+class, engineer, location, status and model.
+
+Downloads: **Excel for the team** (key findings, coverage tables, the not-installed action list sorted by priority and engineer, silent
+agents, name mismatches, devices not in the register, duplicates, full match) and **PDF for management** (KPIs, charts, findings, class
+and engineer tables, the 25 worst machines). Each analysis is stored (`portal_match_run`, kept; nothing is deleted) and can be reopened
+from *Earlier analyses*. Code: `app/inventory_match.py`, routes `/api/match/*` in `app/routes_tools.py`, view `inventory-match.js`,
+tests `tests/test_inventory_match.py`. Uploaded files are staged in `uploads/inventory-match/`.

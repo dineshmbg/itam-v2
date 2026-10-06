@@ -19,7 +19,7 @@ close--filled close--outline error--filled warning--filled warning--alt--filled 
 checkbox--checked--filled circle-dash pending in-progress time timer hourglass gender--male gender--female user user--avatar user--multiple laptop devices printer
 qr-code barcode network--3 server--dns battery--full scan data--base tools package box archive tag location calendar report chart--bar chart--column chart--line security wifi cube
 document catalog data-table dashboard analytics renew copy download phone
-edit add save undo camera arrow--left trash-can locked unlocked reset view view--off logout link email send upload folder play pause stop email--new alarm calendar--heat-map notification checkmark`.split(/\s+/).filter(Boolean);
+edit add save undo camera arrow--left trash-can locked unlocked reset view view--off logout link email send upload folder play pause stop email--new alarm calendar--heat-map notification checkmark compare document--export document--pdf`.split(/\s+/).filter(Boolean);
 
 async function spriteSvg() {
   fs.mkdirSync(tmp, { recursive: true });

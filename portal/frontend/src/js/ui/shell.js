@@ -22,7 +22,7 @@ const NAV = [
   ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/history', 'Past quarters', 'time', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', true, 'pm']]],
   ['Reports', [['reports', 'Report builder', 'report', false, 'rep']]],
   ['Control', [['integrity', 'Data integrity', 'security', 'strict', 'adm'], ['audit', 'Change log', 'catalog', 'strict', 'adm']]],
-  ['Data tools', [['admin/import', 'Data import', 'upload', 'strict', 'data'], ['admin/backup', 'Backup and restore', 'data--base', 'strict', 'data'], ['admin/update', 'Software update', 'restart', 'strict', 'data']]],
+  ['Data tools', [['admin/import', 'Data import', 'upload', 'strict', 'data'], ['admin/match', 'Inventory match', 'compare', 'strict', 'data'], ['admin/backup', 'Backup and restore', 'data--base', 'strict', 'data'], ['admin/update', 'Software update', 'restart', 'strict', 'data']]],
   ['Administration', [['admin/users', 'Users and security', 'user--multiple', 'strict', 'adm'], ['admin/email', 'E-mail and alerts', 'email', 'strict', 'adm'], ['admin/activity', 'Activity log', 'time', 'strict', 'adm']]],
 ];
 

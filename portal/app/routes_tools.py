@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, backup, db, export, importer, mailer, packs, pm, reports, scheduler
+from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, reports, scheduler
 from .web import client_ip, current_user, error, guarded, json_response, read, write
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -251,6 +251,53 @@ async def backup_download(request):
     return _file(await run_in_threadpool(p.read_bytes), "application/octet-stream", file)
 
 
+# ---------------------------------------------------------------- inventory match (report from the centre vs the asset register)
+async def match_meta(request):
+    return json_response({"history": await run_in_threadpool(inventory_match.history), "classes": inventory_match.ALL_CLASSES, "default_classes": inventory_match.DEFAULT_CLASSES})
+
+
+async def match_upload(request):
+    """Raw file as the request body; the file name travels in a header. The file is only read - nothing is loaded into the database."""
+    user = await current_user(request)
+    if not user or user["state"] != "ok" or not auth.is_full_admin(user):
+        return error(403, "This needs an administrator.")
+    if request.headers.get("x-requested-with") != "itam-portal":
+        return error(403, "Rejected: not a portal request.")
+    origin = request.headers.get("origin")
+    if origin and origin.split("://", 1)[-1] != request.headers.get("host"):
+        return error(403, "Rejected: cross-site request.")
+    if int(request.headers.get("content-length") or 0) > inventory_match.MAX_BYTES:
+        return error(413, "The file is too large.")
+    data = await request.body()
+    request.state.user = user
+    out = await run_in_threadpool(inventory_match.stage, unquote(request.headers.get("x-filename", "")), data, user["username"])
+    await _log(request, "MATCH_UPLOAD", out["filename"], {"rows": out["rows"]})
+    return json_response(out)
+
+
+async def match_run(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(inventory_match.run, str(b.get("stage_id") or ""), b.get("mapping") or {}, b.get("params") or {}, u["username"])
+    await _log(request, "MATCH_RUN", out["filename"], {"tool": out["summary"]["tool"], "coverage": out["summary"]["coverage"]})
+    return json_response(out)
+
+
+async def match_get(request):
+    return json_response(await run_in_threadpool(inventory_match.get, request.path_params["run"]))
+
+
+async def match_export(request):
+    b, u = request.state.body, request.state.user
+    fmt = b.get("format", "xlsx")
+    if fmt not in ("xlsx", "pdf"):
+        raise inventory_match.MatchError("Download as Excel or PDF.")
+    d = await run_in_threadpool(inventory_match.get, str(b.get("run_id") or ""))
+    data, mime, ext = await run_in_threadpool(inventory_match.render, d, fmt, u)
+    name = export.safe_name(f"{d['summary']['tool']}_coverage_{'_'.join(d['summary']['prefixes'])}_{d['summary']['as_of'].replace('-', '')}") + "." + ext
+    await _log(request, "MATCH_EXPORT", name, {"format": fmt, "run": d["run_id"]})
+    return _file(data, mime, name)
+
+
 # ---------------------------------------------------------------- data import
 async def import_meta(request):
     return json_response({"kinds": importer.kinds(), "history": await run_in_threadpool(importer.history)})
@@ -366,6 +413,11 @@ routes = [
     Route("/api/admin/backups/settings", W_(backup_settings, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/restore", W_(backup_restore, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/download", W_(backup_download, admin="strict"), methods=["POST"]),
+    Route("/api/match/meta", R_(match_meta, admin="strict")),
+    Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
+    Route("/api/match/run", W_(match_run, admin="strict"), methods=["POST"]),
+    Route("/api/match/runs/{run}", R_(match_get, admin="strict")),
+    Route("/api/match/export", W_(match_export, admin="strict", mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/admin/import", R_(import_meta, admin="strict")),
     Route("/api/admin/import/upload", _tool_errors(import_upload), methods=["POST"]),
     Route("/api/admin/import/check", W_(import_check, admin="strict"), methods=["POST"]),
