@@ -973,3 +973,51 @@ input::placeholder, textarea::placeholder { font-weight: 400; letter-spacing: 0.
 a:not(.btn):not(.nav-item):not(.kpi):not(.brand) { text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .small, .hint, .kpi-s, .opt .n { line-height: 1.4; }
 @media (min-width: 1700px) { body { font-size: 15px; line-height: 22px; } }
+
+/* ---------- icons ----------
+   The Carbon glyph set stays (offline, house icon set); what changes is how icons are presented: slightly larger, crisp, framed in soft chips
+   where they stand alone, and tied to the colour of what they describe. */
+.ico { shape-rendering: geometricPrecision; transition: color 140ms var(--ease), transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 140ms var(--ease); vertical-align: -3px; }
+.ico.lg { width: 20px; height: 20px; }
+.btn .ico { width: 16px; height: 16px; vertical-align: 0; }
+.btn.icon .ico { width: 18px; height: 18px; }
+.btn:active .ico { transform: scale(0.9); }
+
+/* stand-alone status and list icons sit in tinted circles */
+.tick, .cross, .caution { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 4px; box-sizing: border-box; border-radius: 50%; background: color-mix(in srgb, currentColor 14%, transparent); vertical-align: middle; }
+.badge .ico { width: 14px; height: 14px; vertical-align: 0; }
+.tl-ico .ico, .rec-note .ico, .login-note .ico { vertical-align: 0; }
+.ferr .ico, .lc-checks .ico { width: 16px; height: 16px; vertical-align: -3px; }
+.lc-checks .ok, .lc-checks .bad { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 3px; box-sizing: border-box; border-radius: 50%; background: color-mix(in srgb, currentColor 14%, transparent); }
+
+/* table and register cells: icons follow the row hover */
+.gt-td .ico, .tbl td .ico { color: var(--c-text-3); }
+.gt-row:hover .gt-td .ico, .tbl tbody tr:hover td .ico { color: var(--c-accent); }
+.gt-td .badge .ico, .tbl td .badge .ico, .gt-td .tick, .tbl td .tick, .gt-td .cross, .tbl td .cross { color: inherit; }
+.gt-td .tick, .tbl td .tick { color: var(--c-ok); } .gt-td .cross, .tbl td .cross { color: var(--c-bad); }
+.gt-th .ico { width: 14px; height: 14px; }
+
+/* menus, search, header */
+.menu button .ico { width: 18px; height: 18px; padding: 5px; box-sizing: content-box; border-radius: 8px; background: var(--c-surface-3); color: var(--c-text-2); }
+.menu button:hover .ico, .menu button:focus-visible .ico { background: var(--c-accent); color: var(--c-on-accent); transform: scale(1.06); }
+.field .ico { width: 16px; height: 16px; color: var(--c-text-3); transition: color 160ms var(--ease), transform 200ms var(--ease); }
+.field:focus-within .ico { color: var(--c-accent); transform: scale(1.1); }
+.hdr-tools .btn .ico, .hdr > .btn .ico { width: 18px; height: 18px; }
+.seg button .ico { width: 16px; height: 16px; }
+.seg button:hover .ico { transform: rotate(-12deg) scale(1.1); }
+.seg button[aria-checked="true"] .ico { transform: scale(1.1); }
+
+/* empty states, panel and window headers, chips and facets */
+.empty .ico { width: 28px; height: 28px; padding: 14px; background: linear-gradient(135deg, var(--c-accent-bg), var(--c-surface-3)); color: var(--c-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 20%, transparent); }
+.panel-h .ico { color: var(--kc); }
+.chip .ico, .chip button .ico { width: 12px; height: 12px; }
+.facet > button.f-h .ico { width: 12px; height: 12px; }
+.opt .glyph { width: 18px; height: 18px; }
+.opt .state-ico { width: 14px; height: 14px; }
+.kpi-l .ico { width: 16px; height: 16px; }
+.link-btn .ico, a .ico { vertical-align: -3px; }
+.toast .ico { width: 16px; height: 16px; }
+.drawer-h .btn.icon .ico, .modal-h .btn.icon .ico { width: 16px; height: 16px; }
+.btn.icon:hover .ico { transform: scale(1.12); }
+.hcard .ico { vertical-align: -3px; }
+@media (prefers-reduced-motion: reduce) { .ico { transition: color 140ms var(--ease); } .btn:active .ico, .seg button:hover .ico, .menu button:hover .ico { transform: none; } }
