@@ -18,7 +18,7 @@ export const colorVar = (i) => `var(${PALETTE[i % PALETTE.length]})`;
 const fontFamily = () => getComputedStyle(document.body).fontFamily;
 function baseOptions(extra = {}) {
   return {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 900, easing: 'easeOutQuart', delay: (ctx) => (ctx.type === 'data' && ctx.mode === 'default' ? Math.min(ctx.dataIndex * 35, 420) : 0) }, layout: { padding: 0 },
+    responsive: true, maintainAspectRatio: false, animation: { duration: 450, easing: 'easeOutCubic', delay: (ctx) => (ctx.type === 'data' && ctx.mode === 'default' ? Math.min(ctx.dataIndex * 12, 120) : 0) }, layout: { padding: 0 },
     interaction: { mode: 'nearest', intersect: true },
     plugins: {
       legend: { display: false },

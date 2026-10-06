@@ -22,7 +22,7 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 function countTo(el, from, to, text) {
   if (reduced() || !Number.isFinite(to) || from === to) { el.textContent = text; return; }
   cancelAnimationFrame(el._raf);
-  const t0 = performance.now(), dur = Math.min(1100, 450 + Math.abs(to - from) * 2);
+  const t0 = performance.now(), dur = Math.min(600, 250 + Math.abs(to - from));
   const step = (t) => {
     const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
     el.textContent = p < 1 ? int(Math.round(from + (to - from) * e)) : text;

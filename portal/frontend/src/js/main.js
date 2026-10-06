@@ -58,6 +58,7 @@ async function render(route) {
   main.scrollTop = 0;
   shell.setActive(route.path.join('/'));
   let mount = null;
+  if (a === 'dashboard' || a === 'pm') import('./ui/charts.js').then((m) => m.Chart()).catch(() => {});   // fetch the chart library while the view and its data load
   if (a === 'registers' && REGISTERS.includes(b)) mount = () => import('./views/register.js').then((m) => (root) => m.mountRegister(root, b));
   else if (VIEWS[key]) mount = () => VIEWS[key]().then((fn) => (root) => fn(root));
   else if (VIEWS[a]) mount = () => VIEWS[a]().then((fn) => (root) => fn(root));

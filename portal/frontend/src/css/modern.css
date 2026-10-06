@@ -933,3 +933,17 @@ a.kpi { cursor: pointer; }
 .chart-box { border-radius: var(--r-2); background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--c-border) 70%, transparent) 1px, transparent 1.2px); background-size: 18px 18px; background-position: -4px -4px; }
 .chart-box canvas { border-radius: var(--r-2); }
 .panel-b > .legend:first-child, .chart-box + .legend { padding-top: 12px; border-top: 1px dashed var(--c-border); }
+
+/* ---------- speed pass: shorter, tighter entrance timings so a dashboard is usable almost at once ---------- */
+.page-head { animation-duration: 260ms; }
+.kpis > .kpi { animation-duration: 300ms; }
+.kpis > .kpi:nth-child(1) { animation-delay: 0ms; } .kpis > .kpi:nth-child(2) { animation-delay: 30ms; } .kpis > .kpi:nth-child(3) { animation-delay: 60ms; }
+.kpis > .kpi:nth-child(4) { animation-delay: 90ms; } .kpis > .kpi:nth-child(5) { animation-delay: 110ms; } .kpis > .kpi:nth-child(n+6) { animation-delay: 130ms; }
+.grid > .panel { animation-duration: 320ms; }
+.grid > .panel:nth-child(1) { animation-delay: 40ms; } .grid > .panel:nth-child(2) { animation-delay: 70ms; } .grid > .panel:nth-child(3) { animation-delay: 100ms; }
+.grid > .panel:nth-child(4) { animation-delay: 130ms; } .grid > .panel:nth-child(5) { animation-delay: 150ms; } .grid > .panel:nth-child(n+6) { animation-delay: 170ms; }
+.bar-t > i, .stack > i, .cb-track > i { animation-duration: 550ms; animation-delay: 120ms; }
+.stack > i:nth-child(2) { animation-delay: 160ms; } .stack > i:nth-child(3) { animation-delay: 200ms; } .stack > i:nth-child(n+4) { animation-delay: 240ms; }
+.legend > * { animation-duration: 300ms; animation-delay: 250ms; }
+.kv > .v { animation-delay: 0ms; animation-duration: 250ms; }
+.tbl tbody tr:nth-child(n) { animation-delay: 0ms; animation-duration: 200ms; }
