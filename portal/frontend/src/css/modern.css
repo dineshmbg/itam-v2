@@ -827,3 +827,8 @@ dialog.modal[open] { animation: win-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
   .frow::after { transition: none; }
   .frow:focus-within .flabel, .frow input:focus-visible { transform: none; }
 }
+
+/* the clear (x) button must honour [hidden]; otherwise it sits on top of the "/" shortcut hint when the box is empty */
+.field .clear[hidden] { display: none; }
+.field .clear { right: 6px; }
+.field .kbd { right: 12px; }
