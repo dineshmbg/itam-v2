@@ -733,3 +733,50 @@ dialog.modal[open] { animation: win-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
   .drawer, dialog.modal[open], .scrim, .drawer-h::before, .drawer-h .t, .drawer-tabs, .dpane:not([hidden]), .dpane .dsec, .drawer .eform > .fgroup, .kv > .v,
   .drawer-b .badge, .drawer-b .flags > *, .drawer-f, .modal-b > *, .modal-h h2, .ovr, .rec-note, .hcard { animation: none !important; }
 }
+
+/* ---------- animated sidebar ---------- */
+.shell { transition: grid-template-columns 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+.nav { animation: nav-in 480ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nav-group { animation: win-slide 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nav-group:nth-child(1) { animation-delay: 60ms; } .nav-group:nth-child(2) { animation-delay: 110ms; } .nav-group:nth-child(3) { animation-delay: 160ms; }
+.nav-group:nth-child(4) { animation-delay: 210ms; } .nav-group:nth-child(5) { animation-delay: 260ms; } .nav-group:nth-child(n+6) { animation-delay: 310ms; }
+.nav-group > h2::before { transition: width 240ms var(--ease); animation: bar-grow 600ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both; transform-origin: left; }
+.nav-group:hover > h2::before { width: 26px; }
+.nav a.nav-item { overflow: hidden; }
+.nav a.nav-item::before { content: ""; position: absolute; left: 0; top: 50%; width: 4px; height: 0; border-radius: 0 4px 4px 0; background: var(--mod-c, var(--kc)); transform: translateY(-50%); transition: height 220ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.nav a.nav-item:hover::before { height: 14px; }
+.nav a.nav-item[aria-current="page"]::before { height: 20px; }
+.nav a.nav-item .ico { transition: background-color 160ms var(--ease), color 160ms var(--ease), transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.nav a.nav-item:hover .ico { transform: scale(1.12) rotate(-6deg); }
+.nav a.nav-item[aria-current="page"] .ico { transform: scale(1.06); }
+.nav a.nav-item[aria-current="page"] { animation: nav-select 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.nav-item .count { transition: transform 160ms var(--ease), background-color 160ms var(--ease); }
+.nav a.nav-item:hover .count { transform: scale(1.1); }
+.nav-foot { animation: dash-fade 600ms ease 500ms both; }
+.shell.nav-min .nav a.nav-item:hover .ico { transform: scale(1.18); }
+@keyframes nav-in { from { opacity: 0; transform: translateX(-16px); } }
+@keyframes nav-select { 0% { background-position: -100% 0; box-shadow: 0 0 0 0 color-mix(in srgb, var(--mod-c, var(--kc)) 40%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+
+/* ---------- more table motion ---------- */
+.gt-th[aria-sort] .ico { animation: sort-flip 260ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.gt-th[aria-sort="descending"] .ico { transform: rotate(0deg); }
+.gt-row[aria-selected="true"] { animation: row-select 520ms cubic-bezier(0.16, 1, 0.3, 1); }
+.gt-row .gt-td:first-child { transition: padding-left 140ms var(--ease); }
+.gt-row:not([aria-selected="true"]):hover .gt-td:first-child { padding-left: 14px; }
+.gt-head .gt-th + .gt-th { position: relative; }
+.gt-head .gt-th + .gt-th::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 1px; background: var(--c-border); opacity: 0.8; transition: opacity 140ms var(--ease), background-color 140ms var(--ease); }
+.gt-head:hover .gt-th + .gt-th::before { background: var(--c-border-strong); }
+.results .toolbar, .results .chips { animation: dash-fade 400ms ease 120ms both; }
+.tbl th { transition: background-color 120ms var(--ease); }
+.tbl tbody tr:hover td { transition: background-color 100ms var(--ease); }
+.tbl tbody tr td .badge { transition: transform 140ms var(--ease); }
+.tbl tbody tr:hover td .badge { transform: scale(1.04); }
+.tbl-wrap { animation: dash-fade 420ms ease both; }
+@keyframes sort-flip { from { opacity: 0; transform: translateY(6px) scale(0.7); } }
+@keyframes row-select { 0% { background: color-mix(in srgb, var(--c-accent) 30%, var(--c-surface)); } 100% { background: var(--c-accent-bg); } }
+@media (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
+  .nav, .nav-group, .nav-group > h2::before, .nav a.nav-item[aria-current="page"], .nav-foot, .gt-th[aria-sort] .ico, .gt-row[aria-selected="true"], .results .toolbar, .results .chips, .tbl-wrap { animation: none !important; }
+  .nav a.nav-item:hover .ico, .tbl tbody tr:hover td .badge { transform: none; }
+}
+@media (max-width: 900px) { .nav { animation: none; } }
