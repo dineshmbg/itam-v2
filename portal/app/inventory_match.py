@@ -17,7 +17,7 @@ from .importer import UPLOADS
 
 MAX_BYTES = 40 * 1024 * 1024
 STAGE = UPLOADS / "inventory-match"
-DEFAULT_CLASSES = ["DESKTOP", "LAPTOP", "WORKSTATION", "SERVER"]
+DEFAULT_CLASSES = ["DESKTOP", "WORKSTATION", "SERVER"]      # plain laptops are left out by default; Office Laptops are class DESKTOP, so they stay in
 ALL_CLASSES = ["DESKTOP", "LAPTOP", "WORKSTATION", "SERVER", "PRINTER", "SCANNER", "SWITCH", "ROUTER", "UPS", "MEDIA_CONVERTER"]
 HIGH, MEDIUM, LOW = "High", "Medium", "Low"
 PRIORITY_BY_STATUS = {"IN_USE": HIGH, "NOT_ON_NETWORK": MEDIUM, "NOT_IN_USE": MEDIUM, "STANDBY": MEDIUM}      # anything else (store, surplus, transferred...) is Low
@@ -326,7 +326,7 @@ def findings(s):
     worst = [x for x in s["by_class"] if x["missing"]][:2]
     if worst and s["missing"]:
         f.append({"severity": "Needs attention", "finding": "Largest gaps by class: " + "; ".join(f"{x['label'].title()} {x['missing']:,} of {x['total']:,} missing ({x['coverage']}% covered)" for x in worst) + ".",
-                  "action": "Check whether this class is outside the centre's deployment scope (e.g. laptops not on the domain) or a roll-out has not reached it."})
+                  "action": "Check whether this class is outside the centre's deployment scope or a roll-out has not reached it."})
     eng = [x for x in s["by_engineer"] if x["missing"]][:3]
     if eng and len(s["by_engineer"]) > 1:
         f.append({"severity": "Needs attention", "finding": "Most machines without the agent sit with: " + "; ".join(f"{x['label'].title()} ({x['missing']:,})" for x in eng) + ".",

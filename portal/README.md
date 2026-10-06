@@ -664,7 +664,7 @@ After **3 wrong passwords** on the sign-in page (counted per browser tab, kept a
 
 **Data tools > Inventory match** (full administrators). Upload a report or inventory received from the centre - BigFix, antivirus, patch,
 EDR, anything with a computer name per row - as `.xlsx` or `.csv`, exactly as received. Every machine in the asset register whose Asset (CI)
-starts with the chosen site prefix (default `ANK`) and whose class is Desktop / Laptop / Workstation / Server (changeable) is checked:
+starts with the chosen site prefix (default `ANK`) and whose class is Desktop (which includes All-in-One and Office Laptop) / Workstation / Server (changeable; plain Laptops are off by default but can be ticked) is checked:
 **Asset (CI) = computer name means the tool is installed, otherwise not.** Matching ignores case and a domain suffix (`host.domain.local`).
 The report is only read - nothing is loaded into the register.
 
