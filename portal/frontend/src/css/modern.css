@@ -650,3 +650,48 @@ button.gt-th:hover .ico { transform: translateY(-1px); color: var(--c-accent); }
   .register > .facets, .results, .gt-row, .gt-group, .chip, .facet .f-b, .opt .glyph.on, .gt-row.skel .gt-td::before { animation: none !important; }
   .gt-row:hover .gt-td .badge, button.gt-th:hover .ico { transform: none; }
 }
+
+/* ---------- reports and admin pages ---------- */
+.rp-side { animation: reg-in-l 520ms cubic-bezier(0.16, 1, 0.3, 1) both; gap: 6px; padding: 16px 18px; }
+.rp > .results, .rp > div { animation: reg-in-r 560ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+.rp-sec { border-top: 0; padding: 12px 0 4px; position: relative; }
+.rp-sec::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, var(--c-border), transparent); }
+.rp-sec > h3, .small-h { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-accent); }
+.rp-sec > h3::before, .small-h::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 20%, transparent); }
+.rp-sec:not([hidden]) { animation: facet-open 260ms var(--ease) both; }
+.rp-cols { border-radius: var(--r-2); background: var(--c-surface-2); }
+.rp-filter { animation: chip-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* lists: staggered rows, accent on hover */
+.rules-list > .rule, .integrity-row, .timeline > li, .sync-list li { animation: dash-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.rules-list > :nth-child(1), .integrity-row:nth-child(1), .timeline > :nth-child(1) { animation-delay: 40ms; }
+.rules-list > :nth-child(2), .integrity-row:nth-child(2), .timeline > :nth-child(2) { animation-delay: 90ms; }
+.rules-list > :nth-child(3), .integrity-row:nth-child(3), .timeline > :nth-child(3) { animation-delay: 140ms; }
+.rules-list > :nth-child(4), .integrity-row:nth-child(4), .timeline > :nth-child(4) { animation-delay: 190ms; }
+.rules-list > :nth-child(5), .integrity-row:nth-child(5), .timeline > :nth-child(5) { animation-delay: 240ms; }
+.rules-list > :nth-child(n+6), .integrity-row:nth-child(n+6), .timeline > :nth-child(n+6) { animation-delay: 290ms; }
+.rule, .integrity-row { transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+.rule:hover, .integrity-row:hover { background: color-mix(in srgb, var(--c-accent) 5%, var(--c-surface)); box-shadow: inset 3px 0 0 var(--c-accent); }
+.integrity-row .res { font-weight: 700; font-size: 15px; }
+.timeline > li { position: relative; padding-bottom: 4px; }
+.timeline > li:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 26px; bottom: -8px; width: 2px; border-radius: 2px; background: linear-gradient(180deg, var(--c-border-strong), transparent); }
+.tl-ico { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--c-accent-bg); color: var(--c-accent); padding: 0; }
+
+/* admin tables: rows slide in, hover tint (small tables only; registers handle their own rows) */
+.tbl tbody tr { animation: dash-fade 360ms ease both; }
+.tbl tbody tr:nth-child(1) { animation-delay: 30ms; } .tbl tbody tr:nth-child(2) { animation-delay: 60ms; } .tbl tbody tr:nth-child(3) { animation-delay: 90ms; }
+.tbl tbody tr:nth-child(4) { animation-delay: 120ms; } .tbl tbody tr:nth-child(5) { animation-delay: 150ms; } .tbl tbody tr:nth-child(n+6) { animation-delay: 180ms; }
+.tbl tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--c-accent); }
+.log { border-radius: var(--r-2); border-left: 3px solid var(--c-accent); background: var(--c-surface-2); }
+.sum-strip .it { padding: 6px 14px 6px 10px; border-radius: var(--r-pill); background: var(--c-surface-2); box-shadow: inset 0 0 0 1px var(--c-border); animation: chip-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.cycle-bar { animation: dash-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both; border-top: 3px solid var(--c-accent); }
+.cb-track i { transform-origin: left center; animation: bar-grow 1000ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both; }
+.cb-kick { animation: none; }
+.cb-h strong { font-weight: 700; letter-spacing: 0.04em; }
+.secret.big { background: linear-gradient(135deg, var(--c-accent-bg), var(--c-surface-2)); border-style: solid; border-color: color-mix(in srgb, var(--c-accent) 35%, transparent); border-radius: var(--r-2); }
+.qr { border-radius: var(--r-3); box-shadow: var(--shadow-card); }
+.stack-v > * { animation: dash-fade 420ms ease both; }
+.btn-row .btn { animation: chip-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rp-side, .rp > .results, .rp > div, .rp-sec, .rp-filter, .rules-list > .rule, .integrity-row, .timeline > li, .sync-list li, .tbl tbody tr, .sum-strip .it, .cycle-bar, .cb-track i, .stack-v > *, .btn-row .btn { animation: none !important; }
+}
