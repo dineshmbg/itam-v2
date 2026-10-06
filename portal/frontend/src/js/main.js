@@ -3,6 +3,7 @@ import { $, clear, h } from './core/dom.js';
 import * as live from './core/live.js';
 import * as router from './core/router.js';
 import * as session from './core/session.js';
+import { watchTables } from './ui/fit-tables.js';
 import { buildShell } from './ui/shell.js';
 import { destroyAll } from './ui/charts.js';
 import { closeDrawer } from './ui/drawer.js';
@@ -49,6 +50,7 @@ function skeleton() {
 async function render(route) {
   if (!running) return;
   const main = $('#main');
+  watchTables(main);
   const key = route.path.slice(0, 2).join('/');
   const [a, b] = route.path;
   view?.destroy?.();

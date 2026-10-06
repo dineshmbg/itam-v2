@@ -1153,3 +1153,12 @@ body { background: var(--c-bg); }
 .gt-td .badge, .tbl td .badge { display: inline-block; max-width: 100%; height: 22px; padding: 0 10px 0 6px; font-size: 11.5px; line-height: 22px; letter-spacing: 0.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .gt-td .badge .ico, .tbl td .badge .ico { display: inline-block; margin-right: 5px; vertical-align: -3px; }
 .gt-row:hover .gt-td .badge, .tbl tbody tr:hover td .badge { transform: none; }
+
+/* ---------- small tables fit their data ---------- */
+.tbl { width: 100%; table-layout: auto; }
+.tbl td.wrap { white-space: normal; min-width: 14em; max-width: 38ch; overflow-wrap: anywhere; line-height: 1.4; }
+.tbl th { white-space: nowrap; }
+.tbl td.right, .tbl td .badge, .tbl td .mono { white-space: nowrap; }
+.tbl-wrap { max-width: 100%; }
+.tbl-wrap.grow .tbl thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--c-border); }
+.panel-b > .tbl-wrap, .panel-b.flush > .tbl-wrap { overflow-x: auto; }
