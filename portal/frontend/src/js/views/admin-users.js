@@ -20,10 +20,11 @@ export function mountUsers(root) {
   root.append(holder);
   const body = h('div', { class: 'panel-b flush' });
 
+  const lead = !session.isFullAdmin();   // a Team Leader/SI User: manages other plain User accounts, never administrators, extended access, the security policy or roster sync
   const addBtn = h('button', { class: 'btn', type: 'button', onClick: newUserDialog }, icon('add'), 'Add user');
   const syncBtn = h('button', { class: 'btn primary', type: 'button', onClick: syncRoster }, icon('renew'), 'Sync from roster');
   const setBtn = h('button', { class: 'btn', type: 'button', onClick: securityDialog }, icon('security'), 'Security settings');
-  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. Sync from roster covers everyone on the CIPL roster; Add user covers anyone else.', [setBtn, addBtn, syncBtn]),
+  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. Sync from roster covers everyone on the CIPL roster; Add user covers anyone else.', lead ? [addBtn] : [setBtn, addBtn, syncBtn]),
     h('section', { class: 'panel' }, body));
 
   function newUserDialog() {
@@ -31,7 +32,7 @@ export function mountUsers(root) {
     const username = h('input', { id: 'nu-name', type: 'text', maxlength: '30', autocomplete: 'off' });
     const name = h('input', { id: 'nu-full', type: 'text', maxlength: '60', autocomplete: 'off' });
     const email = h('input', { id: 'nu-mail', type: 'email', class: 'email', maxlength: '120', autocomplete: 'off' });
-    const role = h('div', { class: 'rgroup', role: 'radiogroup', 'aria-label': 'Group' }, [['USER', 'User'], ['ADMIN', 'Administrator']].map(([v, t], i) => {
+    const role = h('div', { class: 'rgroup', role: 'radiogroup', 'aria-label': 'Group' }, [['USER', 'User'], ['ADMIN', 'Administrator']].filter(([v]) => !lead || v === 'USER').map(([v, t], i) => {
       const r = h('input', { type: 'radio', name: 'nu-role', value: v }); r.checked = i === 0;
       return h('label', { class: 'ropt' }, r, icon('radio-button', 'glyph off'), icon('radio-button--checked', 'glyph on'), h('span', null, t));
     }));
@@ -113,7 +114,7 @@ export function mountUsers(root) {
           u.read_only ? h('span', { class: 'badge mute', style: { marginLeft: '4px' } }, 'Read-only') : null), h('td', null, badgeFor(u)),
         h('td', null, u.totp_enabled ? h('span', { class: 'tick' }, icon('checkmark--filled'), ' On') : h('span', { class: 'faint' }, icon('close--outline'), ' Off')),
         h('td', null, u.email ? h('span', { class: 'email' }, u.email) : h('span', { class: 'faint' }, '—')), h('td', { class: 'nowrap' }, u.last_login_at ? when(u.last_login_at) : h('span', { class: 'faint' }, 'never')),
-        h('td', { class: 'right' }, h('button', { class: 'btn', type: 'button', onClick: () => userDialog(u) }, icon('edit'), 'Manage'))))))));
+        h('td', { class: 'right' }, lead && (u.role === 'ADMIN' || u.extended_access || u.user_id === me.user_id) ? h('span', { class: 'faint' }, 'administrator only') : h('button', { class: 'btn', type: 'button', onClick: () => userDialog(u) }, icon('edit'), 'Manage'))))))));
   }
 
   function userDialog(u) {
@@ -121,7 +122,7 @@ export function mountUsers(root) {
     const username = h('input', { id: 'u-name', type: 'text', maxlength: '30', value: u.username, disabled: true, autocomplete: 'off' });
     const name = h('input', { id: 'u-full', type: 'text', maxlength: '60', value: u.display_name, autocomplete: 'off' });
     const email = h('input', { id: 'u-mail', type: 'email', class: 'email', maxlength: '120', value: u.email || '', autocomplete: 'off' });
-    const role = h('div', { class: 'rgroup', role: 'radiogroup', 'aria-label': 'Group' }, [['USER', 'User'], ['ADMIN', 'Administrator']].map(([v, t]) => {
+    const role = h('div', { class: 'rgroup', role: 'radiogroup', 'aria-label': 'Group' }, [['USER', 'User'], ['ADMIN', 'Administrator']].filter(([v]) => !lead || v === 'USER').map(([v, t]) => {
       const i = h('input', { type: 'radio', name: 'u-role', value: v }); i.checked = u.role === v;
       return h('label', { class: 'ropt' }, i, icon('radio-button', 'glyph off'), icon('radio-button--checked', 'glyph on'), h('span', null, t));
     }));
@@ -136,7 +137,7 @@ export function mountUsers(root) {
       h('span', { class: 'name' }, 'Extended access - administrator-level access to dashboards, registers, people, preventive maintenance and reports'));
     const extHint = h('div', { class: 'hint' }, 'For a User account only: everything unscoped, but no Control, Data tools or Administration.');
     const extWrap = h('div', { class: 'frow' }, extRow, extHint);
-    const syncExt = () => { extWrap.hidden = role.querySelector('input:checked')?.value !== 'USER'; };
+    const syncExt = () => { extWrap.hidden = lead || role.querySelector('input:checked')?.value !== 'USER'; };
     role.addEventListener('change', syncExt); syncExt();
     const active = h('input', { type: 'checkbox', id: 'u-active' }); active.checked = u.active;
     const activeRow = h('label', { class: 'opt', for: 'u-active' }, active, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'Account is active (can sign in)'));
@@ -153,7 +154,7 @@ export function mountUsers(root) {
         u.role_locked ? h('p', { class: 'hint' }, 'Group set here by hand - Sync from roster keeps it.') : null, activeRow, extra),
       actions: [{ label: 'Cancel' }, { label: 'Save', primary: true, onClick: async () => {
         const g = role.querySelector('input:checked').value;
-        await send('/api/admin/users/update', { user_id: u.user_id, display_name: name.value, email: email.value, role: g, active: active.checked, engineer_key: eng.value, call_parts_access: parts.value, asset_access: assetAccess.value, extended_access: g === 'USER' && ext.checked });
+        await send('/api/admin/users/update', { user_id: u.user_id, display_name: name.value, email: email.value, role: g, active: active.checked, engineer_key: eng.value, call_parts_access: parts.value, asset_access: assetAccess.value, extended_access: !lead && g === 'USER' && ext.checked });
         toast('User saved'); await load();
       } }],
     });

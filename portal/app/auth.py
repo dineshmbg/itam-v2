@@ -282,7 +282,7 @@ def public_user(u):
             "last_login_at": u["last_login_at"].isoformat() if u["last_login_at"] else None, "created_at": u["created_at"].isoformat(), "engineer_key": u["engineer_key"],
             "read_only": bool(u.get("read_only")), "call_parts_access": u.get("call_parts_access") or "NONE",
             "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked")),
-            "starting_pw_expired": _starting_pw_expired(u, settings())}
+            "lead_tools": bool(u.get("lead_tools")), "starting_pw_expired": _starting_pw_expired(u, settings())}
 
 
 def create_user(username, display_name, email, role, editor, engineer_key=None, password=None):
@@ -308,6 +308,13 @@ def create_user(username, display_name, email, role, editor, engineer_key=None, 
 NO_LOGIN_DESIGNATIONS = {"OFFICE BOY"}
 ADMIN_DESIGNATION_RE = re.compile(r"\bSITE\s*IN-?\s*CHARGE\b|\bSI\b|\bSR\.?\s*SERVER\s+ENGINEER\b")
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+
+
+LEAD_DESIGNATION_RE = re.compile(r"\bTEAM\s*LEAD(?:ER)?\b", re.I)
+
+
+def is_lead_designation(designation):
+    return bool(designation and LEAD_DESIGNATION_RE.search(designation))
 
 
 def roster_role(designation):
@@ -720,7 +727,9 @@ def session_user(token):
     if not token:
         return None
     s = settings()
-    r = db.one("""SELECT s.stage, s.last_active_at, s.expires_at, u.* FROM portal_session s JOIN portal_user u USING (user_id)
+    r = db.one("""SELECT s.stage, s.last_active_at, s.expires_at, u.*,
+                         (SELECT e.designation FROM cipl_employee e WHERE e.ecode = u.username AND e.employment_status = 'ACTIVE' AND e.is_on_roster = 1 LIMIT 1) AS designation
+                  FROM portal_session s JOIN portal_user u USING (user_id)
                   WHERE s.token_hash = %s AND u.active""", [_token_hash(token)])
     if not r:
         return None
@@ -741,6 +750,8 @@ def session_user(token):
     # From here on "role" is the effective one, used by every permission check; "group" is the real one (shown to people, and what
     # require_admin(strict=True) looks at). An extended-access User therefore passes every ordinary administrator check.
     r["group"] = r["role"]
+    # lead_tools: a plain User (no extended access) whose roster designation is Team Leader/SI gets PM cycles, Inventory match, Users and Activity log
+    r["lead_tools"] = bool(r["role"] == "USER" and not r.get("extended_access") and not r["read_only"] and is_lead_designation(r.get("designation")))
     if r["role"] == "USER" and r.get("extended_access"):
         r["role"] = "ADMIN"
     return r
@@ -905,8 +916,14 @@ def is_full_admin(user):
     return user["role"] == "ADMIN" and user.get("group", user["role"]) == "ADMIN"
 
 
-def require_admin(user, strict=False):
-    if not (is_full_admin(user) if strict else is_admin(user)):
+def is_lead(user):
+    """A plain User (no extended access) whose designation is Team Leader/SI - see session_user(). Gets PM cycles, Inventory match, Users and Activity log."""
+    return bool(user.get("lead_tools"))
+
+
+def require_admin(user, strict=False, lead=False):
+    """lead=True: a Team Leader/SI User passes too (admin="lead" / "lead_strict" in web.py)."""
+    if not (is_full_admin(user) if strict else is_admin(user)) and not (lead and is_lead(user)):
         raise AuthError("This needs an administrator.", 403, code="forbidden")
 
 

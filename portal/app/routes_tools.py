@@ -259,7 +259,7 @@ async def match_meta(request):
 async def match_upload(request):
     """Raw file as the request body; the file name travels in a header. The file is only read - nothing is loaded into the database."""
     user = await current_user(request)
-    if not user or user["state"] != "ok" or not auth.is_full_admin(user):
+    if not user or user["state"] != "ok" or not (auth.is_full_admin(user) or auth.is_lead(user)):
         return error(403, "This needs an administrator.")
     if request.headers.get("x-requested-with") != "itam-portal":
         return error(403, "Rejected: not a portal request.")
@@ -451,27 +451,27 @@ routes = [
     Route("/api/dashboard/export", W_(dash_export, mutates=False), methods=["POST"]),   # same as report export - a download, not a write
     Route("/api/dashboard/share", W_(dash_share), methods=["POST"]),                    # sends a real e-mail - stays blocked for a read-only account
     Route("/api/pm/dashboard", R_(pm_dashboard)),
-    Route("/api/pm/cycles", R_(pm_cycles, admin=True)),
+    Route("/api/pm/cycles", R_(pm_cycles, admin="lead")),
     Route("/api/pm/history", R_(pm_history)),
     Route("/api/pm/history/detail", R_(pm_history_detail)),
     Route("/api/pm/history/export", W_(pm_history_export, mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/pm/record", W_(pm_record), methods=["POST"]),
-    Route("/api/pm/snapshot", W_(pm_snapshot, admin=True), methods=["POST"]),
-    Route("/api/pm/rollover", W_(pm_rollover, admin=True), methods=["POST"]),
+    Route("/api/pm/snapshot", W_(pm_snapshot, admin="lead"), methods=["POST"]),
+    Route("/api/pm/rollover", W_(pm_rollover, admin="lead"), methods=["POST"]),
     Route("/api/admin/backups", R_(backup_list, admin="strict")),
     Route("/api/admin/backups/create", W_(backup_now, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/verify", W_(backup_verify, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/settings", W_(backup_settings, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/restore", W_(backup_restore, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/download", W_(backup_download, admin="strict"), methods=["POST"]),
-    Route("/api/match/meta", R_(match_meta, admin="strict")),
+    Route("/api/match/meta", R_(match_meta, admin="lead_strict")),
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
-    Route("/api/match/run", W_(match_run, admin="strict"), methods=["POST"]),
+    Route("/api/match/run", W_(match_run, admin="lead_strict"), methods=["POST"]),
     Route("/api/match/mine", R_(match_mine)),
     Route("/api/match/mine/export", W_(match_mine_export, mutates=False), methods=["POST"]),     # a download, not a write
     Route("/api/match/mine/{run}", R_(match_mine_run)),
-    Route("/api/match/runs/{run}", R_(match_get, admin="strict")),
-    Route("/api/match/export", W_(match_export, admin="strict", mutates=False), methods=["POST"]),   # a download, not a write
+    Route("/api/match/runs/{run}", R_(match_get, admin="lead_strict")),
+    Route("/api/match/export", W_(match_export, admin="lead_strict", mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/admin/import", R_(import_meta, admin="strict")),
     Route("/api/admin/import/upload", _tool_errors(import_upload), methods=["POST"]),
     Route("/api/admin/import/check", W_(import_check, admin="strict"), methods=["POST"]),

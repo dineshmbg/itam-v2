@@ -2,6 +2,7 @@
 
   read(fn, admin=False)   - GET-style handler; needs a fully signed-in user (password changed, second factor done).
                             admin=True: administrators, and Users with extended access; admin="strict": real administrators only.
+                            admin="lead": as True, plus a Team Leader/SI User; admin="lead_strict": as "strict", plus a Team Leader/SI User.
   write(fn, admin=False)  - POST handler; additionally requires the portal marker header, JSON body and a same-origin request (CSRF), and
                             counts as user activity for the idle timer.
 Handlers keep the plain `async def h(request)` shape; the user is `request.state.user`, the parsed body `request.state.body`.
@@ -88,7 +89,7 @@ def read(fn, admin=False, states=("ok",)):
         if user["state"] not in states:
             return error(403, "Finish signing in first.", code=user["state"])
         if admin:
-            auth.require_admin(user, strict=admin == "strict")
+            auth.require_admin(user, strict=admin in ("strict", "lead_strict"), lead=admin in ("lead", "lead_strict"))
         request.state.user = user
         return await fn(request)
     return handler
@@ -111,7 +112,7 @@ def write(fn, admin=False, states=("ok",), mutates=True):
         if user["state"] not in states:
             return error(403, "Finish signing in first.", code=user["state"])
         if admin:
-            auth.require_admin(user, strict=admin == "strict")
+            auth.require_admin(user, strict=admin in ("strict", "lead_strict"), lead=admin in ("lead", "lead_strict"))
         if int(request.headers.get("content-length") or 0) > 1_000_000:
             return error(413, "Request is too large.")
         body = await request.json()

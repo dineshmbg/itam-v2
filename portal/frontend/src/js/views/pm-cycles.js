@@ -3,7 +3,7 @@ import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { date, int } from '../core/format.js';
 import { toast } from '../core/editor.js';
-import { isAdmin } from '../core/session.js';
+import { isAdmin, hasLeadTools } from '../core/session.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
 import { when } from './audit.js';
@@ -33,7 +33,7 @@ export function mountPmCycles(root) {
       panel('Snapshots', { cls: 'span-6', flush: true, hint: 'frozen pictures of the quarter' }, d.snapshots.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Quarter', 'As of', 'Assets'].map((t) => h('th', null, t)))),
         h('tbody', null, d.snapshots.map((s) => h('tr', null, h('td', null, s.quarter_label), h('td', null, date(s.as_of)), h('td', null, int(s.assets))))))) : h('div', { class: 'muted', style: { padding: '16px' } }, 'No snapshot yet. One is captured every Monday, after every asset import, and when a quarter closes.')),
     ];
-    if (isAdmin()) {
+    if (isAdmin() || hasLeadTools()) {
       panels.push(panel('Administration', { cls: 'span-6' }, h('div', { class: 'stack-v' },
         h('p', { class: 'muted' }, `${int(r.scope)} assets are in scope; ${int(r.with_pm)} have PM recorded for ${r.closing}, ${int(r.pending)} do not.`),
         h('div', { class: 'btn-row' },

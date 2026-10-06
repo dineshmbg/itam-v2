@@ -12,7 +12,7 @@ def _me(user):
     s = auth.settings()
     return {"authenticated": True, "state": user["state"], "user": auth.public_user(user), "idle_timeout_s": s["idle_timeout_min"] * 60, "idle_left_s": user.get("idle_left"),
             "policy": auth.policy_text(), "policy_min": s["pw_min_length"], "is_admin": user["role"] == "ADMIN",
-            "is_full_admin": auth.is_full_admin(user)}
+            "is_full_admin": auth.is_full_admin(user), "has_lead_tools": auth.is_lead(user)}
 
 
 def _set_cookie(request, response, token):
@@ -102,6 +102,20 @@ async def view_log(request):
 
 
 # ---------------------------------------------------------------- administration
+def _lead_limits(actor, target_id=None, changes=None):
+    """A Team Leader/SI User reaches Users and security (admin="lead_strict") but must not be able to climb out of the User group: no
+    administrator or extended-access accounts (so no password reset / 2FA reset of one), no own account, no granting Administrator or
+    extended access. A real administrator is never limited."""
+    if auth.is_full_admin(actor):
+        return
+    if target_id is not None:
+        t = db.one("SELECT user_id, role, extended_access FROM portal_user WHERE user_id = %s", [target_id])
+        if t and (t["role"] == "ADMIN" or t["extended_access"] or t["user_id"] == actor["user_id"]):
+            raise auth.AuthError("A team leader can manage other User accounts only - not an administrator, an account with extended access, or their own.", 403, code="forbidden")
+    if changes and (changes.get("role", "USER") != "USER" or changes.get("extended_access")):
+        raise auth.AuthError("Only an administrator can make an account an Administrator or give it extended access.", 403, code="forbidden")
+
+
 async def users_list(request):
     return json_response({"users": await run_in_threadpool(auth.list_users), "settings": await run_in_threadpool(auth.settings, True), "policy": auth.policy_text(), "reset_requests": await run_in_threadpool(auth.reset_requests),
                           "engineers": [r["engineer_key"] for r in await run_in_threadpool(db.query, "SELECT engineer_key FROM portal_engineer ORDER BY 1")]})
@@ -111,6 +125,7 @@ async def user_create(request):
     """A manual account for someone not on the CIPL roster (a general ONGC employee, say) - sync_from_roster covers
     everyone who is. `engineer_key` is optional either way."""
     b, u = request.state.body, request.state.user
+    _lead_limits(u, changes={"role": b.get("role") or "USER"})
     out = await run_in_threadpool(auth.create_user, b.get("username"), b.get("display_name"), b.get("email"), b.get("role") or "USER", u["username"], b.get("engineer_key") or None)
     await run_in_threadpool(auth.log, u["username"], client_ip(request), "USER_CREATED", out["username"])
     return json_response({**out, "users": await run_in_threadpool(auth.list_users)})
@@ -127,6 +142,8 @@ async def user_sync(request):
 async def user_update(request):
     b, u = request.state.body, request.state.user
     uid = int(b.get("user_id"))
+    changes_in = {k: b[k] for k in ("role", "extended_access") if k in b}
+    await run_in_threadpool(_lead_limits, u, uid, changes_in)
     if uid == u["user_id"] and (b.get("active") is False or (b.get("role") and b["role"] != u["role"])):
         return error(409, "You cannot deactivate or demote your own account.")
     changes = {k: b[k] for k in ("display_name", "email", "role", "active", "unlock", "reset_2fa", "engineer_key", "call_parts_access", "extended_access") if k in b}
@@ -137,6 +154,7 @@ async def user_update(request):
 
 async def user_reset_password(request):
     b, u = request.state.body, request.state.user
+    await run_in_threadpool(_lead_limits, u, int(b.get("user_id")))
     out = await run_in_threadpool(auth.reset_password, int(b.get("user_id")), u["username"], bool(b.get("email")))
     await run_in_threadpool(auth.log, u["username"], client_ip(request), "PASSWORD_RESET", out["username"],
                             {"emailed_to": out["emailed_to"]} if "emailed_to" in out else None)
@@ -191,11 +209,11 @@ routes = [
     Route("/api/auth/2fa/enable", write(totp_enable, states=("ok", "setup_2fa")), methods=["POST"]),
     Route("/api/auth/2fa/disable", write(totp_disable), methods=["POST"]),
     Route("/api/activity/view", write(view_log, mutates=False), methods=["POST"]),
-    Route("/api/admin/users", read(users_list, admin="strict")),
-    Route("/api/admin/users/create", write(user_create, admin="strict"), methods=["POST"]),
+    Route("/api/admin/users", read(users_list, admin="lead_strict")),
+    Route("/api/admin/users/create", write(user_create, admin="lead_strict"), methods=["POST"]),
     Route("/api/admin/users/sync", write(user_sync, admin="strict"), methods=["POST"]),
-    Route("/api/admin/users/update", write(user_update, admin="strict"), methods=["POST"]),
-    Route("/api/admin/users/reset-password", write(user_reset_password, admin="strict"), methods=["POST"]),
+    Route("/api/admin/users/update", write(user_update, admin="lead_strict"), methods=["POST"]),
+    Route("/api/admin/users/reset-password", write(user_reset_password, admin="lead_strict"), methods=["POST"]),
     Route("/api/admin/settings", write(settings_save, admin="strict"), methods=["POST"]),
-    Route("/api/admin/activity", read(activity_list, admin="strict")),
+    Route("/api/admin/activity", read(activity_list, admin="lead_strict")),
 ]

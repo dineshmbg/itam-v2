@@ -28,6 +28,7 @@ PERSONAS = {
     "user+asset_read": dict(role="USER", engineer_key=ELSE, asset_access="READ"),
     "user+asset_full": dict(role="USER", engineer_key=ELSE, asset_access="FULL"),
     "user+extended": dict(role="ADMIN", group="USER", engineer_key=ELSE, extended_access=True),     # effective role ADMIN, real group USER
+    "user+lead": dict(role="USER", engineer_key=ELSE, lead_tools=True),                               # plain User, designation Team Leader/SI
     "user_no_engineer": dict(role="USER", engineer_key=None),
     "demo_readonly": dict(role="ADMIN", read_only=True),
 }
@@ -40,6 +41,8 @@ def who(*allowed):
 READ_ALL = who(*PERSONAS)
 ADMINISH = who("admin", "user+extended", "demo_readonly")                 # administrator-level routes (admin=True): effective role ADMIN
 FULL_ADMIN = who("admin", "demo_readonly")                                # admin="strict": Control, Data tools, Administration - not extended access
+LEAD = who("admin", "user+lead", "demo_readonly")                         # admin="lead_strict": as strict, plus a Team Leader/SI User (Inventory match, Users, Activity log)
+LEAD_PM = who("admin", "user+extended", "user+lead", "demo_readonly")     # admin="lead": as admin=True, plus a Team Leader/SI User (PM cycles and snapshots)
 CALLS_REGISTER = who("admin", "user+parts_read", "user+parts_full", "user+extended", "demo_readonly")
 WRITE_ADMINISH = who("admin", "user+extended")                            # a write only a real/effective administrator may make (demo is read-only -> 403)
 
@@ -51,12 +54,18 @@ ACTIONS = {
     "register: calls": ("GET", "/api/registers/calls", None, CALLS_REGISTER),
     "register: inward": ("GET", "/api/registers/inward", None, CALLS_REGISTER),
     "register: assets": ("GET", "/api/registers/assets", None, READ_ALL),
-    "pm: cycles page": ("GET", "/api/pm/cycles", None, ADMINISH),
-    "pm: roll over": ("POST", "/api/pm/rollover", {}, WRITE_ADMINISH),
+    "pm: cycles page": ("GET", "/api/pm/cycles", None, LEAD_PM),
+    "pm: roll over": ("POST", "/api/pm/rollover", {}, who("admin", "user+extended", "user+lead")),
     "control: change log": ("GET", "/api/audit", None, FULL_ADMIN),
     "control: data integrity": ("GET", "/api/integrity", None, FULL_ADMIN),
-    "admin: users list": ("GET", "/api/admin/users", None, FULL_ADMIN),
-    "admin: users update": ("POST", "/api/admin/users/update", {"user_id": 0}, who("admin")),
+    "admin: users list": ("GET", "/api/admin/users", None, LEAD),
+    "admin: users update": ("POST", "/api/admin/users/update", {"user_id": 0}, who("admin", "user+lead")),
+    "admin: sync from roster": ("POST", "/api/admin/users/sync", {}, who("admin")),                      # roster-derived groups: administrators only
+    "admin: security settings": ("POST", "/api/admin/settings", {"settings": {}}, who("admin")),
+    "admin: activity log": ("GET", "/api/admin/activity", None, LEAD),
+    "tools: inventory match": ("GET", "/api/match/meta", None, LEAD),
+    "tools: data import": ("GET", "/api/admin/import", None, FULL_ADMIN),                                # Data import / Backup / Software update / E-mail stay administrator-only
+    "admin: e-mail and alerts": ("GET", "/api/admin/email", None, FULL_ADMIN),
     "admin: backups list": ("GET", "/api/admin/backups", None, FULL_ADMIN),
     # Replace / Redeploy re-key an asset across the whole database: real administrators only - not even extended access
     "lifecycle: preflight": ("GET", "/api/lifecycle/preflight?key=MATRIX-NONE", None, FULL_ADMIN),
@@ -108,7 +117,7 @@ CASES = [(persona, action) for action in ACTIONS for persona in PERSONAS]
 def test_permission_matrix(sandbox, monkeypatch, assets, persona, action):
     method, path, spec, allowed = ACTIONS[action]
     u = as_user(monkeypatch, username="MX_" + persona.upper().replace("+", "_"), **{k: v for k, v in PERSONAS[persona].items() if k in ("role", "engineer_key", "read_only")})
-    u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access")})
+    u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access", "lead_tools")})
     body = body_for(spec, assets)
     with TestClient(app) as c:
         r = c.get(path) if method == "GET" else c.post(path, json=body, headers=HDR)
@@ -120,7 +129,7 @@ def test_permission_matrix(sandbox, monkeypatch, assets, persona, action):
 def test_register_rows_seen_by_each_kind_of_account(sandbox, monkeypatch, assets):
     def total(persona):
         u = as_user(monkeypatch, username="MXS_" + persona.upper().replace("+", "_"), **{k: v for k, v in PERSONAS[persona].items() if k in ("role", "engineer_key", "read_only")})
-        u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access")})
+        u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access", "lead_tools")})
         with TestClient(app) as c:
             return c.get("/api/registers/assets", params={"limit": 1}).json()["total"]
     everything = one(sandbox, "SELECT count(*) n FROM asset WHERE is_current = 1 AND record_level = 'ASSET'")["n"]
@@ -136,8 +145,38 @@ def test_reports_offer_only_the_datasets_an_account_may_open(sandbox, monkeypatc
                       "user+asset_full": False, "user_no_engineer": False}
     for persona, has_calls in expected_calls.items():
         u = as_user(monkeypatch, username="MXR_" + persona.upper().replace("+", "_"), **{k: v for k, v in PERSONAS[persona].items() if k in ("role", "engineer_key", "read_only")})
-        u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access")})
+        u.update({k: v for k, v in PERSONAS[persona].items() if k in ("group", "extended_access", "asset_access", "call_parts_access", "lead_tools")})
         with TestClient(app) as c:
             datasets = c.get("/api/reports/meta").json()["datasets"]
         assert ("calls" in datasets) == has_calls, persona
         assert "assets" in datasets, persona                          # everyone can report on the assets they are allowed to see
+
+
+# ---------------------------------------------------------------- a Team Leader/SI cannot use Users and security to climb out of the User group
+def test_team_leader_cannot_escalate_through_manage_user(sandbox, monkeypatch):
+    mk = lambda name, role, ext=False: sandbox.execute(
+        "INSERT INTO portal_user (username, display_name, role, extended_access, password_hash, must_change, created_by) VALUES (%s,%s,%s,%s,'x',FALSE,'test') RETURNING user_id",
+        (name, name, role, ext)).fetchone()[0]
+    plain, boss, ext_user = mk("MXL_PLAIN", "USER"), mk("MXL_BOSS", "ADMIN"), mk("MXL_EXT", "USER", True)
+    me = mk("MXL_ME", "USER")
+    u = as_user(monkeypatch, username="MXL_ME", role="USER", engineer_key=ELSE)
+    u.update(lead_tools=True, group="USER", user_id=me)
+    with TestClient(app) as c:
+        post = lambda path, body: c.post(path, json=body, headers=HDR).status_code
+        assert post("/api/admin/users/update", {"user_id": plain, "display_name": "RENAMED"}) == 200
+        assert post("/api/admin/users/update", {"user_id": plain, "role": "ADMIN"}) == 403          # cannot make anyone an administrator
+        assert post("/api/admin/users/update", {"user_id": plain, "extended_access": True}) == 403   # nor give extended access
+        assert post("/api/admin/users/update", {"user_id": boss, "display_name": "X"}) == 403        # nor touch an administrator
+        assert post("/api/admin/users/update", {"user_id": ext_user, "reset_2fa": True}) == 403      # nor an extended-access account
+        assert post("/api/admin/users/reset-password", {"user_id": boss}) == 403                     # nor reset an administrator's password
+        assert post("/api/admin/users/update", {"user_id": me, "extended_access": True}) == 403      # nor themselves
+        assert post("/api/admin/users/create", {"username": "MXL_NEW", "display_name": "New Person", "role": "ADMIN"}) == 403
+        assert post("/api/admin/users/create", {"username": "MXL_NEW", "display_name": "New Person", "role": "USER"}) == 200
+    assert one(sandbox, "SELECT role FROM portal_user WHERE user_id = %s", (plain,))["role"] == "USER"
+    assert one(sandbox, "SELECT role FROM portal_user WHERE user_id = %s", (boss,))["role"] == "ADMIN"
+
+
+def test_lead_designation_rule():
+    from portal.app import auth
+    assert auth.is_lead_designation("TEAM LEADER/SI") and auth.is_lead_designation("Team Leader")
+    assert not any(auth.is_lead_designation(d) for d in ("SR SERVER ENGINEER", "NETWORK ENGINEER", "SITE IN-CHARGE", "", None))

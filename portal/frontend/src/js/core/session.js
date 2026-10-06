@@ -14,6 +14,8 @@ export const user = () => me.user || null;
 export const isAdmin = () => !!me.is_admin;
 /** A real administrator - a User with extended access passes isAdmin() but not this (no Administration, no Software update). */
 export const isFullAdmin = () => !!me.is_full_admin;
+/** A plain User whose designation is Team Leader/SI: gets PM cycles, Inventory match, Users and Activity log (never Data import, Backup, Software update, E-mail, Control). */
+export const hasLeadTools = () => !!me.has_lead_tools;
 /** A non-admin engineer individually granted into Calls/Inward/Outward/OEM RMA (see Manage user -> Module access). */
 export const callPartsAccess = () => (isAdmin() ? 'FULL' : me.user?.call_parts_access || 'NONE');
 export const hasCallPartsAccess = () => callPartsAccess() !== 'NONE';

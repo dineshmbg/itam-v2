@@ -105,7 +105,7 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Replace asset / Redeploy asset | yes (real administrators only - not extended access) | no | no |
 | Personal data on hover cards (mobile, personal e-mail, date of birth) | yes | only their own | no |
 | Data import, backup and restore, PM roll-over, roster events | yes | no | no |
-| Users, security policy, e-mail set-up, activity log | yes | no | no |
+| Users, security policy, e-mail set-up, activity log | yes | no, except a **Team Leader/SI** User: Users and security (other plain Users only, no security policy / roster sync) and Activity log - see "Team Leader/SI tools" | no |
 | Create a portal account | yes, manually (Add user) or via roster sync (2026-09-30 - Add user restored) | never | never |
 
 **The table above is also executable** (2026-10-03): `tests/test_permission_matrix.py` runs 9 kinds of account (administrator, plain User, +calls/parts read or full, +asset read or full, extended access, User with no engineer, read-only demo) against ~20 sensitive actions through the real HTTP routes, plus what each account sees in the Assets register and which datasets the report builder offers. Change a rule by changing that table; add a grant by adding an account row. It fails if any route disagrees (checked by deliberately loosening a rule: it caught it).
@@ -714,3 +714,20 @@ Excel download. Asking for another engineer's list is ignored; an account with n
 to each engineer the moment the match finishes (`inventory_match.distribute`). If e-mail is switched off the analysis is still shared, the page
 says no e-mail was sent and shows who would have been mailed, and the outcome is stored with the analysis. Sending stays once per analysis and
 engineer, so nothing is mailed twice. The old manual routes (`/api/match/engineers`, `/api/match/publish`) are gone.
+
+## Team Leader/SI tools for a plain User (2026-10-06)
+
+A **User**-group account, **without** extended access, whose roster designation is Team Leader (`TEAM LEADER/SI`) is given four areas automatically -
+no tick box to set: **Preventive maintenance > Cycles and snapshots** (view, capture snapshot, roll over a quarter), **Data tools > Inventory match**,
+**Administration > Users and security** and **Administration > Activity log**. Nothing else changes: Data import, Backup and restore, Software update,
+E-mail and alerts, Data integrity and Change log stay real-administrator-only.
+- **How it is decided.** `auth.session_user` looks up the account's designation in `cipl_employee` (user name = ECODE, active and on the roster) and sets
+  `lead_tools` when the group is User, extended access is off, the account is not read-only and `auth.LEAD_DESIGNATION_RE` matches. Move the person off the
+  roster, change their designation, or switch them to Administrator / extended access and the access follows at the next request. An administrator or an
+  extended-access account never needs it (they already have these areas).
+- **Gate.** `web.read/write(admin="lead")` = administrator-level (incl. extended) plus a lead (PM cycles); `admin="lead_strict"` = real administrator plus a lead
+  (Inventory match, Users, Activity log). The menu mirrors this (`shell.js`, `session.hasLeadTools()`).
+- **No climbing out of the User group.** In Users and security a lead can add and manage plain User accounts only (`routes_auth._lead_limits`): no
+  Administrator or extended-access accounts (so no password/2FA reset of one), not their own account, no granting Administrator or extended access.
+  The Security settings button and Sync from roster (which derives groups from designations) are administrator-only and hidden.
+- Tests: persona `user+lead` and the new rows in `tests/test_permission_matrix.py`, plus `test_team_leader_cannot_escalate_through_manage_user`.
