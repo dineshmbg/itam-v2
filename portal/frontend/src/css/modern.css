@@ -442,3 +442,33 @@ dialog.modal::backdrop { background: var(--c-scrim); -webkit-backdrop-filter: bl
 .updated { font-weight: 500; }
 .legend a, .legend span { font-weight: 500; }
 .legend b { font-weight: 700; }
+
+/* ---------- dropdowns ---------- */
+select { appearance: none; -webkit-appearance: none; cursor: pointer; border-radius: var(--r-2); padding-right: 32px;
+  background-color: var(--c-surface); background-repeat: no-repeat; background-size: 10px 6px; background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7686' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+select:hover { border-color: var(--c-text-3); }
+select:focus-visible { outline-offset: 0; border-color: var(--c-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-focus) 18%, transparent); }
+select option { background: var(--c-surface); color: var(--c-text); padding: 8px 12px; }
+.rp-filter select, .rp-side select, .toolbar select, .row-inline-btn select { height: 32px; border-radius: var(--r-pill); padding-left: 14px; }
+.frow select { background-position: right 12px center; background-size: 10px 6px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7686' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.menu, .gs-pop { border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); box-shadow: 0 18px 44px rgba(22, 26, 31, 0.24), 0 2px 8px rgba(22, 26, 31, 0.08); animation: pop 140ms var(--ease); transform-origin: top right; }
+.menu { padding: 6px; min-width: 210px; top: 44px; }
+.menu button { height: 36px; padding: 0 12px; font-weight: 500; transition: background-color 100ms var(--ease), color 100ms var(--ease), padding 100ms var(--ease); }
+.menu button:hover, .menu button:focus-visible { background: var(--c-accent-bg); color: var(--c-accent); padding-left: 14px; }
+.menu button .ico { color: var(--c-text-3); }
+.menu button:hover .ico { color: var(--c-accent); }
+.gs-group h3 { font-weight: 700; color: var(--c-accent); }
+.gs-item[aria-selected="true"], .gs-item:hover { background: var(--c-accent-bg); }
+
+/* ---------- tabs: segmented pill track ---------- */
+.mtabs, .dtabs { gap: 2px; padding: 4px; margin: 8px 12px; width: fit-content; max-width: calc(100% - 24px); background: var(--c-surface-3); border-radius: var(--r-pill); border: 0; overflow-x: auto; scrollbar-width: none; }
+.dtabs { margin: 0 0 8px; padding: 3px; max-width: 100%; }
+.mtabs::-webkit-scrollbar, .dtabs::-webkit-scrollbar { display: none; }
+.mtab, .dtab { height: 32px; padding: 0 16px; border: 0; margin: 0; border-radius: var(--r-pill); font-size: 13px; font-weight: 500; color: var(--c-text-2); background: transparent; transition: background-color 140ms var(--ease), color 140ms var(--ease), box-shadow 140ms var(--ease); }
+.mtab:hover, .dtab:hover { background: color-mix(in srgb, var(--c-surface) 70%, transparent); color: var(--c-text); }
+.mtab[aria-selected="true"], .dtab[aria-selected="true"] { background: var(--c-surface); color: var(--c-accent); font-weight: 700; border: 0; box-shadow: 0 1px 3px rgba(22, 26, 31, 0.18), inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 25%, transparent); }
+.mtab .count { border-radius: var(--r-pill); font-weight: 700; background: var(--c-surface); }
+.mtab[aria-selected="true"] .count { background: var(--c-accent); color: var(--c-on-accent); }
+.drawer-tabs { padding: 10px 16px 0; border-bottom: 0; }
+.panel > .mtabs:first-child, .panel > .dtabs:first-child { border-radius: var(--r-pill); }
