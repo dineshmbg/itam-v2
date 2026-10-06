@@ -221,3 +221,72 @@ button.gt-th { transition: background-color 120ms var(--ease), color 120ms var(-
 .drawer.wide .eform, dialog.modal.large .eform { display: block; columns: 340px; column-gap: 16px; }
 .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { break-inside: avoid; margin: 0 0 16px; display: block; }
 .drawer.wide .eform > :not(.fgroup), dialog.modal.large .eform > :not(.fgroup) { column-span: all; }
+
+/* ---------- colour: rotating hue per card/group (same palette tokens as the charts, so light/dark contrast is already tuned) ---------- */
+.grid > :nth-child(6n+1), .kpis > :nth-child(6n+1), .nav > :nth-child(6n+1) { --kc: var(--chart-1); }
+.grid > :nth-child(6n+2), .kpis > :nth-child(6n+2), .nav > :nth-child(6n+2) { --kc: var(--chart-3); }
+.grid > :nth-child(6n+3), .kpis > :nth-child(6n+3), .nav > :nth-child(6n+3) { --kc: var(--chart-2); }
+.grid > :nth-child(6n+4), .kpis > :nth-child(6n+4), .nav > :nth-child(6n+4) { --kc: var(--chart-6); }
+.grid > :nth-child(6n+5), .kpis > :nth-child(6n+5), .nav > :nth-child(6n+5) { --kc: var(--chart-4); }
+.grid > :nth-child(6n+6), .kpis > :nth-child(6n+6), .nav > :nth-child(6n+6) { --kc: var(--chart-7); }
+
+/* KPI figures: big, bold, coloured; the strip and icon chip follow the same hue */
+.kpi { --kc: var(--page-mod, var(--c-accent)); }
+.kpis > .kpi:nth-child(n) { --kc: var(--chart-1); }
+.kpis > .kpi:nth-child(5n+2) { --kc: var(--chart-3); } .kpis > .kpi:nth-child(5n+3) { --kc: var(--chart-2); }
+.kpis > .kpi:nth-child(5n+4) { --kc: var(--chart-6); } .kpis > .kpi:nth-child(5n+5) { --kc: var(--chart-4); }
+.kpi::before { height: 4px; background: linear-gradient(90deg, var(--kc), color-mix(in srgb, var(--kc) 45%, transparent)); opacity: 1; }
+.kpi::after { content: ""; position: absolute; right: -28px; top: -28px; width: 96px; height: 96px; border-radius: 50%; background: color-mix(in srgb, var(--kc) 10%, transparent); pointer-events: none; }
+.kpi-v { font-size: 38px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; color: var(--kc); }
+.kpi-l { font-weight: 600; color: var(--c-text); }
+.kpi-l .ico { color: var(--kc); background: color-mix(in srgb, var(--kc) 16%, transparent); }
+.kpi[data-tone="bad"] { --kc: var(--c-bad); } .kpi[data-tone="warn"] { --kc: var(--c-warn); } .kpi[data-tone="ok"] { --kc: var(--c-ok); }
+.kpi[data-tone] .kpi-v, .kpi[data-tone] .kpi-l .ico { color: var(--kc); }
+.kpi[data-tone="bad"]::before { background: linear-gradient(90deg, var(--c-bad), color-mix(in srgb, var(--c-bad) 45%, transparent)); }
+.kpi[data-tone="warn"]::before { background: linear-gradient(90deg, var(--c-warn), color-mix(in srgb, var(--c-warn) 45%, transparent)); }
+.kpi[data-tone="ok"]::before { background: linear-gradient(90deg, var(--c-ok), color-mix(in srgb, var(--c-ok) 45%, transparent)); }
+.sum-strip .it strong { font-size: 24px; font-weight: 600; color: var(--c-accent); }
+
+/* card headings: coloured marker + tinted header band */
+.panel { --kc: var(--chart-1); }
+.panel-h { position: relative; padding: 14px 20px 10px 34px; }
+.panel-h::before { content: ""; position: absolute; left: 18px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: var(--kc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--kc) 20%, transparent); }
+.panel-h h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--c-text); }
+.panel { border-top: 3px solid var(--kc); }
+.bar-n { font-weight: 600; color: var(--c-text); }
+.bar-t > i { background: linear-gradient(90deg, color-mix(in srgb, var(--kc) 70%, transparent), var(--kc)); }
+.fgroup > h3, .dsec > h3, .small-h, .rp-sec > h3 { color: var(--c-accent); font-weight: 700; }
+
+/* ---------- sidebar ---------- */
+.nav { background: linear-gradient(180deg, var(--c-surface), var(--c-surface-2)); padding-top: var(--sp-4); }
+.nav-group { padding: var(--sp-4) 0 var(--sp-1); --kc: var(--c-accent); }
+.nav-group:nth-child(6n+1) { --kc: var(--chart-1); } .nav-group:nth-child(6n+2) { --kc: var(--chart-3); } .nav-group:nth-child(6n+3) { --kc: var(--chart-2); }
+.nav-group:nth-child(6n+4) { --kc: var(--chart-6); } .nav-group:nth-child(6n+5) { --kc: var(--chart-4); } .nav-group:nth-child(6n+6) { --kc: var(--chart-7); }
+.nav-group > h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0 var(--sp-3); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kc); }
+.nav-group > h2::before { content: ""; width: 14px; height: 3px; border-radius: 2px; background: var(--kc); flex: none; }
+.nav a.nav-item { height: 40px; font-weight: 500; position: relative; transition: background-color 120ms var(--ease), transform 120ms var(--ease), color 120ms var(--ease); }
+.nav a.nav-item .ico { padding: 5px; box-sizing: content-box; width: 18px; height: 18px; border-radius: 9px; background: color-mix(in srgb, var(--mod-c, var(--kc)) 14%, transparent); color: var(--mod-c, var(--kc)); transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+.nav a.nav-item:hover { transform: translateX(2px); background: var(--c-surface-3); }
+.nav a.nav-item[aria-current="page"] { background: linear-gradient(90deg, color-mix(in srgb, var(--mod-c, var(--kc)) 18%, var(--c-surface)), var(--c-surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mod-c, var(--kc)) 35%, transparent); font-weight: 700; }
+.nav a.nav-item[aria-current="page"] .ico { background: var(--mod-c, var(--kc)); color: var(--c-on-accent); }
+.nav-foot { border-top: 1px solid var(--c-border); margin: var(--sp-3) var(--sp-2) 0; padding: var(--sp-3) var(--sp-2) 0; }
+.shell.nav-min .nav-group > h2 { display: none; }
+.shell.nav-min .nav a.nav-item:hover { transform: none; }
+
+/* ---------- sign-in ---------- */
+.login-page { position: relative; overflow: hidden; background:
+  radial-gradient(900px 520px at 12% 8%, color-mix(in srgb, var(--chart-1) 28%, transparent), transparent 62%),
+  radial-gradient(760px 480px at 90% 18%, color-mix(in srgb, var(--chart-4) 20%, transparent), transparent 60%),
+  radial-gradient(900px 560px at 70% 100%, color-mix(in srgb, var(--chart-3) 24%, transparent), transparent 60%), var(--c-bg); }
+.login-card { position: relative; width: min(440px, 100%); padding: 36px 34px 24px; border-radius: 24px; border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent);
+  background: color-mix(in srgb, var(--c-surface) 88%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(22, 26, 31, 0.18), 0 2px 8px rgba(22, 26, 31, 0.06); gap: 6px; overflow: hidden; }
+.login-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: linear-gradient(90deg, #e0303a, #f2862c, #e8c22a, #3fae52, #2b8fd6, #6f5ce0, #d0389c); }
+.login-logo { height: 80px; margin-bottom: 12px; }
+.login-title strong { font-size: 22px; font-weight: 700; letter-spacing: 0.1em; background: linear-gradient(90deg, var(--chart-1), var(--chart-6)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.login-title span { font-size: 11.5px; letter-spacing: 0.08em; }
+.login-card .btn.block { height: 46px; border-radius: 12px; font-weight: 600; letter-spacing: 0.06em; background: linear-gradient(135deg, var(--c-accent), color-mix(in srgb, var(--c-accent) 60%, var(--chart-6))); border-color: transparent; box-shadow: 0 6px 16px color-mix(in srgb, var(--c-accent) 35%, transparent); }
+.login-card .btn.block:hover { filter: brightness(1.08); }
+.login-card .frow input { min-height: 44px; border-radius: 12px; }
+.login-foot { margin-top: 16px; }
+:root[data-theme="dark"] .login-card { box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
