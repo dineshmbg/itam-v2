@@ -128,10 +128,26 @@ def list_rows(name, args, user=None, cap=None):
     out = {"rows": rows}
     if offset == 0 or args.get("count") == "1":
         out["total"] = db.one(f"SELECT count(*) AS n FROM {ds['table']} WHERE {w}", p)["n"]
+    if offset == 0:
+        out["longest"] = longest_values(ds, w, p)
     if args.get("facets") == "1":
         out["facets"] = facet_counts(ds, q, filters, base)
     out["filters"] = filters
     return out
+
+
+def longest_values(ds, w, p):
+    """The longest displayed value of each free-text column over the whole filtered result, so the grid can size every column to its widest
+    entry (the client measures the string in the real font). Badge, date and number columns have fixed, known widths and are left out."""
+    cols = [c for c in ds["columns"] if c.get("kind", "text") in ("text", "name", "mono")]
+    if not cols:
+        return {}
+    sel = ", ".join(f"(array_agg(left(({c['expr']})::text, 120) ORDER BY length(({c['expr']})::text) DESC NULLS LAST))[1] AS {c['key']}" for c in cols)
+    try:
+        row = db.one(f"SELECT {sel} FROM {ds['table']} WHERE {w}", p) or {}
+    except Exception:       # sizing is cosmetic: never let it break a register
+        return {}
+    return {k: v for k, v in row.items() if v}
 
 
 def facet_counts(ds, q, filters, base=None):

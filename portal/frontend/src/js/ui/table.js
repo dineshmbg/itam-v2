@@ -24,6 +24,30 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
   const template = cols.map(([min, fr]) => `minmax(${min}, ${fr})`).join(' ');
   const tableW = cols.reduce((n, [min]) => n + parseInt(min, 10), 0);
 
+  // Column fitting: the server sends the longest value of every free-text column; each is measured in the real font (upper case, as shown)
+  // and the column gets exactly that width plus padding, never narrower than its own heading and never wider than MAX_FIT. Widths only grow
+  // while the table lives, so filtering does not make the columns jump around.
+  const MAX_FIT = 440;
+  const fit = columns.map(() => 0);
+  const measurer = document.createElement('canvas').getContext('2d');
+  const textW = (txt, font, track) => { measurer.font = font; return measurer.measureText(String(txt).toUpperCase()).width + String(txt).length * track; };
+  function headW(c) { return Math.ceil(textW(c.label, '600 11px "IBM Plex Sans", sans-serif', 0.66)) + 14 + 4 + 20 + 6; }
+  function applyLongest(longest) {
+    if (!longest) return;
+    let changed = false;
+    columns.forEach((c, i) => {
+      if (c.kind !== 'text' && c.kind !== 'name' && c.kind !== 'mono') return;
+      const v = longest[c.key] || (c.key === 'hostname' ? longest.asset_key : null);   // an empty hostname shows the asset number instead
+      const font = c.kind === 'mono' ? '500 12.5px "IBM Plex Mono", monospace' : '500 12.5px "IBM Plex Sans", sans-serif';
+      const w = Math.min(MAX_FIT, Math.max(headW(c), v ? Math.ceil(textW(v, font, c.kind === 'mono' ? 0 : 0.15)) + 20 + 10 : 0, 64));
+      if (w > fit[i]) { fit[i] = w; changed = true; }
+    });
+    if (!changed) return;
+    const px = columns.map((c, i) => (fit[i] ? fit[i] : parseInt(cols[i][0], 10)));
+    inner.style.setProperty('--cols', px.map((w, i) => `minmax(${w}px, ${fit[i] ? (w / 100).toFixed(2) + 'fr' : cols[i][1]})`).join(' '));
+    inner.style.setProperty('--table-w', px.reduce((a, b) => a + b, 0) + 'px');
+  }
+
   const headCells = columns.map((c) => {
     const btn = h('button', { class: 'gt-th' + (c.align === 'right' ? ' right' : ''), role: 'columnheader', type: 'button', 'data-key': c.key, 'aria-label': `Sort by ${c.label}` }, c.label, icon('chevron--sort', 'sm'));
     btn.addEventListener('click', () => {
@@ -120,6 +144,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
       loading.delete(page);
       pages.set(page, res.rows);
       if (res.groups !== undefined) setGroups(res.groups);
+      if (res.longest) (document.fonts?.ready || Promise.resolve()).then(() => applyLongest(res.longest));
       if (res.total != null && res.total !== total) setTotal(res.total);
       render(true);
     }).catch((e) => { loading.delete(page); showError(e); });
@@ -218,6 +243,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
           if (my !== epoch) return;
           loading.delete(p); pages.set(p, res.rows);
           if (res.groups !== undefined) setGroups(res.groups);
+          if (res.longest) applyLongest(res.longest);
           if (res.total != null && res.total !== total) setTotal(res.total);
           rowEls.forEach((el, i) => { const it = itemAt(i); if (it.idx != null && Math.floor(it.idx / pageSize) === p) { el.remove(); rowEls.delete(i); } });
           render();
