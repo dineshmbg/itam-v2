@@ -1080,3 +1080,71 @@ a:not(.btn):not(.nav-item):not(.kpi):not(.brand) { text-underline-offset: 3px; t
   .app-foot { font-size: 10px; }
 }
 @media print { .main { padding: 0; } .grid { gap: 8px; } }
+
+
+/* ---------- colours and themes ----------
+   Cooler, slightly blue-tinted neutrals and a deeper royal-blue accent in light; deep navy surfaces and a soft periwinkle accent in dark.
+   Every text/background pair below is kept at WCAG AA or better (body text >= 7:1, secondary >= 4.5:1, control borders >= 3:1).
+   Light, Dark and Automatic (follows the system) all read from the same tokens. */
+:root {
+  --c-bg: #f3f5fa; --c-surface: #ffffff; --c-surface-2: #f8f9fd; --c-surface-3: #edf0f7;
+  --c-border: #e0e5f0; --c-border-strong: #8592a8;
+  --c-text: #0f172a; --c-text-2: #475569; --c-text-3: #5a6678;
+  --c-accent: #1d4ed8; --c-accent-hover: #1e40af; --c-accent-bg: #e8eefd; --c-on-accent: #ffffff; --c-focus: #1d4ed8;
+  --c-scrim: rgba(15, 23, 42, 0.5);
+  --c-ok: #14703a; --c-ok-bg: #e2f6e9; --c-warn: #8a5200; --c-warn-bg: #fcf0cf; --c-bad: #b91c1c; --c-bad-bg: #fde7e7;
+  --c-info: #1d4ed8; --c-info-bg: #e8eefd; --c-mute: #475569; --c-mute-bg: #edf0f7;
+  --chart-1: #1d4ed8; --chart-grid: #e6eaf3;
+  --mod-assets: #1d4ed8;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 2px 10px rgba(15, 23, 42, 0.05);
+  --shadow-pop: 0 6px 20px rgba(15, 23, 42, 0.16), 0 0 0 1px var(--c-border);
+  --shadow-float: 0 22px 56px rgba(15, 23, 42, 0.3), 0 2px 8px rgba(15, 23, 42, 0.12), 0 0 0 1px var(--c-border);
+  --grad-accent: linear-gradient(135deg, #1d4ed8, #6d28d9);
+  --grad-warm: linear-gradient(135deg, #1d4ed8, #a3195b);
+}
+:root[data-theme="dark"] {
+  --c-bg: #090d16; --c-surface: #111829; --c-surface-2: #161f33; --c-surface-3: #1d2840;
+  --c-border: #242f48; --c-border-strong: #5b6b88;
+  --c-text: #e7ecf6; --c-text-2: #b3bed3; --c-text-3: #93a2bc;
+  --c-accent: #7ea6ff; --c-accent-hover: #a0bcff; --c-accent-bg: #14264b; --c-on-accent: #080c15; --c-focus: #a0bcff;
+  --c-scrim: rgba(4, 7, 14, 0.62);
+  --c-ok: #5fd48a; --c-ok-bg: #11291d; --c-warn: #e8b94f; --c-warn-bg: #2d2410; --c-bad: #f58a82; --c-bad-bg: #351a1d;
+  --c-info: #7ea6ff; --c-info-bg: #14264b; --c-mute: #b3bed3; --c-mute-bg: #1d2840;
+  --chart-1: #7ea6ff; --chart-grid: #232e46;
+  --mod-assets: #7ea6ff;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--c-border);
+  --shadow-float: 0 26px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--c-border-strong);
+  --grad-accent: linear-gradient(135deg, #7ea6ff, #c4b5fd);
+  --grad-warm: linear-gradient(135deg, #7ea6ff, #f472b6);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+  --c-bg: #090d16; --c-surface: #111829; --c-surface-2: #161f33; --c-surface-3: #1d2840;
+  --c-border: #242f48; --c-border-strong: #5b6b88;
+  --c-text: #e7ecf6; --c-text-2: #b3bed3; --c-text-3: #93a2bc;
+  --c-accent: #7ea6ff; --c-accent-hover: #a0bcff; --c-accent-bg: #14264b; --c-on-accent: #080c15; --c-focus: #a0bcff;
+  --c-scrim: rgba(4, 7, 14, 0.62);
+  --c-ok: #5fd48a; --c-ok-bg: #11291d; --c-warn: #e8b94f; --c-warn-bg: #2d2410; --c-bad: #f58a82; --c-bad-bg: #351a1d;
+  --c-info: #7ea6ff; --c-info-bg: #14264b; --c-mute: #b3bed3; --c-mute-bg: #1d2840;
+  --chart-1: #7ea6ff; --chart-grid: #232e46;
+  --mod-assets: #7ea6ff;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--c-border);
+  --shadow-float: 0 26px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--c-border-strong);
+  --grad-accent: linear-gradient(135deg, #7ea6ff, #c4b5fd);
+  --grad-warm: linear-gradient(135deg, #7ea6ff, #f472b6);
+  }
+}
+/* gradients that carried the old accent now follow the theme's gradient tokens */
+.brand-mark { background: var(--grad-accent); }
+.btn.primary, .login-card .btn.block { background: var(--grad-accent); }
+.btn.primary:hover, .login-card .btn.block:hover { filter: brightness(1.08); }
+.btn.usr > .ico { background: var(--grad-accent); }
+.af-dot { background: var(--grad-accent); }
+.login-title strong { background-image: var(--grad-accent); }
+:root[data-theme="dark"] .btn.primary, :root[data-theme="dark"] .login-card .btn.block { color: #080c15; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] .btn.primary, :root[data-theme="auto"] .login-card .btn.block { color: #080c15; } }
+body { background: var(--c-bg); }
+:root[data-theme="dark"] body { background: radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--c-accent) 9%, transparent), transparent 60%), var(--c-bg); background-attachment: fixed; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] body { background: radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--c-accent) 9%, transparent), transparent 60%), var(--c-bg); background-attachment: fixed; } }
