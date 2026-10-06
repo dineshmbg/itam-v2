@@ -36,6 +36,16 @@ const axis = (over = {}) => ({
   ticks: { color: () => token('--c-text-2'), font: { family: fontFamily(), size: 12 }, padding: 6, precision: 0 }, ...over,
 });
 
+// Bars fade from a lighter tint at their base to the full colour at the tip. The gradient follows each bar, so stacked segments stay legible.
+const rgba = (hex, a) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return hex; const n = parseInt(m[1], 16); return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
+function fade(ctx, col, horizontal) {
+  const el = ctx.element, c = ctx.chart.ctx;
+  if (!el || ![el.x, el.y, el.base].every(Number.isFinite)) return col;
+  const g = horizontal ? c.createLinearGradient(el.base, 0, el.x, 0) : c.createLinearGradient(0, el.base, 0, el.y);
+  g.addColorStop(0, rgba(col, 0.6)); g.addColorStop(1, col);
+  return g;
+}
+
 function track(chart) {
   live.add(chart);
   const destroy = chart.destroy.bind(chart);
@@ -54,7 +64,7 @@ export async function barH(canvas, labels, datasets, { stacked = false, onPick, 
       labels: U(labels),
       datasets: datasets.map((d, i) => ({
         label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, borderRadius: stacked ? 3 : 6, borderSkipped: false, barPercentage: 0.66, categoryPercentage: 0.9,
-        backgroundColor: (ctx) => (colors ? color(colors[ctx.dataIndex]) : color(d.color ?? i)),
+        backgroundColor: (ctx) => fade(ctx, colors ? color(colors[ctx.dataIndex]) : color(d.color ?? i), true),
         hoverBackgroundColor: (ctx) => (colors ? color(colors[ctx.dataIndex]) : color(d.color ?? i)),
       })),
     },
@@ -73,12 +83,12 @@ export async function monthly(canvas, labels, bars, line, { onPick } = {}) {
   const C = await Chart();
   const datasets = bars.map((d, i) => ({
     type: 'bar', label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, borderRadius: 3, borderSkipped: false, stack: 's', order: 2, barPercentage: 0.62, categoryPercentage: 0.8,
-    backgroundColor: () => color(d.color ?? i),
+    backgroundColor: (ctx) => fade(ctx, color(d.color ?? i), false), hoverBackgroundColor: () => color(d.color ?? i),
   }));
   if (line) {
     datasets.push({
       type: 'line', label: String(line.label).toUpperCase(), data: line.data, yAxisID: 'y1', order: 1, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2.5, borderCapStyle: 'round',
-      borderColor: () => token('--c-text'), backgroundColor: () => token('--c-surface'), pointBorderColor: () => token('--c-text'), pointBackgroundColor: () => token('--c-surface'),
+      borderColor: () => token('--c-text'), backgroundColor: () => token('--c-surface'), pointBorderColor: () => token('--c-text'), pointBackgroundColor: () => token('--c-surface'), pointBorderWidth: 2,
     });
   }
   const chart = new C(canvas, {
