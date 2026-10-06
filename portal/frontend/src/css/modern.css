@@ -472,3 +472,24 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .mtab[aria-selected="true"] .count { background: var(--c-accent); color: var(--c-on-accent); }
 .drawer-tabs { padding: 10px 16px 0; border-bottom: 0; }
 .panel > .mtabs:first-child, .panel > .dtabs:first-child { border-radius: var(--r-pill); }
+
+/* ---------- "load more" footer (registers scroll continuously; lists use this row) ---------- */
+.more-row { padding: 10px 12px; background: linear-gradient(180deg, transparent, var(--c-surface-2)); border-top: 1px solid var(--c-border); gap: 8px; }
+.more-row .btn { min-width: 160px; justify-content: center; background: var(--c-accent-bg); color: var(--c-accent); border-color: transparent; }
+.more-row .btn:hover { background: var(--c-accent); color: var(--c-on-accent); }
+.pager, .pg { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px; }
+.pager button, .pg button { min-width: 32px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: transparent; color: var(--c-text-2); font-weight: 600; transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+.pager button:hover:not(:disabled), .pg button:hover:not(:disabled) { background: var(--c-surface-3); color: var(--c-text); }
+.pager [aria-current="page"], .pg [aria-current="page"] { background: var(--c-accent); color: var(--c-on-accent); box-shadow: 0 2px 8px color-mix(in srgb, var(--c-accent) 35%, transparent); }
+.pager button:disabled, .pg button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- scrollbars: slim, rounded, visible on hover (Firefox + Chromium) ---------- */
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--c-text-3) 55%, transparent) transparent; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--c-text-3) 45%, transparent); border: 3px solid transparent; background-clip: content-box; border-radius: var(--r-pill); transition: background-color 150ms var(--ease); }
+::-webkit-scrollbar-thumb:hover { background: var(--c-accent); background-clip: content-box; }
+::-webkit-scrollbar-thumb:active { background: var(--c-accent-hover); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+.gt-scroll::-webkit-scrollbar, .nav::-webkit-scrollbar { width: 10px; height: 10px; }
+.nav { scrollbar-width: thin; }
