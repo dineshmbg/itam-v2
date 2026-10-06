@@ -122,30 +122,17 @@ export function buildShell(app) {
   };
 }
 
-// Footer signature: drifts in from the right, holds still in the middle long enough to read, then drifts out to the left -
-// roughly every 10 minutes, in a different chart colour each time. Purely decorative - nothing else in the portal reads or
-// depends on this element. A CSS animation (.af-sig.run, modern.css) rather than a JS loop, so it keeps running even while
-// the tab is in the background instead of freezing and jumping on return; the animationend listener schedules the next pass.
+// Footer signature: fades in, centred in the middle of the footer, in a random chart colour, holds for 10 seconds, fades out -
+// then nothing until the next pass roughly 10 minutes later. Purely decorative - nothing else in the portal reads or depends
+// on this element.
 const SIG_INTERVAL_MS = 10 * 60 * 1000;
+const SIG_SHOW_MS = 10_000;
 function scheduleSignatureSweep(el) {
-  const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function sweep() {
     if (!el.isConnected) return;                                    // the shell is torn down on sign-out
-    const midW = el.closest('.af-mid').getBoundingClientRect().width;
-    el.classList.remove('run');
-    if (reduced() || midW <= 0) { setTimeout(sweep, SIG_INTERVAL_MS); return; }
     el.style.color = `var(--chart-${1 + Math.floor(Math.random() * 10)})`;
-    el.style.setProperty('--sig-start', midW + 'px');
-    const textW = el.getBoundingClientRect().width;                 // intrinsic width - unaffected by the transform above
-    el.style.setProperty('--sig-hold', Math.max(-textW, Math.min(midW, (midW - textW) / 2)) + 'px');
-    el.style.setProperty('--sig-end', -textW + 'px');
-    void el.offsetWidth;                                             // force the reset above to apply before the class below restarts the animation
     el.classList.add('run');
-    el.addEventListener('animationend', function done() {
-      el.removeEventListener('animationend', done);
-      el.classList.remove('run');
-      setTimeout(sweep, SIG_INTERVAL_MS);
-    }, { once: true });
+    setTimeout(() => { el.classList.remove('run'); setTimeout(sweep, SIG_INTERVAL_MS); }, SIG_SHOW_MS);
   }
   setTimeout(sweep, 10_000);                                         // first pass soon after sign-in, then every 10 minutes
 }
