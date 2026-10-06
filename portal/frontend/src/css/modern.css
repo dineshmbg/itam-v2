@@ -947,3 +947,29 @@ a.kpi { cursor: pointer; }
 .legend > * { animation-duration: 300ms; animation-delay: 250ms; }
 .kv > .v { animation-delay: 0ms; animation-duration: 250ms; }
 .tbl tbody tr:nth-child(n) { animation-delay: 0ms; animation-duration: 200ms; }
+
+/* ---------- typography ----------
+   IBM Plex stays (house typeface, vendored for offline use). The 300 and 700 cuts are now loaded for real, so light KPI figures and bold
+   headings are drawn from the font instead of being synthesised by the browser. Figures are tabular, zero is slashed in code-like text. */
+html { font-synthesis: none; }
+body { font-size: 14px; line-height: 21px; letter-spacing: 0.01em; font-feature-settings: "tnum" 1, "kern" 1, "liga" 1; font-optical-sizing: auto; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+h1, h2, h3, h4 { text-wrap: balance; font-feature-settings: "kern" 1, "liga" 1; }
+h1 { letter-spacing: -0.005em; }
+.mono, code, kbd, .kv > .v, .gs-item .t, .al-key, .secret, .codes, .log { font-feature-settings: "zero" 1, "tnum" 1, "liga" 0, "calt" 0; letter-spacing: 0; }
+.mono { font-size: 12.5px; font-weight: 500; }
+.kpi-v, .bar-n, .count-line strong, .opt .n, .nav-item .count, .badge, .kpi-s { font-feature-settings: "tnum" 1, "lnum" 1; }
+.kpi-v { font-weight: 300; font-size: 40px; line-height: 48px; letter-spacing: -0.035em; }
+.kpi-l, .panel-h h2, .flabel, .nav-group > h2, .gt-th, .tbl th, .facets-h h2, .facet > button.f-h, .fgroup > h3, .dsec > h3, .small-h, .kv > .k { font-weight: 600; }
+.panel-h h2, .nav-group > h2, .fgroup > h3, .dsec > h3 { letter-spacing: 0.08em; }
+.page-head h1 { font-weight: 700; letter-spacing: 0.01em; }
+.drawer-h h2, .modal-h h2 { font-weight: 700; letter-spacing: 0.02em; }
+.page-head .sub, .hint, .kpi-s, .usr-r, .updated { font-weight: 400; letter-spacing: 0.02em; }
+.gt-td, .tbl td { letter-spacing: 0.012em; }
+.badge, .chip, .btn { letter-spacing: 0.03em; }
+.btn { font-weight: 600; }
+input, select, textarea { letter-spacing: 0.01em; font-weight: 500; }
+input::placeholder, textarea::placeholder { font-weight: 400; letter-spacing: 0.02em; opacity: 1; }
+::selection { background: color-mix(in srgb, var(--c-accent) 85%, #fff); }
+a:not(.btn):not(.nav-item):not(.kpi):not(.brand) { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.small, .hint, .kpi-s, .opt .n { line-height: 1.4; }
+@media (min-width: 1700px) { body { font-size: 15px; line-height: 22px; } }
