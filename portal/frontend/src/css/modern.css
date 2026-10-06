@@ -882,3 +882,49 @@ dialog.modal[open] { animation: win-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 .integrity-row { grid-template-columns: 32px 1fr auto; padding: 14px 20px; }
 .integrity-row .ttl { font-weight: 700; }
 .integrity-row > :first-child { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--c-surface-3); }
+
+/* ---------- dashboard widgets and cards, second pass ---------- */
+.panel { border-top-width: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--kc) 7%, var(--c-surface)) 0, var(--c-surface) 76px), var(--c-surface);
+  box-shadow: var(--shadow-card), inset 0 3px 0 var(--kc); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
+.panel:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(22, 26, 31, 0.06), 0 16px 34px rgba(22, 26, 31, 0.12), inset 0 3px 0 var(--kc); }
+.panel-h { padding-top: 16px; }
+.panel-h h2::after { content: ""; display: block; width: 28px; height: 2px; margin-top: 4px; border-radius: 2px; background: var(--kc); opacity: 0.7; transition: width 260ms var(--ease); }
+.panel:hover .panel-h h2::after { width: 52px; }
+.panel-h .hint { color: var(--c-text-2); }
+
+/* KPI tiles: glass look, link arrow, bigger icon chip */
+.kpi { background: linear-gradient(145deg, color-mix(in srgb, var(--kc) 9%, var(--c-surface)), var(--c-surface) 62%); }
+.kpi-l .ico { width: 16px; height: 16px; padding: 6px; border-radius: 10px; }
+a.kpi::after { content: "\2192"; right: 14px; top: 14px; width: auto; height: auto; background: none; border-radius: 0; font-size: 16px; color: var(--kc); opacity: 0; transform: translateX(-6px); transition: opacity 180ms var(--ease), transform 180ms var(--ease); }
+a.kpi:hover::after { opacity: 1; transform: none; }
+a.kpi { cursor: pointer; }
+.kpi-s { color: var(--c-text-2); font-weight: 500; }
+.kpi-s:not(:empty)::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--kc); vertical-align: 1px; }
+
+/* bar widgets */
+.bar-row { grid-template-columns: minmax(96px, 36%) 1fr auto; padding: 5px 8px; margin: 0 -8px; border-radius: var(--r-1); transition: background-color 140ms var(--ease); }
+.bar-row:hover { background: var(--c-surface-2); }
+.bar-l { font-weight: 500; }
+.bar-t { height: 12px; box-shadow: inset 0 1px 2px rgba(22, 26, 31, 0.08); }
+.bar-t > i { position: relative; box-shadow: 0 1px 4px color-mix(in srgb, var(--kc) 35%, transparent); }
+.bar-n { min-width: 48px; padding: 1px 9px; border-radius: var(--r-pill); background: var(--c-surface-3); font-size: 12px; line-height: 18px; }
+.meter .bar-t { width: 96px; }
+.stack { height: 12px; }
+
+/* legend and chart area */
+.legend a, .legend span { background: var(--c-surface); box-shadow: 0 1px 2px rgba(22, 26, 31, 0.05); }
+.legend a:hover { transform: translateY(-1px); }
+.legend a, .legend span { transition: transform 140ms var(--ease), background-color 140ms var(--ease); }
+.chart-box { border-radius: var(--r-2); }
+.chart-box canvas { filter: drop-shadow(0 2px 6px rgba(22, 26, 31, 0.06)); }
+
+/* empty and loading states inside cards */
+.empty { margin: 8px; padding: 32px 16px; border: 1.5px dashed var(--c-border-strong); border-radius: var(--r-3); background: color-mix(in srgb, var(--c-surface-2) 70%, transparent); }
+.empty h3 { font-weight: 700; letter-spacing: 0.04em; }
+.panel-b > .muted:only-child { padding: 18px; text-align: center; border: 1.5px dashed var(--c-border); border-radius: var(--r-2); }
+.loading-line { display: flex; align-items: center; gap: 12px; padding: 28px; border-radius: var(--r-3); background: var(--c-surface); box-shadow: var(--shadow-card); }
+.loading-line::before { content: ""; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--c-surface-3); border-top-color: var(--c-accent); animation: spin 800ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.engineer-card, .eng-cell { gap: 12px; }
+.eng-cell .name { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .loading-line::before { animation-duration: 3s; } .panel:hover, .legend a:hover { transform: none; } }
