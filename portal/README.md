@@ -731,3 +731,7 @@ E-mail and alerts, Data integrity and Change log stay real-administrator-only.
   Administrator or extended-access accounts (so no password/2FA reset of one), not their own account, no granting Administrator or extended access.
   The Security settings button and Sync from roster (which derives groups from designations) are administrator-only and hidden.
 - Tests: persona `user+lead` and the new rows in `tests/test_permission_matrix.py`, plus `test_team_leader_cannot_escalate_through_manage_user`.
+
+**Same day, later: administrator-level view as well.** A Team Leader/SI User now also works like an extended-access account for every dashboard and register
+(Engineers dashboard, Calls/Inward/Outward/OEM RMA, unscoped Assets/Employees/PM, reports, hover cards, edits): `auth.session_user` sets the effective role
+to ADMIN while the real group stays User. Control, Data import, Backup and restore, Software update and E-mail and alerts remain real-administrator-only.

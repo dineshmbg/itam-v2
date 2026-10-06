@@ -28,7 +28,7 @@ PERSONAS = {
     "user+asset_read": dict(role="USER", engineer_key=ELSE, asset_access="READ"),
     "user+asset_full": dict(role="USER", engineer_key=ELSE, asset_access="FULL"),
     "user+extended": dict(role="ADMIN", group="USER", engineer_key=ELSE, extended_access=True),     # effective role ADMIN, real group USER
-    "user+lead": dict(role="USER", engineer_key=ELSE, lead_tools=True),                               # plain User, designation Team Leader/SI
+    "user+lead": dict(role="ADMIN", group="USER", engineer_key=ELSE, lead_tools=True),                               # plain User, designation Team Leader/SI
     "user_no_engineer": dict(role="USER", engineer_key=None),
     "demo_readonly": dict(role="ADMIN", read_only=True),
 }
@@ -39,12 +39,12 @@ def who(*allowed):
 
 
 READ_ALL = who(*PERSONAS)
-ADMINISH = who("admin", "user+extended", "demo_readonly")                 # administrator-level routes (admin=True): effective role ADMIN
+ADMINISH = who("admin", "user+extended", "user+lead", "demo_readonly")                 # administrator-level routes (admin=True): effective role ADMIN
 FULL_ADMIN = who("admin", "demo_readonly")                                # admin="strict": Control, Data tools, Administration - not extended access
 LEAD = who("admin", "user+lead", "demo_readonly")                         # admin="lead_strict": as strict, plus a Team Leader/SI User (Inventory match, Users, Activity log)
 LEAD_PM = who("admin", "user+extended", "user+lead", "demo_readonly")     # admin="lead": as admin=True, plus a Team Leader/SI User (PM cycles and snapshots)
-CALLS_REGISTER = who("admin", "user+parts_read", "user+parts_full", "user+extended", "demo_readonly")
-WRITE_ADMINISH = who("admin", "user+extended")                            # a write only a real/effective administrator may make (demo is read-only -> 403)
+CALLS_REGISTER = who("admin", "user+parts_read", "user+parts_full", "user+extended", "user+lead", "demo_readonly")
+WRITE_ADMINISH = who("admin", "user+extended", "user+lead")                            # a write only a real/effective administrator may make (demo is read-only -> 403)
 
 ACTIONS = {
     # name: (method, path, body or None, who is allowed)
@@ -73,14 +73,14 @@ ACTIONS = {
     "lifecycle: replace": ("POST", "/api/lifecycle/replace", {}, who("admin")),
     "lifecycle: redeploy": ("POST", "/api/lifecycle/redeploy", {}, who("admin")),
     # bulk (re)assignment of up to thousands of assets to an engineer in one click
-    "assets: bulk assign to an engineer": ("POST", "/api/edit/assets/reassign", {}, who("admin", "user+asset_full", "user+extended")),
-    "calls: create": ("POST", "/api/edit/calls/create", {"values": {}}, who("admin", "user+parts_full", "user+extended")),
-    "assets: create": ("POST", "/api/edit/assets/create", {"values": {}}, who("admin", "user+asset_full", "user+extended")),
-    "assets: archive": ("POST", "/api/edit/assets/archive", "OWN_ARCHIVE", who("admin", "user+asset_full", "user+extended")),
-    "assets: edit hostname, own asset": ("POST", "/api/edit/assets/update", "OWN_HOSTNAME", who("admin", "user", "user+parts_read", "user+parts_full", "user+asset_full", "user+extended")),
-    "assets: edit hostname, someone else's": ("POST", "/api/edit/assets/update", "OTHER_HOSTNAME", who("admin", "user+asset_full", "user+extended")),
-    "assets: edit contract field, own asset": ("POST", "/api/edit/assets/update", "OWN_CONTRACT", who("admin", "user+asset_full", "user+extended")),
-    "assets: edit lifecycle field, own asset": ("POST", "/api/edit/assets/update", "OWN_LIFECYCLE", who("admin", "user+asset_full", "user+extended")),
+    "assets: bulk assign to an engineer": ("POST", "/api/edit/assets/reassign", {}, who("admin", "user+asset_full", "user+extended", "user+lead")),
+    "calls: create": ("POST", "/api/edit/calls/create", {"values": {}}, who("admin", "user+parts_full", "user+extended", "user+lead")),
+    "assets: create": ("POST", "/api/edit/assets/create", {"values": {}}, who("admin", "user+asset_full", "user+extended", "user+lead")),
+    "assets: archive": ("POST", "/api/edit/assets/archive", "OWN_ARCHIVE", who("admin", "user+asset_full", "user+extended", "user+lead")),
+    "assets: edit hostname, own asset": ("POST", "/api/edit/assets/update", "OWN_HOSTNAME", who("admin", "user", "user+parts_read", "user+parts_full", "user+asset_full", "user+extended", "user+lead")),
+    "assets: edit hostname, someone else's": ("POST", "/api/edit/assets/update", "OTHER_HOSTNAME", who("admin", "user+asset_full", "user+extended", "user+lead")),
+    "assets: edit contract field, own asset": ("POST", "/api/edit/assets/update", "OWN_CONTRACT", who("admin", "user+asset_full", "user+extended", "user+lead")),
+    "assets: edit lifecycle field, own asset": ("POST", "/api/edit/assets/update", "OWN_LIFECYCLE", who("admin", "user+asset_full", "user+extended", "user+lead")),
 }
 
 
@@ -134,14 +134,14 @@ def test_register_rows_seen_by_each_kind_of_account(sandbox, monkeypatch, assets
             return c.get("/api/registers/assets", params={"limit": 1}).json()["total"]
     everything = one(sandbox, "SELECT count(*) n FROM asset WHERE is_current = 1 AND record_level = 'ASSET'")["n"]
     assert total("admin") == everything
-    assert total("user+extended") == everything                      # extended access: the whole register
+    assert total("user+lead") == everything and total("user+extended") == everything                      # extended access: the whole register
     assert total("user+asset_read") == everything and total("user+asset_full") == everything
     assert total("user") == one(sandbox, "SELECT count(*) n FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name = %s", (OWNER,))["n"]
     assert total("user_no_engineer") == 0                            # not linked to an engineer: sees nothing, not an error
 
 
 def test_reports_offer_only_the_datasets_an_account_may_open(sandbox, monkeypatch):
-    expected_calls = {"admin": True, "user+extended": True, "user+parts_read": True, "user+parts_full": True, "user": False, "user+asset_read": False,
+    expected_calls = {"admin": True, "user+extended": True, "user+lead": True, "user+parts_read": True, "user+parts_full": True, "user": False, "user+asset_read": False,
                       "user+asset_full": False, "user_no_engineer": False}
     for persona, has_calls in expected_calls.items():
         u = as_user(monkeypatch, username="MXR_" + persona.upper().replace("+", "_"), **{k: v for k, v in PERSONAS[persona].items() if k in ("role", "engineer_key", "read_only")})
@@ -160,7 +160,7 @@ def test_team_leader_cannot_escalate_through_manage_user(sandbox, monkeypatch):
     plain, boss, ext_user = mk("MXL_PLAIN", "USER"), mk("MXL_BOSS", "ADMIN"), mk("MXL_EXT", "USER", True)
     me = mk("MXL_ME", "USER")
     u = as_user(monkeypatch, username="MXL_ME", role="USER", engineer_key=ELSE)
-    u.update(lead_tools=True, group="USER", user_id=me)
+    u.update(lead_tools=True, group="USER", role="ADMIN", user_id=me)
     with TestClient(app) as c:
         post = lambda path, body: c.post(path, json=body, headers=HDR).status_code
         assert post("/api/admin/users/update", {"user_id": plain, "display_name": "RENAMED"}) == 200

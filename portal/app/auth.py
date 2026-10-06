@@ -752,7 +752,7 @@ def session_user(token):
     r["group"] = r["role"]
     # lead_tools: a plain User (no extended access) whose roster designation is Team Leader/SI gets PM cycles, Inventory match, Users and Activity log
     r["lead_tools"] = bool(r["role"] == "USER" and not r.get("extended_access") and not r["read_only"] and is_lead_designation(r.get("designation")))
-    if r["role"] == "USER" and r.get("extended_access"):
+    if r["role"] == "USER" and (r.get("extended_access") or r["lead_tools"]):   # a Team Leader/SI gets extended-style access (every dashboard and register, unscoped)
         r["role"] = "ADMIN"
     return r
 
