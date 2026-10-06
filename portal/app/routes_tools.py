@@ -299,6 +299,61 @@ async def match_engineers(request):
     return json_response(out)
 
 
+def _my_engineer(request, source):
+    """Whose machines this person may see: an engineer sees their own (from the linked engineer record); an administrator may preview any engineer's view."""
+    u = request.state.user
+    if u["role"] == "ADMIN":
+        return str(source.get("as") or "") or None
+    if not u.get("engineer_key"):
+        raise inventory_match.MatchError("Your account is not linked to an engineer record, so there is no personal list to show. Ask an administrator.", 403)
+    return u["engineer_key"]
+
+
+async def _shared(u, run_id):
+    if u["role"] != "ADMIN" and not await run_in_threadpool(db.one, "SELECT 1 AS x FROM portal_match_run WHERE run_id = %s AND published_at IS NOT NULL", [run_id]):
+        raise inventory_match.MatchError("That analysis has not been shared with engineers.", 403)
+
+
+async def match_mine(request):
+    u = request.state.user
+    eng = _my_engineer(request, request.query_params)
+    runs = await run_in_threadpool(inventory_match.history, 10) if u["role"] == "ADMIN" else await run_in_threadpool(inventory_match.published)
+    out = {"runs": runs, "engineer": eng, "admin": u["role"] == "ADMIN"}
+    if u["role"] == "ADMIN" and runs:
+        out["engineers"] = await run_in_threadpool(inventory_match.engineer_choices, str(request.query_params.get("run") or runs[0]["run_id"]))
+    return json_response(out)
+
+
+async def match_mine_run(request):
+    u = request.state.user
+    eng = _my_engineer(request, request.query_params)
+    if not eng:
+        raise inventory_match.MatchError("Choose an engineer.")
+    await _shared(u, request.path_params["run"])
+    d = await run_in_threadpool(inventory_match.get, request.path_params["run"])
+    return json_response(inventory_match.scoped(d, eng))
+
+
+async def match_mine_export(request):
+    b, u = request.state.body, request.state.user
+    eng = _my_engineer(request, b)
+    if not eng:
+        raise inventory_match.MatchError("Choose an engineer.")
+    await _shared(u, str(b.get("run_id") or ""))
+    d = await run_in_threadpool(inventory_match.get, str(b.get("run_id") or ""))
+    data = await run_in_threadpool(inventory_match.engineer_workbook, d, eng, u)
+    name = export.safe_name(f"{d['summary']['tool']}_{eng}_{d['summary']['as_of'].replace('-', '')}") + ".xlsx"
+    await _log(request, "MATCH_MY_EXPORT", name, {"run": d["run_id"], "engineer": eng})
+    return _file(data, export.MIME["xlsx"], name)
+
+
+async def match_publish(request):
+    b, u = request.state.body, request.state.user
+    out = await run_in_threadpool(inventory_match.publish, str(b.get("run_id") or ""), u["username"], bool(b.get("on", True)))
+    await _log(request, "MATCH_PUBLISH" if out["published"] else "MATCH_UNPUBLISH", out["run_id"])
+    return json_response(out)
+
+
 async def match_get(request):
     return json_response(await run_in_threadpool(inventory_match.get, request.path_params["run"]))
 
@@ -434,6 +489,10 @@ routes = [
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
     Route("/api/match/run", W_(match_run, admin="strict"), methods=["POST"]),
     Route("/api/match/engineers", W_(match_engineers, admin="strict"), methods=["POST"]),
+    Route("/api/match/publish", W_(match_publish, admin="strict"), methods=["POST"]),
+    Route("/api/match/mine", R_(match_mine)),
+    Route("/api/match/mine/export", W_(match_mine_export, mutates=False), methods=["POST"]),     # a download, not a write
+    Route("/api/match/mine/{run}", R_(match_mine_run)),
     Route("/api/match/runs/{run}", R_(match_get, admin="strict")),
     Route("/api/match/export", W_(match_export, admin="strict", mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/admin/import", R_(import_meta, admin="strict")),

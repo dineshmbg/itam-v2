@@ -16,7 +16,7 @@ let view = null;
 let running = false;
 let lastPath = '';
 
-const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', reports: 'Report builder', import: 'Data import', match: 'Inventory match', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
+const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', reports: 'Report builder', import: 'Data import', match: 'Inventory match', inventory: 'My inventory report', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
   integrity: 'Data integrity', audit: 'Change log', users: 'Users and security', activity: 'Activity log' };
 
 // Views are loaded on demand so the first screen stays small.
@@ -30,6 +30,7 @@ const VIEWS = {
   'pm/cycles': () => import('./views/pm-cycles.js').then((m) => m.mountPmCycles),
   'pm/history': () => import('./views/pm-history.js').then((m) => m.mountPmHistory),
   reports: () => import('./views/reports.js').then((m) => m.mountReports),
+  'reports/inventory': () => import('./views/inventory-mine.js').then((m) => m.mountInventoryMine),
   'admin/match': () => import('./views/inventory-match.js').then((m) => m.mountInventoryMatch),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),
   'admin/backup': () => import('./views/admin-backup.js').then((m) => m.mountBackup),

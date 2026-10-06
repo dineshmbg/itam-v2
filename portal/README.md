@@ -701,3 +701,11 @@ Reports from the centre arrive under different names and in parts, so the portal
 - **Name pairing** is conservative: same IP, look-alike characters (O/0, I/1) or one character missing/extra. A different digit alone is NOT paired (DT140 and DT147 are two machines).
 - **Every total is reconciled** (file rows -> unique computers -> this site -> found / not found -> healthy / attention; also by class and by engineer) and the report states it; if one fails, the PDF says not to circulate it.
 Code: `profile_file`, `analyse`, `findings` in `app/inventory_match.py`; tests in `tests/test_inventory_match.py`.
+
+### Each engineer's own report in the portal (2026-10-06)
+
+An administrator presses **Share in the portal** on a finished analysis (reversible; the analysis is never removed). Every engineer then finds
+**Reports > My inventory report**: their own machines only (taken from the engineer record linked to their account), with their own figures,
+what to do first, the lists (install the agent / installed but needs attention / probably the same machine / all my machines) and a personal
+Excel download. Asking for another engineer's list is ignored; an account with no linked engineer sees nothing; an unshared analysis returns
+403. Administrators can preview any engineer's view. Routes `/api/match/mine*` and `/api/match/publish`; view `inventory-mine.js`.

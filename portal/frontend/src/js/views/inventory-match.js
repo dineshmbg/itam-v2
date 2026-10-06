@@ -131,6 +131,12 @@ export function mountInventoryMatch(root) {
       } }] : [])] });
   }
 
+  // Share = every engineer can open "My inventory report" and sees only the machines assigned to them. Reversible; nothing is deleted.
+  async function toggleShare() {
+    const on = !meta.history.find((x) => x.run_id === result.run_id)?.published_at;
+    try { await send('/api/match/publish', { run_id: result.run_id, on }); await load2(); toast(on ? 'Shared: each engineer now sees their own machines under Reports > My inventory report' : 'No longer shared'); showResult(); } catch (e) { toast(e.message, 'bad'); }
+  }
+
   const dl = (fmt) => async () => { try { await download('/api/match/export', { run_id: result.run_id, format: fmt }, 'coverage.' + fmt); } catch (e) { toast(e.message, 'bad'); } };
 
   const table = (cols, rows, limit = 100) => (rows.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
@@ -147,7 +153,8 @@ export function mountInventoryMatch(root) {
 
   function showResult() {
     const s = result.summary, t = s.tool;
-    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: () => engineerDialog(null) }, icon('email'), 'E-mail engineers…'), h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
+    const shared = meta.history.find((x) => x.run_id === result.run_id)?.published_at;
+    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: () => engineerDialog(null) }, icon('email'), 'E-mail engineers…'), h('button', { class: 'btn', type: 'button', onClick: toggleShare }, icon('view'), shared ? 'Stop sharing in the portal' : 'Share in the portal'), h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
     const tone = s.rag === 'green' ? 'ok' : s.rag === 'amber' ? 'warn' : 'bad';
     const missing = result.assets.filter((r) => !r.installed).sort((a, b) => ['High', 'Medium', 'Low'].indexOf(a.priority) - ['High', 'Medium', 'Low'].indexOf(b.priority));
     const attn = result.assets.filter((r) => r.health === 'Needs attention').sort((a, b) => (b.r_age || 0) - (a.r_age || 0));
@@ -191,7 +198,7 @@ export function mountInventoryMatch(root) {
     if (!meta.history.length) return h('div', { class: 'muted', style: { padding: '16px' } }, 'No analyses yet.');
     return h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['When', 'Tool', 'File', 'Machines', 'Installed', 'Coverage', 'By', ''].map((x) => h('th', null, x)))),
       h('tbody', null, meta.history.map((r) => h('tr', null, h('td', { class: 'nowrap' }, when(r.at)), h('td', null, r.tool), h('td', { class: 'wrap' }, r.filename), h('td', { class: 'right' }, int(+r.assets)), h('td', { class: 'right' }, int(+r.installed)),
-        h('td', { class: 'right' }, pct(+r.coverage)), h('td', null, r.username), h('td', null, h('button', { class: 'link-btn', type: 'button', onClick: () => open(r.run_id) }, 'Open')))))));
+        h('td', { class: 'right' }, pct(+r.coverage)), h('td', null, r.username, r.published_at ? h('span', { class: 'badge ok', style: { marginLeft: '6px' } }, 'Shared') : null), h('td', null, h('button', { class: 'link-btn', type: 'button', onClick: () => open(r.run_id) }, 'Open')))))));
   }
 
   load();

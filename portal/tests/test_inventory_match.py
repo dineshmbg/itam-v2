@@ -223,3 +223,43 @@ def test_each_engineer_gets_only_their_own_list_once(box, tmp_path, monkeypatch)
     monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": False})
     with pytest.raises(mailer.MailError):
         m.send_to_engineers(r["run_id"], user)
+
+
+def test_engineers_see_only_their_own_machines_and_only_once_shared(box, tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                          AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 400""").fetchall()
+    engs = sorted({r[1] for r in rows})
+    if len(engs) < 2:
+        pytest.skip("needs desktops with at least two engineers")
+    me, other = engs[0], engs[1]
+    st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
+    rid = r["run_id"]
+    mine = {a["ci"] for a in r["assets"] if a["engineer"] == me}
+    theirs = {a["ci"] for a in r["assets"] if a["engineer"] == other}
+    assert mine and theirs
+    sc = m.scoped(m.get(rid), me)
+    assert {a["ci"] for a in sc["assets"]} == mine and sc["summary"]["machines"] == len(mine) and sc["summary"]["installed"] + sc["summary"]["missing"] == len(mine)
+    # as the engineer, through the API
+    fake_user(monkeypatch, "USER", username="ENG1", engineer_key=me)
+    with TestClient(app) as c:
+        assert c.get("/api/match/mine").json()["runs"] == [] or all(x["run_id"] != rid for x in c.get("/api/match/mine").json()["runs"])      # not shared yet
+        assert c.get(f"/api/match/mine/{rid}").status_code == 403
+        assert c.post("/api/match/publish", json={"run_id": rid}, headers=HDR).status_code == 403                                                  # only an administrator shares
+        m.publish(rid, "ADMIN1")
+        assert any(x["run_id"] == rid for x in c.get("/api/match/mine").json()["runs"])
+        got = c.get(f"/api/match/mine/{rid}", params={"as": other})                                                                               # asking for someone else's list is ignored
+        assert got.status_code == 200 and {a["ci"] for a in got.json()["assets"]} == mine and not ({a["ci"] for a in got.json()["assets"]} & theirs)
+        x = c.post("/api/match/mine/export", json={"run_id": rid, "as": other}, headers=HDR)
+        assert x.status_code == 200 and x.content[:2] == b"PK"
+        m.publish(rid, "ADMIN1", on=False)
+        assert c.get(f"/api/match/mine/{rid}").status_code == 403                                                                                   # unshared again
+    fake_user(monkeypatch, "USER", username="NOLINK", engineer_key=None)
+    with TestClient(app) as c:
+        assert c.get("/api/match/mine").status_code == 403                                                                                          # not linked to an engineer: nothing to show
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        assert c.get(f"/api/match/mine/{rid}").status_code == 400                                                                                   # an administrator must choose whose view
+        ok = c.get(f"/api/match/mine/{rid}", params={"as": other})
+        assert ok.status_code == 200 and {a["ci"] for a in ok.json()["assets"]} == theirs

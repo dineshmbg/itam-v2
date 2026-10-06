@@ -32,7 +32,8 @@ PRIORITY_BY_STATUS = {"IN_USE": HIGH, "NOT_ON_NETWORK": MEDIUM, "NOT_IN_USE": ME
 
 DDL = ["""CREATE TABLE IF NOT EXISTS portal_match_run (
           run_id TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), username TEXT NOT NULL, tool TEXT NOT NULL, filename TEXT NOT NULL,
-          params JSONB NOT NULL, summary JSONB NOT NULL, result JSONB NOT NULL)"""]
+          params JSONB NOT NULL, summary JSONB NOT NULL, result JSONB NOT NULL)""",
+       "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ", "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_by TEXT"]
 
 # Products the portal recognises from the columns of a file (never from its name). A file with at least `min` of the signature columns is that product.
 PRODUCTS = {
@@ -272,6 +273,11 @@ def _entry(r, col, product):
             e["advice"].append("Console flags 'requires attention'")
         e["scanned"] = _when(g("scanned")) if "scanned" in col else None
     return e
+
+
+def _generic(label):
+    """Group per-machine wording ('Not reported for 118 days') under one heading for counting."""
+    return re.sub(r"Not reported for \d+ days", "Agent has not reported recently", re.sub(r"Last scan \d+ days ago", "Not scanned for over 30 days", label))
 
 
 def _lev(a, b, cap=2):
@@ -515,9 +521,9 @@ def analyse(files, mapping, params, today=None):
     ic, ac = Counter(), Counter()
     for r in out:
         for x in filter(None, r["issues"].split("; ")):
-            ic[re.sub(r"\d+ days", "N days", x)] += 1
+            ic[_generic(x)] += 1
         for x in filter(None, r["advice"].split("; ")):
-            ac[re.sub(r"\d+ days", "N days", x)] += 1
+            ac[_generic(x)] += 1
     summary["issue_counts"] = [{"label": k, "n": n} for k, n in ic.most_common()]
     summary["advice_counts"] = [{"label": k, "n": n, "systemic": inst > 0 and n / inst >= 0.6} for k, n in ac.most_common()]
 
@@ -696,7 +702,64 @@ def get(run_id):
 
 
 def history(limit=15):
-    return db.query("SELECT run_id, at, username, tool, filename, summary->>'coverage' AS coverage, summary->>'assets' AS assets, summary->>'installed' AS installed FROM portal_match_run ORDER BY at DESC LIMIT %s", [limit])
+    return db.query("SELECT run_id, at, username, tool, filename, published_at, summary->>'coverage' AS coverage, summary->>'assets' AS assets, summary->>'installed' AS installed FROM portal_match_run ORDER BY at DESC LIMIT %s", [limit])
+
+
+# ---------------------------------------------------------------- each engineer sees their own part of an analysis in the portal
+def publish(run_id, user, on=True):
+    """Make an analysis visible to engineers (each sees only the machines assigned to them). Reversible; the analysis itself is never removed."""
+    if not db.one("SELECT 1 AS x FROM portal_match_run WHERE run_id = %s", [run_id]):
+        raise MatchError("That analysis no longer exists.", 404)
+    with db.write() as con:
+        con.execute("UPDATE portal_match_run SET published_at = CASE WHEN %s THEN now() END, published_by = CASE WHEN %s THEN %s END WHERE run_id = %s", (on, on, user, run_id))
+    return {"run_id": run_id, "published": bool(on)}
+
+
+def published(limit=10):
+    return db.query("SELECT run_id, at, tool, filename, published_at, summary->>'report_as_of' AS report_as_of FROM portal_match_run WHERE published_at IS NOT NULL ORDER BY published_at DESC LIMIT %s", [limit])
+
+
+def engineer_choices(run_id):
+    """For an administrator previewing: every engineer who has machines in this analysis."""
+    d = get(run_id)
+    names = {r["engineer_key"]: r["display_name"] for r in db.query("SELECT engineer_key, display_name FROM portal_engineer")}
+    return [{"key": k, "name": names.get(k) or k.title(), "machines": n} for k, n in sorted(Counter(r["engineer"] for r in d["assets"]).items())]
+
+
+def scoped(d, eng):
+    """One engineer's part of an analysis: only their machines, with figures worked out for those machines alone."""
+    s = d["summary"]
+    w = _work(d, eng)
+    mine, miss, attn, named = w["mine"], w["miss"], w["quiet"], w["named"]
+    inst = len(mine) - len(miss)
+    healthy = sum(1 for r in mine if r["health"] == "Healthy")
+    high = [r for r in miss if r["priority"] == HIGH]
+    ic = Counter()
+    for r in attn:
+        for x in filter(None, r["issues"].split("; ")):
+            ic[_generic(x)] += 1
+    t = s["tool"]
+    f = [{"severity": "Good" if not miss and not attn else "Needs attention", "finding": f"{inst:,} of your {len(mine):,} machines appear in the {t} report ({_pct(inst, len(mine))}%); {healthy:,} are working properly.",
+          "action": "Nothing to do." if not miss and not attn else "Work through the lists below, urgent machines first."}]
+    if high:
+        f.append({"severity": "Critical", "finding": f"{len(high):,} machines deployed to users have no agent at all.", "action": "Install the agent, or restore its connection, on these first."})
+    if ic:
+        f.append({"severity": "Needs attention", "finding": "Installed, but not working properly: " + "; ".join(f"{k} ({n:,})" for k, n in ic.most_common(4)) + ".", "action": "Repair or reinstall the agent; the 'Needs attention' list says what is wrong with each."})
+    if named:
+        f.append({"severity": "Needs attention", "finding": f"{len(named):,} of your machines are probably in the report under a slightly different name.", "action": "Confirm each pair, then correct the CI or rename the computer."})
+    low = [r for r in miss if r["priority"] == LOW]
+    if low:
+        f.append({"severity": "Information", "finding": f"{len(low):,} of your missing machines are in store, surplus or transferred.", "action": "Not urgent; install the agent before they are issued."})
+    by_class = {}
+    for r in mine:
+        x = by_class.setdefault(r["class"], {"label": r["class"], "total": 0, "installed": 0, "missing": 0, "attention": 0})
+        x["total"] += 1
+        x["installed"] += r["installed"]
+        x["missing"] += not r["installed"]
+        x["attention"] += r["health"] == "Needs attention"
+    return {"run_id": d["run_id"], "filename": d["filename"], "engineer": eng, "assets": mine,
+            "summary": {"tool": t, "report_as_of": s.get("report_as_of"), "target": s["target"], "machines": len(mine), "installed": inst, "missing": len(miss), "healthy": healthy, "attention": len(attn), "high": len(high),
+                        "coverage": _pct(inst, len(mine)), "healthy_pct": _pct(healthy, len(mine)), "findings": f, "by_class": sorted(by_class.values(), key=lambda x: -x["missing"])}}
 
 
 # ---------------------------------------------------------------- files
