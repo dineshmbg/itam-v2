@@ -544,7 +544,21 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .af-dot { width: 7px; height: 7px; border-radius: 50%; background: linear-gradient(135deg, var(--chart-1), var(--chart-6)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-1) 18%, transparent); flex: none; }
 .af-sep { opacity: 0.6; }
 .af-mid { flex: 1; min-width: 24px; position: relative; height: 100%; overflow: hidden; }
-.af-sig { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); white-space: nowrap; font-weight: 700; letter-spacing: 0.04em; text-transform: none; color: var(--c-accent); }
+.af-sig {
+  position: absolute; left: 0; top: 50%; white-space: nowrap; font-weight: 700; letter-spacing: 0.04em; text-transform: none; color: var(--c-accent);
+  transform: translate(var(--sig-start, 100%), -50%);
+}
+/* 2.2s in, 6.5s holding still and readable in the middle, 2.2s out - 10.9s total; JS keeps this duration and the interval between
+   sweeps in sync (shell.js, scheduleSignatureSweep). --sig-start/-hold/-end are px offsets JS sets per sweep from the measured
+   footer and text widths, since those are only known at run time. */
+.af-sig.run { animation: sig-sweep 10.9s cubic-bezier(0.37, 0, 0.63, 1) both; }
+@keyframes sig-sweep {
+  0% { transform: translate(var(--sig-start), -50%); }
+  20.2% { transform: translate(var(--sig-hold), -50%); }
+  79.8% { transform: translate(var(--sig-hold), -50%); }
+  100% { transform: translate(var(--sig-end), -50%); }
+}
+@media (prefers-reduced-motion: reduce) { .af-sig.run { animation: none; } }
 .register { height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - var(--sp-5) * 2 - 56px); }
 .rp-side, .rp .results { max-height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - 110px); }
 @media (max-width: 900px) { .shell, .shell.nav-min { grid-template-rows: var(--hdr-h) minmax(0, 1fr) var(--ftr-h); } .af-r { display: none; } .register { height: auto; } .rp-side, .rp .results { max-height: none; } }
