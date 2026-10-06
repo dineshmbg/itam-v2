@@ -104,9 +104,12 @@ export function buildShell(app) {
   nav.append(h('div', { class: 'nav-foot' }, h('div', null, 'Live view of the IT asset inventory.')));
 
   if (!shell.querySelector('.app-foot')) {
+    const sig = h('span', { class: 'af-sig', 'aria-hidden': 'true' }, 'Dinesh Gadaria');
     shell.append(h('footer', { class: 'app-foot', role: 'contentinfo' },
       h('span', { class: 'af-l' }, h('span', { class: 'af-dot' }), 'ITAM Portal', h('span', { class: 'af-sep' }, '·'), 'IT asset management · Ankleshwar Asset'),
+      h('span', { class: 'af-mid' }, sig),
       h('span', { class: 'af-r' }, 'Authorised users only · activity is recorded')));
+    scheduleSignatureSweep(sig);
   }
 
   nav.addEventListener('click', () => shell.classList.remove('nav-open'));
@@ -117,6 +120,27 @@ export function buildShell(app) {
       items.forEach((a) => { if (a === hit) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     },
   };
+}
+
+// Footer signature: sweeps once across the gap between the two footer lines roughly every 10 minutes, in a different chart colour
+// each time, then rests. Purely decorative - nothing else in the portal reads or depends on this element.
+const SIG_INTERVAL_MS = 10 * 60 * 1000;
+function scheduleSignatureSweep(el) {
+  const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function sweep() {
+    if (!el.isConnected) return;                                    // the shell is torn down on sign-out
+    if (!reduced() && el.closest('.af-mid').getBoundingClientRect().width > 0) {
+      el.style.color = `var(--chart-${1 + Math.floor(Math.random() * 10)})`;
+      el.style.transition = 'none';
+      el.style.left = '100%';
+      void el.offsetWidth;                                           // force the reset above to apply before the transition below
+      el.style.transition = 'left 2.8s ease-in-out';
+      requestAnimationFrame(() => { el.style.left = -el.getBoundingClientRect().width + 'px'; });
+      setTimeout(() => { el.style.transition = 'none'; el.style.left = '100%'; }, 3000);
+    }
+    setTimeout(sweep, SIG_INTERVAL_MS);
+  }
+  setTimeout(sweep, 10_000);                                         // first pass soon after sign-in, then every 10 minutes
 }
 
 function showHelp() {

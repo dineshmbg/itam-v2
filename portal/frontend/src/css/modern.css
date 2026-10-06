@@ -543,6 +543,8 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .af-l { color: var(--c-text-2); font-weight: 600; }
 .af-dot { width: 7px; height: 7px; border-radius: 50%; background: linear-gradient(135deg, var(--chart-1), var(--chart-6)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-1) 18%, transparent); flex: none; }
 .af-sep { opacity: 0.6; }
+.af-mid { flex: 1; min-width: 24px; position: relative; height: 100%; overflow: hidden; }
+.af-sig { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); white-space: nowrap; font-weight: 700; letter-spacing: 0.04em; text-transform: none; color: var(--c-accent); }
 .register { height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - var(--sp-5) * 2 - 56px); }
 .rp-side, .rp .results { max-height: calc(100dvh - var(--hdr-h) - var(--ftr-h) - 110px); }
 @media (max-width: 900px) { .shell, .shell.nav-min { grid-template-rows: var(--hdr-h) minmax(0, 1fr) var(--ftr-h); } .af-r { display: none; } .register { height: auto; } .rp-side, .rp .results { max-height: none; } }
