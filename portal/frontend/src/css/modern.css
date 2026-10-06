@@ -400,3 +400,29 @@ dialog.modal::backdrop { background: var(--c-scrim); -webkit-backdrop-filter: bl
 .hcard { border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); box-shadow: 0 16px 40px rgba(22, 26, 31, 0.25); }
 :root[data-theme="dark"] dialog.modal, :root[data-theme="dark"] .drawer { box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); }
 @media (max-width: 520px) { dialog.modal { border-radius: 18px; } .modal-h, .modal-b, .modal-actions { padding-left: 16px; padding-right: 16px; } }
+
+/* ---------- toasts ---------- */
+.toast { display: flex; align-items: center; gap: 12px; min-width: 240px; max-width: min(520px, calc(100vw - 32px)); padding: 12px 20px 12px 12px; border-radius: 16px; overflow: hidden;
+  background: var(--c-text); color: var(--c-bg); font-size: 13.5px; font-weight: 500; line-height: 20px; text-transform: none;
+  box-shadow: 0 14px 36px rgba(22, 26, 31, 0.32), 0 2px 8px rgba(22, 26, 31, 0.14); animation: toast-in 260ms var(--ease), toast-out 300ms var(--ease) 3300ms forwards; }
+.toast::before { content: "\2713"; flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; background: var(--c-ok); color: #fff; }
+.toast::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--c-ok); transform-origin: left; animation: toast-bar 3600ms linear forwards; }
+.toast.bad { background: var(--c-bad); color: #fff; }
+.toast.bad::before { content: "!"; background: rgba(255, 255, 255, 0.24); }
+.toast.bad::after { background: rgba(255, 255, 255, 0.6); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 16px) scale(0.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 8px) scale(0.98); } }
+@keyframes toast-bar { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .toast, .toast::after { animation: none; } }
+
+/* ---------- alerts: notes, errors, notices ---------- */
+.rec-note, .login-note, .err, .modal-err { position: relative; align-items: flex-start; gap: 10px; padding: 11px 14px 11px 16px; border-radius: 14px; border: 0; font-size: 13px; line-height: 19px; overflow: hidden; }
+.rec-note::before, .login-note::before, .err::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: currentColor; }
+.rec-note .ico, .login-note .ico, .err .ico { margin-top: 1px; padding: 3px; width: 16px; height: 16px; box-sizing: content-box; border-radius: 50%; background: color-mix(in srgb, currentColor 16%, transparent); }
+.rec-note.info, .login-note { background: var(--c-info-bg); color: var(--c-info); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-info) 22%, transparent); }
+.rec-note.warn { background: var(--c-warn-bg); color: var(--c-warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-warn) 28%, transparent); }
+.rec-note.bad, .err { background: var(--c-bad-bg); color: var(--c-bad); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-bad) 28%, transparent); }
+.modal-err { padding-left: 14px; }
+.modal-err::before { display: none; }
+.ferr { font-weight: 600; }
+.ferr .ico { flex: none; }
