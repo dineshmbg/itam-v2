@@ -1148,3 +1148,8 @@ a:not(.btn):not(.nav-item):not(.kpi):not(.brand) { text-underline-offset: 3px; t
 body { background: var(--c-bg); }
 :root[data-theme="dark"] body { background: radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--c-accent) 9%, transparent), transparent 60%), var(--c-bg); background-attachment: fixed; }
 @media (prefers-color-scheme: dark) { :root[data-theme="auto"] body { background: radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--c-accent) 9%, transparent), transparent 60%), var(--c-bg); background-attachment: fixed; } }
+
+/* badges inside table cells: slightly tighter and they shorten with an ellipsis rather than being cut mid-letter */
+.gt-td .badge, .tbl td .badge { display: inline-block; max-width: 100%; height: 22px; padding: 0 10px 0 6px; font-size: 11.5px; line-height: 22px; letter-spacing: 0.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.gt-td .badge .ico, .tbl td .badge .ico { display: inline-block; margin-right: 5px; vertical-align: -3px; }
+.gt-row:hover .gt-td .badge, .tbl tbody tr:hover td .badge { transform: none; }

@@ -5,7 +5,7 @@ import { date, humanize, int, person } from '../core/format.js';
 import { badge, classDotVar } from './badge.js';
 import { entity } from './hovercard.js';
 
-const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['140px', '0.7fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
+const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['172px', '0.8fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
 
 export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass }) {
   let total = 0;
