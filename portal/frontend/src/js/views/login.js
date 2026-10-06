@@ -87,7 +87,7 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
         await session.secondFactor(code.value);
       }
     } catch (ex) {
-      err.textContent = ex.message; err.hidden = false;
+      err.textContent = ex.message; err.hidden = false; form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
       if (stage === 1 && ex.code === 'bad_credentials') writeFails(readFails() + 1);
       if (stage === 1 && ex.code === 'locked') writeFails(FAIL_LIMIT);
       showForgotButton();
