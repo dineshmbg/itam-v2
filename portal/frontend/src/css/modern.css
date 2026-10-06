@@ -695,3 +695,41 @@ button.gt-th:hover .ico { transform: translateY(-1px); color: var(--c-accent); }
 @media (prefers-reduced-motion: reduce) {
   .rp-side, .rp > .results, .rp > div, .rp-sec, .rp-filter, .rules-list > .rule, .integrity-row, .timeline > li, .sync-list li, .tbl tbody tr, .sum-strip .it, .cycle-bar, .cb-track i, .stack-v > *, .btn-row .btn { animation: none !important; }
 }
+
+/* ---------- animated asset detail and record windows ---------- */
+.drawer { animation: win-in 340ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+dialog.modal[open] { animation: win-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.scrim { animation: fade 200ms var(--ease) both; }
+.drawer-h::before { background-size: 300% 100%; animation: strip 6s ease-in-out infinite alternate; }
+.drawer-h .t { animation: win-slide 420ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both; }
+.drawer-tabs { animation: win-slide 420ms cubic-bezier(0.16, 1, 0.3, 1) 160ms both; }
+.dpane:not([hidden]) { animation: pane-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.dpane .dsec, .drawer .eform > .fgroup { animation: win-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.dpane > :nth-child(1), .eform > :nth-child(1) { animation-delay: 140ms; } .dpane > :nth-child(2), .eform > :nth-child(2) { animation-delay: 190ms; }
+.dpane > :nth-child(3), .eform > :nth-child(3) { animation-delay: 240ms; } .dpane > :nth-child(4), .eform > :nth-child(4) { animation-delay: 290ms; }
+.dpane > :nth-child(5), .eform > :nth-child(5) { animation-delay: 340ms; } .dpane > :nth-child(6), .eform > :nth-child(6) { animation-delay: 390ms; }
+.dpane > :nth-child(n+7), .eform > :nth-child(n+7) { animation-delay: 440ms; }
+.kv > div { transition: background-color 120ms var(--ease); }
+.kv > .k:hover, .kv > .k:hover + .v { background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface)); }
+.kv > .v { animation: dash-fade 500ms ease 250ms both; }
+.drawer-b .badge, .drawer-b .flags > * { animation: chip-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) 300ms both; }
+.drawer-f { animation: win-up 420ms cubic-bezier(0.16, 1, 0.3, 1) 220ms both; }
+.drawer-f .btn, .modal-actions .btn { transition: transform 140ms var(--ease), background-color 120ms var(--ease), box-shadow 140ms var(--ease); }
+.drawer-f .btn:hover, .modal-actions .btn:hover { transform: translateY(-1px); }
+.drawer-f .btn:active, .modal-actions .btn:active { transform: translateY(1px); }
+.modal-b > * { animation: win-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+.modal-h h2 { animation: win-slide 380ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+.drawer .frow:focus-within .flabel, dialog.modal .frow:focus-within .flabel { color: var(--c-accent); }
+.drawer .frow input:focus-visible, .drawer .frow select:focus-visible, .drawer .frow textarea:focus-visible { transform: translateY(-1px); }
+.ovr { animation: chip-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.rec-note { animation: win-rise 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.hcard { animation: win-rise 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes win-in { from { opacity: 0; transform: translateY(22px) scale(0.96); } }
+@keyframes win-slide { from { opacity: 0; transform: translateX(-14px); } }
+@keyframes win-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes win-up { from { opacity: 0; transform: translateY(100%); } }
+@keyframes pane-in { from { opacity: 0; transform: translateX(10px); } }
+@media (prefers-reduced-motion: reduce) {
+  .drawer, dialog.modal[open], .scrim, .drawer-h::before, .drawer-h .t, .drawer-tabs, .dpane:not([hidden]), .dpane .dsec, .drawer .eform > .fgroup, .kv > .v,
+  .drawer-b .badge, .drawer-b .flags > *, .drawer-f, .modal-b > *, .modal-h h2, .ovr, .rec-note, .hcard { animation: none !important; }
+}
