@@ -609,3 +609,44 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 @media (prefers-reduced-motion: reduce) {
   .page-head, .kpis > .kpi, .grid > .panel, .bar-t > i, .stack > i, .cb-track > i, .legend > *, .panel-h::before, .kpi.changed { animation: none !important; }
 }
+
+/* ---------- animated, modern registers ----------
+   Rows are absolutely positioned by transform (virtual scrolling), so row motion is opacity-only and short. */
+.register > .facets { animation: reg-in-l 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.register > .results, .results { animation: reg-in-r 560ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both; }
+.page-head + .register, .register { animation: none; }
+.gt-row:not(.skel) { animation: row-in 180ms ease-out both; }
+.gt-group { animation: row-in 180ms ease-out both; }
+.gt-row { transition: background-color 120ms var(--ease), box-shadow 120ms var(--ease); }
+.gt-row:not([aria-selected="true"]):not(.row-self):hover { box-shadow: inset 3px 0 0 var(--c-accent); background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface)); }
+.gt-row:not([aria-selected="true"]):hover .gt-td:first-child { font-weight: 600; }
+.gt-row.row-self { box-shadow: inset 4px 0 0 var(--c-ok); }
+.gt-th { transition: background-color 120ms var(--ease), color 120ms var(--ease); }
+.gt-th .ico { transition: transform 200ms var(--ease), color 120ms var(--ease); }
+button.gt-th:hover .ico { transform: translateY(-1px); color: var(--c-accent); }
+.gt-th[aria-sort="ascending"], .gt-th[aria-sort="descending"] { color: var(--c-accent); box-shadow: inset 0 -2px 0 var(--c-accent); }
+.gt-head { box-shadow: 0 4px 10px -6px rgba(22, 26, 31, 0.2); }
+.gt-row.skel .gt-td::before { background: linear-gradient(90deg, var(--c-surface-3) 20%, color-mix(in srgb, var(--c-accent) 14%, var(--c-surface-2)) 50%, var(--c-surface-3) 80%); background-size: 200% 100%; animation: shimmer 1.1s linear infinite; }
+.gt-td .badge { transition: transform 140ms var(--ease); }
+.gt-row:hover .gt-td .badge { transform: scale(1.04); }
+.gt-td a.ent, .gt-td .mono { transition: color 120ms var(--ease); }
+.chip { animation: chip-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.count-line strong { display: inline-block; transition: transform 200ms var(--ease); }
+.count-line strong { animation: chip-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.facet:not([data-open="false"]) .f-b { animation: facet-open 220ms var(--ease) both; }
+.facet > button.f-h .ico { transition: transform 220ms var(--ease), background-color 120ms var(--ease); }
+.opt .glyph { transition: color 120ms var(--ease), transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.opt:has(input:checked) .glyph.on { transform: scale(1.12); animation: chip-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.toolbar .field input { transition: width 200ms var(--ease), border-color 160ms var(--ease), box-shadow 160ms var(--ease); }
+.toolbar .field:focus-within { flex-grow: 1.4; }
+.gt-scroll { scroll-behavior: auto; }
+.gt-row.active { outline-offset: -2px; border-radius: 0; }
+@keyframes row-in { from { opacity: 0; } }
+@keyframes reg-in-l { from { opacity: 0; transform: translateX(-18px); } }
+@keyframes reg-in-r { from { opacity: 0; transform: translateY(14px); } }
+@keyframes chip-pop { from { opacity: 0; transform: scale(0.8); } }
+@keyframes facet-open { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .register > .facets, .results, .gt-row, .gt-group, .chip, .facet .f-b, .opt .glyph.on, .gt-row.skel .gt-td::before { animation: none !important; }
+  .gt-row:hover .gt-td .badge, button.gt-th:hover .ico { transform: none; }
+}
