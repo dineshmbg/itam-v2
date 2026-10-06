@@ -780,3 +780,50 @@ dialog.modal[open] { animation: win-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
   .nav a.nav-item:hover .ico, .tbl tbody tr:hover td .badge { transform: none; }
 }
 @media (max-width: 900px) { .nav { animation: none; } }
+
+/* ---------- animated forms and settings ---------- */
+.frow { animation: win-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.frow:nth-child(1) { animation-delay: 40ms; } .frow:nth-child(2) { animation-delay: 80ms; } .frow:nth-child(3) { animation-delay: 120ms; } .frow:nth-child(4) { animation-delay: 160ms; }
+.frow:nth-child(5) { animation-delay: 200ms; } .frow:nth-child(6) { animation-delay: 240ms; } .frow:nth-child(7) { animation-delay: 280ms; } .frow:nth-child(n+8) { animation-delay: 320ms; }
+.fgroup { animation: win-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.fgroup > h3::after { transform-origin: left; animation: bar-grow 700ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both; }
+.flabel { transition: color 160ms var(--ease), transform 160ms var(--ease), letter-spacing 160ms var(--ease); transform-origin: left; }
+.frow:focus-within .flabel { color: var(--c-accent); transform: translateX(2px); }
+.frow { position: relative; }
+.frow::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -3px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--c-accent), var(--chart-6)); transform: scaleX(0); transform-origin: left; transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1); pointer-events: none; opacity: 0.85; }
+.frow:focus-within::after { transform: scaleX(1); }
+.frow.row-inline::after, .frow:has(.ropt)::after, .frow:has(textarea)::after { display: none; }
+.frow input, .frow select, .frow textarea { transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease), background-color 160ms var(--ease), transform 160ms var(--ease); }
+.frow input:focus-visible, .frow select:focus-visible, .frow textarea:focus-visible { transform: translateY(-1px); }
+.frow.bad { animation: win-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both, field-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }   /* same first animation as .frow, so clearing the error does not replay the entrance */
+.ferr:not([hidden]) { animation: err-in 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.modal-err:not([hidden]) { animation: field-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+
+/* radios, toggles, checklists */
+.ropt .glyph, .pill-toggle .ico { transition: color 140ms var(--ease), transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ropt:has(input:checked) .glyph.on, .pill-toggle:has(input:checked) .on { animation: chip-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ropt:active, .pill-toggle:active { transform: scale(0.97); }
+.ropt, .pill-toggle { transition: background-color 140ms var(--ease), border-color 140ms var(--ease), transform 120ms var(--ease); }
+.rules li { transition: color 200ms var(--ease), transform 200ms var(--ease); }
+.rules li.ok { animation: rule-ok 360ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.rules li .ico { transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+.rules li.ok .ico { transform: scale(1.2); }
+.pwbox .eye { transition: background-color 120ms var(--ease), transform 160ms var(--ease); }
+.pwbox .eye:hover { transform: scale(1.1); }
+
+/* action bar, settings cards */
+.form-actions { animation: win-up 440ms cubic-bezier(0.16, 1, 0.3, 1) 260ms both; }
+.form-actions .btn.primary { animation: btn-breathe 3.6s ease-in-out 1.2s infinite; }
+.form-actions .btn.primary:hover, .form-actions .btn.primary:disabled { animation: none; }
+.panel .frow .hint, .frow .hint { transition: color 160ms var(--ease); }
+.frow:focus-within .hint { color: var(--c-text-2); }
+.stack-v > .frow, .modal-b .frow { animation-delay: 60ms; }
+@keyframes field-shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(3px); } 30%, 50%, 70% { transform: translateX(-5px); } 40%, 60% { transform: translateX(5px); } }
+@keyframes err-in { from { opacity: 0; transform: translateY(-6px) scale(0.96); } }
+@keyframes rule-ok { 0% { transform: translateX(0); } 40% { transform: translateX(6px); } 100% { transform: translateX(0); } }
+@keyframes btn-breathe { 0%, 100% { box-shadow: 0 3px 10px color-mix(in srgb, var(--c-accent) 32%, transparent); } 50% { box-shadow: 0 4px 18px color-mix(in srgb, var(--c-accent) 55%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+  .frow, .fgroup, .fgroup > h3::after, .frow.bad, .ferr:not([hidden]), .modal-err:not([hidden]), .ropt .glyph.on, .pill-toggle .on, .rules li.ok, .form-actions, .form-actions .btn.primary { animation: none !important; }
+  .frow::after { transition: none; }
+  .frow:focus-within .flabel, .frow input:focus-visible { transform: none; }
+}
