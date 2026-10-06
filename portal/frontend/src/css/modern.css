@@ -928,3 +928,8 @@ a.kpi { cursor: pointer; }
 .engineer-card, .eng-cell { gap: 12px; }
 .eng-cell .name { font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .loading-line::before { animation-duration: 3s; } .panel:hover, .legend a:hover { transform: none; } }
+
+/* ---------- chart frames ---------- */
+.chart-box { border-radius: var(--r-2); background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--c-border) 70%, transparent) 1px, transparent 1.2px); background-size: 18px 18px; background-position: -4px -4px; }
+.chart-box canvas { border-radius: var(--r-2); }
+.panel-b > .legend:first-child, .chart-box + .legend { padding-top: 12px; border-top: 1px dashed var(--c-border); }

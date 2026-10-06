@@ -18,13 +18,13 @@ export const colorVar = (i) => `var(${PALETTE[i % PALETTE.length]})`;
 const fontFamily = () => getComputedStyle(document.body).fontFamily;
 function baseOptions(extra = {}) {
   return {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 900, easing: 'easeOutQuart' }, layout: { padding: 0 },
+    responsive: true, maintainAspectRatio: false, animation: { duration: 900, easing: 'easeOutQuart', delay: (ctx) => (ctx.type === 'data' && ctx.mode === 'default' ? Math.min(ctx.dataIndex * 35, 420) : 0) }, layout: { padding: 0 },
     interaction: { mode: 'nearest', intersect: true },
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: () => token('--c-surface'), titleColor: () => token('--c-text'), bodyColor: () => token('--c-text-2'), borderColor: () => token('--c-border-strong'),
-        borderWidth: 1, cornerRadius: 10, padding: 12, boxPadding: 5, boxWidth: 8, boxHeight: 8, usePointStyle: true, displayColors: true, titleFont: { family: fontFamily(), weight: '600' }, bodyFont: { family: fontFamily() },
+        backgroundColor: () => token('--c-surface'), titleColor: () => token('--c-text'), bodyColor: () => token('--c-text-2'), borderColor: () => token('--c-border-strong'), caretSize: 6, caretPadding: 10, titleMarginBottom: 6,
+        borderWidth: 1, cornerRadius: 12, padding: 12, boxPadding: 5, boxWidth: 8, boxHeight: 8, usePointStyle: true, displayColors: true, titleFont: { family: fontFamily(), weight: '700', size: 12 }, bodyFont: { family: fontFamily(), size: 12 },
         callbacks: { label: (c) => ` ${c.dataset.label ? c.dataset.label + ': ' : ''}${int(c.parsed.x ?? c.parsed.y ?? c.parsed)}` },
       },
     },
@@ -107,13 +107,37 @@ export async function monthly(canvas, labels, bars, line, { onPick } = {}) {
   return track(chart);
 }
 
+// Centre read-out for doughnuts: the total, or the slice under the pointer.
+const centreText = {
+  id: 'centreText',
+  afterDraw(chart) {
+    const meta = chart.getDatasetMeta(0), arc = meta?.data?.[0];
+    if (!arc) return;
+    const { ctx } = chart, data = chart.data.datasets[0].data;
+    const active = chart.getActiveElements()[0], i = active ? active.index : -1;
+    const total = data.reduce((a, b) => a + (Number(b) || 0), 0);
+    const value = i >= 0 ? Number(data[i]) || 0 : total;
+    const label = i >= 0 ? String(chart.data.labels[i]) : 'TOTAL';
+    const pct = i >= 0 && total ? ` · ${Math.round((100 * value) / total)}%` : '';
+    const r = arc.innerRadius;
+    if (r < 36) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = token('--c-text'); ctx.font = `600 ${Math.min(30, r * 0.46)}px ${fontFamily()}`;
+    ctx.fillText(int(value), arc.x, arc.y - 6);
+    ctx.fillStyle = token('--c-text-2'); ctx.font = `600 ${Math.max(10, Math.min(12, r * 0.18))}px ${fontFamily()}`;
+    const txt = (label + pct).slice(0, Math.floor((r * 1.7) / 7));
+    ctx.fillText(txt, arc.x, arc.y + Math.min(20, r * 0.32));
+    ctx.restore();
+  },
+};
+
 export async function doughnut(canvas, labels, data, { colors, onPick } = {}) {
   const C = await Chart();
   const chart = new C(canvas, {
-    type: 'doughnut',
-    data: { labels: U(labels), datasets: [{ data, borderWidth: 3, borderRadius: 6, spacing: 2, borderColor: () => token('--c-surface'), backgroundColor: (ctx) => color(colors ? colors[ctx.dataIndex] : ctx.dataIndex), hoverOffset: 6 }] },
+    type: 'doughnut', plugins: [centreText],
+    data: { labels: U(labels), datasets: [{ data, borderWidth: 3, borderRadius: 6, spacing: 2, borderColor: () => token('--c-surface'), backgroundColor: (ctx) => color(colors ? colors[ctx.dataIndex] : ctx.dataIndex), hoverOffset: 8, hoverBorderColor: () => token('--c-surface') }] },
     options: baseOptions({
-      cutout: '74%',
+      cutout: '72%',
       plugins: { ...baseOptions().plugins, tooltip: { ...baseOptions().plugins.tooltip, callbacks: { label: (c) => ` ${c.label}: ${int(c.parsed)}` } } },
       onClick: (_e, els) => { if (onPick && els.length) onPick(els[0].index); },
       onHover: (e, els) => { e.native.target.style.cursor = onPick && els.length ? 'pointer' : 'default'; },
