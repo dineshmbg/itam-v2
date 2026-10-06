@@ -1,5 +1,5 @@
-"""Inventory match: a centre's report matched against the asset register by Asset (CI) = computer name.
-The report is built from whatever machines the dev database holds, so nothing here depends on specific data."""
+"""Inventory match: the centre's report(s) matched against the asset register by Asset (CI) = computer name.
+Reports are built from whatever machines the dev database holds, so nothing here depends on specific data."""
 import csv
 import datetime as dt
 import io
@@ -12,6 +12,8 @@ from portal.app import inventory_match as m
 from portal.app.main import app
 
 NOW = dt.datetime(2026, 10, 6, 12, 0)
+BF = ("Computer Name", "Device Type", "IP Address", "OS", "CPU", "Last Report Time")
+FRESH, OLD = "Tue, 06 Oct 2026 01:00:00 +0000", "Mon, 01 Jun 2026 01:00:00 +0000"
 
 
 def _machines(box, n=6):
@@ -26,7 +28,7 @@ def _prefix(ci):
     return ci[:3]
 
 
-def _csv(rows, header=("Computer Name", "IP Address", "OS", "Last Report Time")):
+def _csv(rows, header=BF):
     b = io.StringIO()
     w = csv.writer(b)
     w.writerow(header)
@@ -34,80 +36,133 @@ def _csv(rows, header=("Computer Name", "IP Address", "OS", "Last Report Time"))
     return b.getvalue().encode()
 
 
-def test_read_and_guess_columns_skips_title_rows():
-    data = _csv([["Pan India report", "", "", ""], ["Computer Name", "IP Address", "OS", "Last Report Time"], ["A-1", "10.0.0.1", "Win11 10.0.26200", "Tue, 06 Oct 2026 01:35:28 +0000"]], header=("", "", "", ""))
-    headers, rows = m.read_file("r.csv", data)
-    assert headers[0] == "Pan India report" or "Computer Name" in headers            # either way the mapping below must work once the header row is found
-    headers, rows = m.read_file("r.csv", _csv([["A-1", "10.0.0.1", "Win11", "Tue, 06 Oct 2026 01:35:28 +0000"]]))
-    assert headers == ["Computer Name", "IP Address", "OS", "Last Report Time"] and len(rows) == 1
-    assert m.guess_mapping(headers) == {"name": "Computer Name", "ip": "IP Address", "os": "OS", "seen": "Last Report Time"}
+def _bf(name, ip="10.9.9.9", seen=FRESH, os="Win11 10.0.26200"):
+    return [name, "Desktop", ip, os, "i7", seen]
+
+
+TM = ("Endpoint name", "Object type", "Recommended actions", "Last agent status reported", "Protection Manager", "Agent connection status", "Agent runtime protection status", "XDR for Endpoints (EDR)",
+      "Endpoint group", "IP address", "OS name", "OS version", "Anti-malware", "Agent version status", "Last scanned", "Endpoint GUID", "Protection module last connected")
+
+
+def _tm(name, group="ANK", conn="Communicating", action="", av="Enabled - recommended features", seen="Last 24 hours (2026-10-06 10:00:00)", ip="10.9.9.9", agent="controlledLatestVersion"):
+    return [name, "Desktop", action, seen, "Standard Endpoint Protection Manager", conn, "Protected", "Enabled", group, ip, "Windows 11", "10.0 (Build 26200)", av, agent, "2026-10-05 10:00:00", "g-" + name, "2026-10-06 10:00:00"]
+
+
+def _files(*parts):
+    out = []
+    for i, (header, rows) in enumerate(parts):
+        h, r = m.read_file(f"p{i}.csv", _csv(rows, header))
+        out.append({"name": f"p{i}.csv", "headers": h, "rows": r, "product": m.profile_file(h)["product"]})
+    return out
+
+
+def _go(parts, params, today=NOW):
+    files = _files(*parts)
+    return m.analyse(files, m.profile_file(files[0]["headers"])["mapping"], params, today=today)
+
+
+def test_read_file_and_profile_the_product_from_the_columns_not_the_name():
+    h, rows = m.read_file("whatever.csv", _csv([_bf("A-1")]))
+    p = m.profile_file(h)
+    assert h == list(BF) and p["product"] == "bigfix" and p["mapping"]["name"] == "Computer Name" and p["mapping"]["seen"] == "Last Report Time"
+    h2, _ = m.read_file("Endpoint Inventory_x.csv", _csv([_tm("A-1")], TM))
+    p2 = m.profile_file(h2)
+    assert p2["product"] == "trendmicro" and p2["label"] == "Trend Micro Vision One" and p2["mapping"]["group"] == "Endpoint group" and p2["confidence"] > 0.5
+    h3, _ = m.read_file("x.csv", _csv([["a", "1"]], ("Hostname", "Foo")))
+    assert m.profile_file(h3)["product"] == "generic" and m.profile_file(h3)["mapping"]["name"] == "Hostname"
     with pytest.raises(m.MatchError):
         m.read_file("r.pdf", b"%PDF")
     with pytest.raises(m.MatchError):
         m.read_file("r.xlsx", b"not a workbook")
 
 
-def test_key_and_time_parsing():
+def test_key_time_and_typo_helpers():
     assert m.key_of(" ankaon26lt001.ongc.local ") == "ANKAON26LT001" and m.key_of("10.1.2.3") == "10.1.2.3"
-    assert m._when("Tue, 06 Oct 2026 01:35:28 +0000") == dt.datetime(2026, 10, 6, 1, 35, 28)
-    assert m._when("2026-10-05") == dt.datetime(2026, 10, 5) and m._when("garbage") is None and m._when("") is None
-    assert m._os_family("Win10 10.0.19045") == "Windows 10" and m._os_family("Win11 10.0.26200") == "Windows 11" and m._os_family("Win2019") == "Windows Server"
+    assert m._when("Tue, 06 Oct 2026 01:35:28 +0000") == dt.datetime(2026, 10, 6, 1, 35, 28) and m._when("garbage") is None
+    assert m._seen("Last 24 hours (2026-10-06 10:39:40)", "trendmicro") == dt.datetime(2026, 10, 6, 10, 39, 40)
+    assert m._typo("ANKAON26OL143", "ANKAON260L143") and m._typo("ANKAON26OL178", "ANKAON26OL78")              # O/0 look-alike; a character missing
+    assert m._typo("ANKAON00DT140", "ANKAON00DT147") is None                                                   # a different digit is a different machine
+    assert m._install_reason("Installation package is missing one or more required files.") == "installation package incomplete"
 
 
-def test_match_installed_missing_dormant_mismatch_and_unregistered(box):
+def test_bigfix_match_health_dormant_mismatch_and_unregistered(box):
     ms = _machines(box)
     pre = _prefix(ms[0][0])
-    fresh, old = "Tue, 06 Oct 2026 01:00:00 +0000", "Mon, 01 Jun 2026 01:00:00 +0000"
-    report = [[ms[0][0], "10.9.9.1", "Win11 10.0.26200", fresh],                      # installed, active
-              [ms[1][0].lower() + ".ongc.local", "10.9.9.2", "Win10 10.0.19045", old],    # installed under a domain name in lower case, silent for months
-              [pre + "-NOTINREGISTER-1", "10.9.9.3", "Win11", fresh],                     # reports, but is not a CI
-              [ms[0][0], "10.9.9.1", "Win11 10.0.26200", old]]                           # duplicate row: the latest check-in must win
+    report = [_bf(ms[0][0]), _bf(ms[1][0].lower() + ".ongc.local", seen=OLD), _bf(pre + "-NOTINREGISTER-1"), _bf(ms[0][0], seen=OLD)]
     if ms[2][1]:
-        report.append([pre + "-RENAMED-1", ms[2][1].strip(), "Win11", fresh])           # a different name on the third machine's own IP
-    headers, rows = m.read_file("r.csv", _csv(report))
-    s, res = m.analyse(headers, rows, m.guess_mapping(headers), {"tool": "TestTool", "prefix": pre, "classes": ["DESKTOP"]}, today=NOW)
+        report.append(_bf(pre + "-RENAMED-1", ip=ms[2][1].strip()))                                           # a different name on the third machine's own IP
+    s, res = _go([(BF, report)], {"prefix": pre, "classes": ["DESKTOP"]})
     by = {r["ci"]: r for r in res["assets"]}
-    assert by[ms[0][0]]["installed"] and by[ms[0][0]]["reporting"] == "Active"
-    assert by[ms[1][0]]["installed"] and by[ms[1][0]]["reporting"] == "Dormant" and "silent" in by[ms[1][0]]["action"]
-    assert not by[ms[3][0]]["installed"] and by[ms[3][0]]["priority"] == "High" and "Install the TestTool agent" in by[ms[3][0]]["action"]
+    assert s["tool"] == "BigFix" and s["product"] == "bigfix"                                                  # tool name comes from the file, not from anything typed
+    assert by[ms[0][0]]["installed"] and by[ms[0][0]]["health"] == "Healthy" and by[ms[0][0]]["reporting"] == "Active"
+    assert by[ms[1][0]]["installed"] and by[ms[1][0]]["reporting"] == "Dormant" and by[ms[1][0]]["health"] == "Needs attention" and "Not reported for" in by[ms[1][0]]["issues"]
+    assert not by[ms[3][0]]["installed"] and by[ms[3][0]]["priority"] == "High" and by[ms[3][0]]["health"] == "Not installed"
     if ms[2][1]:
         assert by[ms[2][0]]["possible"].endswith("RENAMED-1") and by[ms[2][0]]["possible_by"] == "same IP address" and s["name_mismatch"] == 1
-        assert any(u["kind"] == "mismatch" for u in res["unregistered"])
     assert any(u["name"].endswith("NOTINREGISTER-1") and u["kind"] == "unregistered" for u in res["unregistered"])
     assert s["duplicate_names"] == 1 and res["duplicates"][0]["rows"] == 2
-    assert s["installed"] + s["missing"] == s["assets"] and s["installed"] >= 2 and s["coverage"] == round(100 * s["installed"] / s["assets"], 1)
-    assert sum(x["total"] for x in s["by_class"]) == s["assets"] and s["findings"][0]["finding"].startswith("TestTool is installed on")
-    assert s["rag"] in ("red", "amber", "green") and s["has_os"] and s["has_seen"]
+    assert s["installed"] + s["missing"] == s["assets"] and s["healthy"] + s["attention"] == s["installed"] and s["reconciled"] is True
+    assert s["coverage"] == round(100 * s["installed"] / s["assets"], 1) and s["findings"][0]["finding"].startswith("BigFix:")
+    assert s["rag"] in ("red", "amber", "green") and {c["check"] for c in s["checks"]} >= {"What the file is", "Report date"}
+    assert s["report_as_of"].startswith("2026-10-06")                                                          # ages are counted from the report's own date
 
 
-def test_needs_a_name_column_and_ignores_other_sites(box):
+def test_trend_micro_parts_are_combined_and_installed_does_not_mean_healthy(box):
+    ms = _machines(box, 6)
+    pre = _prefix(ms[0][0])
+    ank_part = [_tm(ms[0][0]), _tm(ms[1][0], conn="Not communicating"), _tm(ms[2][0], action="Installation package is missing one or more required files."), _tm(ms[3][0], av="Disabled"),
+                _tm("CAUXYZ01PSAV"), _tm(ms[0][0])]                                                          # a foreign device in our group, and a repeat of a machine
+    workgroup_part = [_tm(ms[4][0], group="Workgroup"), _tm("DESKTOP-ABC1234", group="Workgroup", ip="10.9.9.99")]
+    s, res = _go([(TM, ank_part), (TM, workgroup_part)], {"prefix": pre, "classes": ["DESKTOP"]})
+    by = {r["ci"]: r for r in res["assets"]}
+    assert s["tool"] == "Trend Micro Vision One" and len(s["files"]) == 2
+    assert by[ms[0][0]]["health"] == "Healthy"
+    assert by[ms[1][0]]["installed"] and by[ms[1][0]]["health"] == "Needs attention" and "not communicating" in by[ms[1][0]]["issues"]
+    assert "installation failed: installation package incomplete" in by[ms[2][0]]["issues"]
+    assert "Anti-malware disabled" in by[ms[3][0]]["issues"]
+    assert by[ms[4][0]]["installed"] and by[ms[4][0]]["r_group"] == "Workgroup"                                  # the second file was read as part of the same report
+    assert s["group_issues"] >= 1 and s["home_group"] == "ANK" and s["foreign"] == 1
+    assert any("outside the usual group" in c["check"] for c in s["checks"]) and any("Other sites" in c["check"] for c in s["checks"])
+    assert s["installed"] > s["healthy"] and s["attention"] >= 3 and s["reconciled"] is True
+
+
+def test_files_of_different_products_are_refused(box):
+    files = _files((BF, [_bf("ANKA-1")]), (TM, [_tm("ANKA-2")]))
+    with pytest.raises(m.MatchError) as e:
+        m.analyse(files, {"name": "Computer Name"}, {"prefix": "ANK"}, today=NOW)
+    assert "different products" in str(e.value)
+
+
+def test_needs_a_name_column_and_a_matching_prefix(box):
     ms = _machines(box, 2)
-    headers, rows = m.read_file("r.csv", _csv([[ms[0][0], "", "", ""]]))
+    files = _files((BF, [_bf(ms[0][0])]))
     with pytest.raises(m.MatchError):
-        m.analyse(headers, rows, {}, {})
-    s, res = m.analyse(headers, rows, {"name": "Computer Name"}, {"prefix": "ZZQ"}, today=NOW)      # a prefix no asset has: nothing to check, no crash
-    assert s["assets"] == 0 and s["coverage"] == 0.0
+        m.analyse(files, {}, {}, today=NOW)
+    with pytest.raises(m.MatchError):
+        m.analyse(files, m.profile_file(files[0]["headers"])["mapping"], {"prefix": "ZZQ"}, today=NOW)           # the report has no such site: say so, do not report 0%
 
 
 def test_run_is_stored_reopened_and_exported(box, tmp_path, monkeypatch):
     monkeypatch.setattr(m, "STAGE", tmp_path)
     ms = _machines(box)
-    st = m.stage("centre.csv", _csv([[ms[0][0], "10.0.0.1", "Win11", "Tue, 06 Oct 2026 01:00:00 +0000"]]), "ADMIN1")
-    assert st["mapping"]["name"] == "Computer Name" and st["rows"] == 1 and (tmp_path / f"{st['stage_id']}__centre.csv").exists()
-    r = m.run(st["stage_id"], st["mapping"], {"tool": "BigFix", "prefix": _prefix(ms[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
+    st = m.stage("centre.csv", _csv([_bf(ms[0][0])]), "ADMIN1")
+    assert st["product"] == "bigfix" and st["mapping"]["name"] == "Computer Name" and st["rows"] == 1 and (tmp_path / f"{st['stage_id']}__centre.csv").exists()
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(ms[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
     back = m.get(r["run_id"])
     assert back["summary"]["installed"] == r["summary"]["installed"] and len(back["assets"]) == len(r["assets"]) and m.history()[0]["run_id"] == r["run_id"]
     xlsx, _, ext = m.render(back, "xlsx", {"username": "ADMIN1"})
     pdf, _, pext = m.render(back, "pdf", {"username": "ADMIN1"})
     assert ext == "xlsx" and xlsx[:2] == b"PK" and pext == "pdf" and pdf[:4] == b"%PDF"
     from openpyxl import load_workbook
-    names = load_workbook(io.BytesIO(xlsx)).sheetnames
-    assert {"KEY FINDINGS", "COVERAGE BY ENGINEER", "NOT INSTALLED - ACTION LIST", "FULL MATCH"} <= {n.upper() for n in names}    # the exporter upper-cases sheet names
+    names = {n.upper() for n in load_workbook(io.BytesIO(xlsx)).sheetnames}
+    assert {"ABOUT THIS REPORT", "KEY FINDINGS", "DATA CHECKS ON THE REPORT", "COVERAGE BY ENGINEER", "FULL MATCH"} <= names
     for bad in ("../x", "zzzz", ""):
         with pytest.raises(m.MatchError):
             m._staged(bad)
     with pytest.raises(m.MatchError):
         m.get("nope")
+    with pytest.raises(m.MatchError):
+        m.run([], {}, {}, "ADMIN1")
 
 
 def test_endpoints_need_a_full_administrator(box, monkeypatch, tmp_path):
@@ -126,15 +181,15 @@ def test_endpoints_need_a_full_administrator(box, monkeypatch, tmp_path):
     monkeypatch.setattr(routes_tools, "current_user", me)          # the upload route reads the user itself (it takes a raw body), so it needs the same stand-in
     ms = _machines(box)
     with TestClient(app) as c:
-        up = c.post("/api/match/upload", content=_csv([[ms[0][0], "", "", ""]]), headers=h)
-        assert up.status_code == 200
-        run = c.post("/api/match/run", json={"stage_id": up.json()["stage_id"], "mapping": up.json()["mapping"], "params": {"prefix": _prefix(ms[0][0]), "classes": ["DESKTOP"]}}, headers=HDR)
+        up = c.post("/api/match/upload", content=_csv([_bf(ms[0][0])]), headers=h)
+        assert up.status_code == 200 and up.json()["product"] == "bigfix"
+        run = c.post("/api/match/run", json={"stage_ids": [up.json()["stage_id"]], "mapping": up.json()["mapping"], "params": {"prefix": _prefix(ms[0][0]), "classes": ["DESKTOP"]}}, headers=HDR)
         assert run.status_code == 200 and run.json()["summary"]["installed"] >= 1
         rid = run.json()["run_id"]
         assert c.get(f"/api/match/runs/{rid}").status_code == 200 and c.get("/api/match/runs/nope").status_code == 404
         assert c.post("/api/match/export", json={"run_id": rid, "format": "pdf"}, headers=HDR).headers["content-type"] == "application/pdf"
         assert c.post("/api/match/export", json={"run_id": rid, "format": "csv"}, headers=HDR).status_code == 400
-        assert c.post("/api/match/run", json={"stage_id": "bad", "mapping": {"name": "x"}}, headers=HDR).status_code == 400
+        assert c.post("/api/match/run", json={"stage_ids": ["bad"], "mapping": {"name": "x"}}, headers=HDR).status_code == 400
 
 
 def test_each_engineer_gets_only_their_own_list_once(box, tmp_path, monkeypatch):
@@ -144,9 +199,8 @@ def test_each_engineer_gets_only_their_own_list_once(box, tmp_path, monkeypatch)
                           AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 400""").fetchall()
     if len({r[1] for r in rows}) < 2:
         pytest.skip("needs desktops with at least two engineers")
-    pre = _prefix(rows[0][0])
-    st = m.stage("c.csv", _csv([[rows[0][0], "", "", ""]]), "ADMIN1")           # only one machine is in the report: everyone else has gaps
-    r = m.run(st["stage_id"], st["mapping"], {"prefix": pre, "classes": ["DESKTOP"]}, "ADMIN1")
+    st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")                    # only one machine is in the report: everyone else has gaps
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
     sent = []
     monkeypatch.setattr(mailer, "engineer_email", lambda key: f"{key.replace(' ', '.').lower()}@example.com")
     monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, att=(), cfg=None: sent.append((to, subject, att)))

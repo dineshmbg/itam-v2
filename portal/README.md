@@ -690,3 +690,14 @@ finishes** on the upload form to do it automatically. Rules: the address is the 
 engineers with nothing urgent (only machines in store) or no address, and machines with no engineer, are listed but not mailed; sending is
 once per analysis and engineer (`notify_log`, rule `MATCH_REPORT`), so a second press never double-mails and a failed one can be retried;
 needs e-mail switched on under Administration > E-mail.
+
+### The report is read before it is used (2026-10-06)
+
+Reports from the centre arrive under different names and in parts, so the portal no longer trusts a file name or a typed tool name.
+- **Product detection.** Each file is profiled from its column headings: Trend Micro Vision One, BigFix, or "Endpoint report" (columns guessed, you confirm). The tool name in findings and files is the detected product unless you type another. Several files are read as parts of ONE report (the centre splits a fleet by group or site); files of different products are refused.
+- **Installed is not the same as healthy.** Each machine found in the report is graded Healthy or Needs attention: Trend Micro - install failed (with the reason), agent not communicating, anti-malware disabled; any product - silent beyond the stale limit. Advisory notes (pattern outdated, EDR off, old agent, never scanned) are listed separately, and when a note affects most of the fleet it is reported once as a central problem.
+- **Ages are counted from the report's own date** (newest check-in in the file), not from today, and a report older than 3 days is flagged.
+- **Data checks** (also in the Excel/PDF): duplicates and conflicting duplicates, devices parked in another console group, other sites' devices in this site's group, default Windows names on this site's IP ranges, shared IPs, missing columns, unreadable dates, register machines with no engineer or user.
+- **Name pairing** is conservative: same IP, look-alike characters (O/0, I/1) or one character missing/extra. A different digit alone is NOT paired (DT140 and DT147 are two machines).
+- **Every total is reconciled** (file rows -> unique computers -> this site -> found / not found -> healthy / attention; also by class and by engineer) and the report states it; if one fails, the PDF says not to circulate it.
+Code: `profile_file`, `analyse`, `findings` in `app/inventory_match.py`; tests in `tests/test_inventory_match.py`.

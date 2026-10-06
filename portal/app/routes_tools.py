@@ -277,7 +277,7 @@ async def match_upload(request):
 
 async def match_run(request):
     b, u = request.state.body, request.state.user
-    out = await run_in_threadpool(inventory_match.run, str(b.get("stage_id") or ""), b.get("mapping") or {}, b.get("params") or {}, u["username"])
+    out = await run_in_threadpool(inventory_match.run, b.get("stage_ids") or str(b.get("stage_id") or ""), b.get("mapping") or {}, b.get("params") or {}, u["username"])
     await _log(request, "MATCH_RUN", out["filename"], {"tool": out["summary"]["tool"], "coverage": out["summary"]["coverage"]})
     if (b.get("params") or {}).get("notify"):          # "e-mail each engineer their own list when the match finishes" - a mail problem never fails the analysis itself
         try:
