@@ -838,6 +838,21 @@ def render(d, fmt, user):
     return export.render(fmt, title, sub, tables(d, management=fmt == "pdf"), kpis(s), ch, footer=user["username"])
 
 
+def distribute(run_id, user):
+    """What happens automatically after every analysis: share it with the engineers in the portal (each sees only their own machines) and e-mail each
+    engineer their own list. A mail problem (e-mail switched off, a server error) never loses the analysis; the outcome is stored with it."""
+    from . import mailer
+    publish(run_id, user["username"])
+    try:
+        mail = send_to_engineers(run_id, user)
+        mail["error"] = None
+    except mailer.MailError as e:
+        mail = {**send_to_engineers(run_id, user, dry_run=True), "error": str(e)}          # still show who would have been mailed
+    with db.write() as con:
+        con.execute("UPDATE portal_match_run SET result = result || jsonb_build_object('mail', %s::jsonb) WHERE run_id = %s", (json.dumps(mail, default=str), run_id))
+    return mail
+
+
 # ---------------------------------------------------------------- each engineer's own list, by e-mail
 MAIL_RULE = "MATCH_REPORT"      # notify_log.rule_key: a re-send of the same analysis never mails the same engineer twice
 UNASSIGNED = "UNASSIGNED"

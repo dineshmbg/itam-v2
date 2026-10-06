@@ -709,3 +709,8 @@ An administrator presses **Share in the portal** on a finished analysis (reversi
 what to do first, the lists (install the agent / installed but needs attention / probably the same machine / all my machines) and a personal
 Excel download. Asking for another engineer's list is ignored; an account with no linked engineer sees nothing; an unshared analysis returns
 403. Administrators can preview any engineer's view. Routes `/api/match/mine*` and `/api/match/publish`; view `inventory-mine.js`.
+
+**Automatic (2026-10-06, later).** There are no Share / E-mail buttons and no option to tick: every analysis is shared in the portal and e-mailed
+to each engineer the moment the match finishes (`inventory_match.distribute`). If e-mail is switched off the analysis is still shared, the page
+says no e-mail was sent and shows who would have been mailed, and the outcome is stored with the analysis. Sending stays once per analysis and
+engineer, so nothing is mailed twice. The old manual routes (`/api/match/engineers`, `/api/match/publish`) are gone.

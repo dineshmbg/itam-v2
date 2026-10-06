@@ -174,7 +174,8 @@ def test_endpoints_need_a_full_administrator(box, monkeypatch, tmp_path):
         assert c.get("/api/match/meta").status_code == 403
         assert c.post("/api/match/run", json={}, headers=HDR).status_code == 403
     user = fake_user(monkeypatch, "ADMIN")
-    from portal.app import routes_tools
+    from portal.app import mailer, routes_tools
+    monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": False})        # a test must never send a real e-mail
 
     async def me(request):
         return user
@@ -246,7 +247,7 @@ def test_engineers_see_only_their_own_machines_and_only_once_shared(box, tmp_pat
     with TestClient(app) as c:
         assert c.get("/api/match/mine").json()["runs"] == [] or all(x["run_id"] != rid for x in c.get("/api/match/mine").json()["runs"])      # not shared yet
         assert c.get(f"/api/match/mine/{rid}").status_code == 403
-        assert c.post("/api/match/publish", json={"run_id": rid}, headers=HDR).status_code == 403                                                  # only an administrator shares
+        assert c.post("/api/match/publish", json={"run_id": rid}, headers=HDR).status_code in (403, 404)                                 # no manual sharing route: it happens when the tool runs
         m.publish(rid, "ADMIN1")
         assert any(x["run_id"] == rid for x in c.get("/api/match/mine").json()["runs"])
         got = c.get(f"/api/match/mine/{rid}", params={"as": other})                                                                               # asking for someone else's list is ignored
@@ -263,3 +264,27 @@ def test_engineers_see_only_their_own_machines_and_only_once_shared(box, tmp_pat
         assert c.get(f"/api/match/mine/{rid}").status_code == 400                                                                                   # an administrator must choose whose view
         ok = c.get(f"/api/match/mine/{rid}", params={"as": other})
         assert ok.status_code == 200 and {a["ci"] for a in ok.json()["assets"]} == theirs
+
+
+def test_every_run_is_shared_and_mailed_automatically(box, tmp_path, monkeypatch):
+    from portal.app import mailer
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                          AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 5""").fetchall()
+    if len(rows) < 5:
+        pytest.skip("not enough desktops")
+    st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
+    sent = []
+    monkeypatch.setattr(mailer, "engineer_email", lambda key: f"{key.replace(' ', '.').lower()}@example.com")
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html=None, att=(), cfg=None: sent.append(to))
+    user = {"username": "ADMIN1"}
+    # e-mail switched off: still shared in the portal, nothing sent, the reason and the would-be recipients are kept with the analysis
+    monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": False})
+    off = m.distribute(r["run_id"], user)
+    assert not sent and "not switched on" in off["error"] and any(p["status"] == "READY" for p in off["plan"])
+    assert any(x["run_id"] == r["run_id"] for x in m.published()) and m.get(r["run_id"])["mail"]["error"] == off["error"]
+    # e-mail on: one message per engineer with something to do, outcome stored
+    monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": True, "host": "h", "from_addr": "a@b.c", "has_password": False})
+    on = m.distribute(r["run_id"], user)
+    assert on["error"] is None and sent and len(sent) == len({p["email"] for p in on["plan"] if p["status"] == "SENT"}) and m.get(r["run_id"])["mail"]["error"] is None

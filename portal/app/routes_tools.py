@@ -279,23 +279,9 @@ async def match_run(request):
     b, u = request.state.body, request.state.user
     out = await run_in_threadpool(inventory_match.run, b.get("stage_ids") or str(b.get("stage_id") or ""), b.get("mapping") or {}, b.get("params") or {}, u["username"])
     await _log(request, "MATCH_RUN", out["filename"], {"tool": out["summary"]["tool"], "coverage": out["summary"]["coverage"]})
-    if (b.get("params") or {}).get("notify"):          # "e-mail each engineer their own list when the match finishes" - a mail problem never fails the analysis itself
-        try:
-            m = await run_in_threadpool(inventory_match.send_to_engineers, out["run_id"], u)
-            out["engineer_mail"] = m
-            await _log(request, "MATCH_MAIL", out["filename"], {"run": out["run_id"], "sent": sum(1 for x in m["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in m["plan"] if x["status"] == "FAILED")})
-        except mailer.MailError as e:
-            out["engineer_mail_error"] = str(e)
-    return json_response(out)
-
-
-async def match_engineers(request):
-    """dry_run (default): who would get what. Otherwise mails each engineer their own list."""
-    b, u = request.state.body, request.state.user
-    only = [str(x) for x in (b.get("only") or [])] or None
-    out = await run_in_threadpool(inventory_match.send_to_engineers, str(b.get("run_id") or ""), u, bool(b.get("dry_run", True)), only)
-    if not b.get("dry_run", True):
-        await _log(request, "MATCH_MAIL", b.get("run_id"), {"sent": sum(1 for x in out["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in out["plan"] if x["status"] == "FAILED")})
+    out["mail"] = await run_in_threadpool(inventory_match.distribute, out["run_id"], u)          # shared with the engineers and mailed to each, automatically
+    await _log(request, "MATCH_MAIL", out["filename"], {"run": out["run_id"], "sent": sum(1 for x in out["mail"]["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in out["mail"]["plan"] if x["status"] == "FAILED"),
+                                                       "error": out["mail"]["error"]})
     return json_response(out)
 
 
@@ -345,13 +331,6 @@ async def match_mine_export(request):
     name = export.safe_name(f"{d['summary']['tool']}_{eng}_{d['summary']['as_of'].replace('-', '')}") + ".xlsx"
     await _log(request, "MATCH_MY_EXPORT", name, {"run": d["run_id"], "engineer": eng})
     return _file(data, export.MIME["xlsx"], name)
-
-
-async def match_publish(request):
-    b, u = request.state.body, request.state.user
-    out = await run_in_threadpool(inventory_match.publish, str(b.get("run_id") or ""), u["username"], bool(b.get("on", True)))
-    await _log(request, "MATCH_PUBLISH" if out["published"] else "MATCH_UNPUBLISH", out["run_id"])
-    return json_response(out)
 
 
 async def match_get(request):
@@ -488,8 +467,6 @@ routes = [
     Route("/api/match/meta", R_(match_meta, admin="strict")),
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
     Route("/api/match/run", W_(match_run, admin="strict"), methods=["POST"]),
-    Route("/api/match/engineers", W_(match_engineers, admin="strict"), methods=["POST"]),
-    Route("/api/match/publish", W_(match_publish, admin="strict"), methods=["POST"]),
     Route("/api/match/mine", R_(match_mine)),
     Route("/api/match/mine/export", W_(match_mine_export, mutates=False), methods=["POST"]),     # a download, not a write
     Route("/api/match/mine/{run}", R_(match_mine_run)),

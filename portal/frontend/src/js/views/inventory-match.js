@@ -22,7 +22,6 @@ export function mountInventoryMatch(root) {
   tool.addEventListener('input', () => { toolEdited = true; });
   const prefix = h('input', { id: 'mt-prefix', type: 'text', value: 'ANK', maxlength: 40 });
   const target = h('input', { id: 'mt-target', type: 'number', value: 95, min: 1, max: 100 });
-  const notify = h('input', { id: 'mt-notify', type: 'checkbox' });
   const file = h('input', { id: 'mt-file', type: 'file', accept: '.xlsx,.xlsm,.csv,.txt', multiple: true });
   const classes = new Set();
   const stepEl = h('div', { class: 'stack-v' });
@@ -47,8 +46,7 @@ export function mountInventoryMatch(root) {
         frow('mt-prefix', 'Site prefix of the Asset (CI)', prefix, 'Only register machines starting with this are checked (several allowed: ANK, ANKA).'),
         h('div', { class: 'frow' }, h('span', { class: 'flabel' }, 'Asset classes to check'), chips, h('div', { class: 'hint' }, 'Printers, switches and UPS units cannot run an agent, so they are off by default.')),
         frow('mt-target', 'Target coverage (%)', target),
-        h('div', { class: 'frow' }, h('label', { class: 'opt', for: 'mt-notify' }, notify, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'E-mail each engineer their own list when the match finishes')),
-          h('div', { class: 'hint' }, 'Each engineer gets only the machines assigned to them, with an Excel file. Leave it off to look first; you can send from the results page.')),
+        h('p', { class: 'hint' }, 'When the match finishes it is shared automatically: every engineer sees their own machines under Reports > My inventory report, and is e-mailed their own list.'),
         h('button', { class: 'btn primary', type: 'button', onClick: doUpload }, icon('upload'), 'Read the file(s)'))),
       panel('2 · Check the columns and match', { cls: 'span-7' }, stepEl),
       h('div', { class: 'span-12 stack-v' }, out),
@@ -95,9 +93,8 @@ export function mountInventoryMatch(root) {
     if (!classes.size) { toast('Choose at least one asset class.', 'bad'); return; }
     out.replaceChildren(h('div', { class: 'loading-line' }, 'Matching…'));
     try {
-      result = await send('/api/match/run', { stage_ids: staged.map((x) => x.stage_id), mapping, params: { tool: tool.value.trim(), prefix: prefix.value, classes: [...classes], target: Number(target.value) || 95, notify: notify.checked } });
+      result = await send('/api/match/run', { stage_ids: staged.map((x) => x.stage_id), mapping, params: { tool: tool.value.trim(), prefix: prefix.value, classes: [...classes], target: Number(target.value) || 95 } });
       showResult(); load2();
-      if (result.engineer_mail) { toast(`E-mailed ${result.engineer_mail.plan.filter((x) => x.status === 'SENT').length} engineers`); engineerDialog(result.engineer_mail); } else if (result.engineer_mail_error) toast(result.engineer_mail_error, 'bad');
     } catch (e) { out.replaceChildren(errorBlock(e)); }
   }
 
@@ -108,33 +105,17 @@ export function mountInventoryMatch(root) {
     try { result = await get('/api/match/runs/' + id); showResult(); out.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { out.replaceChildren(errorBlock(e)); }
   }
 
-  const MAILSTATE = { READY: ['info', 'Ready to send'], SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], ALREADY_SENT: ['mute', 'Already sent'], NO_ADDRESS: ['warn', 'No e-mail address'], NO_ENGINEER: ['warn', 'No engineer in the register'], NOTHING_URGENT: ['mute', 'Nothing urgent'] };
+  const MAILSTATE = { READY: ['info', 'Would be sent'], SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], ALREADY_SENT: ['mute', 'Already sent'], NO_ADDRESS: ['warn', 'No e-mail address'], NO_ENGINEER: ['warn', 'No engineer in the register'], NOTHING_URGENT: ['mute', 'Nothing urgent'] };
 
-  // Who would get what, then (after a click) send. `done` is a result already in hand (sent automatically after the match).
-  async function engineerDialog(done) {
-    let data = done;
-    try { if (!data) data = await send('/api/match/engineers', { run_id: result.run_id, dry_run: true }); } catch (e) { toast(e.message, 'bad'); return; }
-    const list = h('div', null);
-    const draw = (d) => {
-      const ready = d.plan.filter((x) => x.status === 'READY');
-      list.replaceChildren(...[
-        !d.mail_enabled ? h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), 'E-mail is not switched on (Administration > E-mail). You can see who would be mailed, but nothing can be sent yet.') : null,
-        d.plan.length ? table([['name', 'Engineer', null, (r) => titleCase(r.name)], ['email', 'Address', null, (r) => r.email || '—'], ['machines', 'Machines', 'right'], ['missing', 'No agent', 'right'], ['high', 'Deployed', 'right'], ['silent', 'Need attention', 'right'],
-          ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], d.plan, 200) : h('p', { class: 'muted' }, 'No engineer has anything to do.'),
-        h('p', { class: 'hint' }, `${ready.length} engineer(s) will be mailed. Each message lists only that engineer's machines and carries their own Excel file. An engineer already mailed for this analysis is skipped, so pressing Send twice is safe.`)].filter(Boolean));
-      return ready.length && d.mail_enabled;
-    };
-    const can = draw(data);
-    openModal({ title: 'E-mail each engineer their own list', lead: 'Nothing is sent until you press Send.', body: list,
-      actions: [{ label: 'Close' }, ...(can ? [{ label: 'Send now', primary: true, onClick: async () => {
-        try { const r = await send('/api/match/engineers', { run_id: result.run_id, dry_run: false }); toast(`Sent to ${r.plan.filter((x) => x.status === 'SENT').length} engineers` + (r.plan.some((x) => x.status === 'FAILED') ? '; some failed - see the list' : '')); draw(r); return false; } catch (e) { toast(e.message, 'bad'); return false; }
-      } }] : [])] });
-  }
-
-  // Share = every engineer can open "My inventory report" and sees only the machines assigned to them. Reversible; nothing is deleted.
-  async function toggleShare() {
-    const on = !meta.history.find((x) => x.run_id === result.run_id)?.published_at;
-    try { await send('/api/match/publish', { run_id: result.run_id, on }); await load2(); toast(on ? 'Shared: each engineer now sees their own machines under Reports > My inventory report' : 'No longer shared'); showResult(); } catch (e) { toast(e.message, 'bad'); }
+  // What happened automatically after the match: shared in the portal, and one e-mail per engineer. Read-only - there is nothing to press.
+  function mailPanel(mail) {
+    if (!mail) return null;
+    const sent = mail.plan.filter((x) => x.status === 'SENT').length;
+    const note = mail.error ? h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), `Shared in the portal, but no e-mail was sent: ${mail.error} The list below is who would have been mailed.`)
+      : h('p', { class: 'hint' }, `Shared in the portal (Reports > My inventory report) and e-mailed to ${sent} engineer${sent === 1 ? '' : 's'}. Each got only their own machines and their own Excel file.`);
+    return panel('Sent to engineers', { cls: 'span-12', flush: true, hint: 'automatic' }, h('div', { style: { padding: '12px 16px 0' } }, note),
+      mail.plan.length ? table([['name', 'Engineer', null, (r) => titleCase(r.name)], ['email', 'Address', null, (r) => r.email || '—'], ['machines', 'Machines', 'right'], ['missing', 'No agent', 'right'], ['silent', 'Need attention', 'right'],
+        ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], mail.plan, 200) : null);
   }
 
   const dl = (fmt) => async () => { try { await download('/api/match/export', { run_id: result.run_id, format: fmt }, 'coverage.' + fmt); } catch (e) { toast(e.message, 'bad'); } };
@@ -153,8 +134,7 @@ export function mountInventoryMatch(root) {
 
   function showResult() {
     const s = result.summary, t = s.tool;
-    const shared = meta.history.find((x) => x.run_id === result.run_id)?.published_at;
-    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: () => engineerDialog(null) }, icon('email'), 'E-mail engineers…'), h('button', { class: 'btn', type: 'button', onClick: toggleShare }, icon('view'), shared ? 'Stop sharing in the portal' : 'Share in the portal'), h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
+    tools.replaceChildren(h('button', { class: 'btn', type: 'button', onClick: dl('xlsx') }, icon('document--export'), 'Excel for the team'), h('button', { class: 'btn primary', type: 'button', onClick: dl('pdf') }, icon('document--pdf'), 'PDF for management'));
     const tone = s.rag === 'green' ? 'ok' : s.rag === 'amber' ? 'warn' : 'bad';
     const missing = result.assets.filter((r) => !r.installed).sort((a, b) => ['High', 'Medium', 'Low'].indexOf(a.priority) - ['High', 'Medium', 'Low'].indexOf(b.priority));
     const attn = result.assets.filter((r) => r.health === 'Needs attention').sort((a, b) => (b.r_age || 0) - (a.r_age || 0));
@@ -184,6 +164,7 @@ export function mountInventoryMatch(root) {
         panel('About this report', { cls: 'span-12', hint: s.reconciled === false ? 'a total did not reconcile' : 'every total reconciles to the file and the register' }, h('div', { class: 'kv' },
           kv('Product', `${s.product_label || t}${s.tool !== s.product_label ? ' (shown as ' + s.tool + ')' : ''}`), kv('File(s)', (s.files || []).map((f) => `${f.name} (${int(f.rows)} rows)`).join('; ') || result.filename), kv('Report date', s.report_as_of || s.as_of),
           kv('Checked', `${s.prefixes.join('/')} · ${s.classes.map(titleCase).join(', ')} · ${int(s.assets)} machines`))),
+        mailPanel(result.mail),
         panel('Findings and what to do', { cls: 'span-12', flush: true }, h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Rating'), h('th', null, 'Finding'), h('th', null, 'What to do'))),
           h('tbody', null, s.findings.map((f) => h('tr', null, h('td', null, h('span', { class: 'badge ' + (SEV[f.severity] || 'mute') }, f.severity)), h('td', { class: 'wrap' }, f.finding), h('td', { class: 'wrap' }, f.action))))))),
         panel('By class', { cls: 'span-6', flush: true }, group('Class', s.by_class)), panel('By engineer', { cls: 'span-6', flush: true, hint: 'who has machines to fix' }, group('Engineer', s.by_engineer)),
