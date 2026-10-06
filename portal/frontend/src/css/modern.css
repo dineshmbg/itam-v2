@@ -318,3 +318,51 @@ button.gt-th { transition: background-color 120ms var(--ease), color 120ms var(-
 .more-row { padding: 6px 12px; }
 .kv > div { padding: 4px 12px; min-height: 28px; }
 @media (min-width: 2200px) { :root { --nav-w: 232px; } }
+
+/* ---------- buttons: pill shape, gradient primary, tonal secondary ---------- */
+.btn { border-radius: var(--r-pill); height: 32px; padding: 0 16px; gap: 7px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  border-color: var(--c-border-strong); background: var(--c-surface); }
+.btn:hover { background: var(--c-accent-bg); border-color: var(--c-accent); color: var(--c-accent); box-shadow: none; }
+.btn:focus-visible { outline: 2px solid var(--c-focus); outline-offset: 2px; }
+.btn.primary { background: linear-gradient(135deg, var(--c-accent), color-mix(in srgb, var(--c-accent) 62%, var(--chart-6))); border-color: transparent; color: var(--c-on-accent);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--c-accent) 32%, transparent); }
+.btn.primary:hover { background: linear-gradient(135deg, var(--c-accent-hover), color-mix(in srgb, var(--c-accent-hover) 62%, var(--chart-6))); color: var(--c-on-accent); border-color: transparent; box-shadow: 0 5px 14px color-mix(in srgb, var(--c-accent) 42%, transparent); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--c-text-2); }
+.btn.ghost:hover { background: var(--c-surface-3); color: var(--c-text); border-color: transparent; }
+.btn.danger { background: var(--c-bad-bg); border-color: transparent; color: var(--c-bad); }
+.btn.danger:hover { background: var(--c-bad); color: #fff; border-color: transparent; }
+.btn.icon { width: 32px; height: 32px; padding: 0; border-radius: 50%; }
+.btn[aria-pressed="true"] { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); }
+.btn.block { border-radius: 14px; }
+.btn:disabled { opacity: 0.5; box-shadow: none; transform: none; }
+.btn:disabled:hover { background: var(--c-surface); border-color: var(--c-border-strong); color: inherit; }
+.btn .ico { transition: transform 140ms var(--ease); }
+.btn:hover .ico { transform: scale(1.1); }
+.link-btn { font-weight: 600; text-decoration-thickness: 1px; }
+.menu button { border-radius: 8px; }
+.pill-toggle { border-radius: var(--r-pill); height: 32px; font-weight: 500; }
+
+/* ---------- filters: facet panel, option rows, chips ---------- */
+.facets { border-radius: var(--r-3); }
+.facets-h { background: linear-gradient(180deg, var(--c-surface), var(--c-surface-2)); }
+.facets-h h2 { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-accent); }
+.facets-h .count { display: inline-block; margin-top: 2px; padding: 0 8px; border-radius: var(--r-pill); background: var(--c-accent-bg); color: var(--c-accent); font-weight: 600; }
+.facet { border-bottom-color: color-mix(in srgb, var(--c-border) 70%, transparent); }
+.facet > button.f-h { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); }
+.facet > button.f-h:hover { background: var(--c-accent-bg); }
+.facet > button.f-h .ico { padding: 2px; border-radius: 50%; background: var(--c-surface-3); width: 14px; height: 14px; box-sizing: content-box; }
+.f-find input { height: 28px; border-radius: var(--r-pill); padding: 0 12px; }
+.opt { border-radius: 8px; transition: background-color 100ms var(--ease); }
+.opt:hover { background: var(--c-surface-3); }
+.opt:has(input:checked) { background: var(--c-accent-bg); }
+.opt:has(input:checked) .name { font-weight: 600; color: var(--c-text); }
+.opt .n { background: var(--c-surface-3); border-radius: var(--r-pill); padding: 0 7px; line-height: 16px; font-size: 10.5px; font-weight: 600; color: var(--c-text-2); }
+.opt:has(input:checked) .n { background: var(--c-accent); color: var(--c-on-accent); }
+.chips { gap: 6px; }
+.chip { border-radius: var(--r-pill); padding: 0 4px 0 10px; background: var(--c-accent-bg); border-color: transparent; font-weight: 500; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 35%, transparent); }
+.chip b { color: var(--c-accent); font-weight: 700; }
+.chip button { border-radius: 50%; }
+.chip button:hover { background: var(--c-accent); color: var(--c-on-accent); }
+.rp-filter select, .rp-filter input { border-radius: var(--r-pill); padding-left: 12px; }
+.toolbar .field input { border-radius: var(--r-pill); padding-left: 36px; }
+.toolbar .field .ico { left: 13px; }
