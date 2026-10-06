@@ -7,7 +7,7 @@ import { entity } from './hovercard.js';
 
 const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['140px', '0.7fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
 
-export function createTable({ columns, rowHeight = 36, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass }) {
+export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass }) {
   let total = 0;
   let epoch = 0;
   let sortState = { key: sort?.key, dir: sort?.dir || 'asc' };
