@@ -199,3 +199,25 @@ button.gt-th { transition: background-color 120ms var(--ease), color 120ms var(-
 .dsec > h3 { font-size: 13px; letter-spacing: 0.04em; }
 .kv > .k { font-weight: 500; }
 .kv > div { padding: 8px 14px; }
+
+/* ---------- fluid layout: cards share each row and fill the screen width ----------
+   .span-N keeps its meaning as a *weight* (N of 12), but rows are now flex lines: every card grows into the leftover space, so a row
+   of 5+4 weights still ends flush at the right edge, cards in one row share one height, and narrow screens simply wrap. */
+.grid { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--sp-4); }
+.grid > * { flex: 1 1 320px; min-width: min(100%, 320px); }
+.grid > .span-3 { flex: 3 1 calc(25% - var(--sp-4)); min-width: min(100%, 260px); }
+.grid > .span-4 { flex: 4 1 calc(33.333% - var(--sp-4)); }
+.grid > .span-5 { flex: 5 1 calc(41.667% - var(--sp-4)); }
+.grid > .span-6 { flex: 6 1 calc(50% - var(--sp-4)); }
+.grid > .span-7 { flex: 7 1 calc(58.333% - var(--sp-4)); }
+.grid > .span-8 { flex: 8 1 calc(66.667% - var(--sp-4)); }
+.grid > .span-12 { flex: 1 1 100%; }
+.grid > .panel .panel-b { display: flex; flex-direction: column; }
+.grid > .panel .panel-b > .chart-box { flex: 1 1 auto; }
+.grid > .panel .panel-b > .bars, .grid > .panel .panel-b > .stack-v { align-content: start; }
+@media (min-width: 2000px) { .grid > .span-3 { flex-basis: calc(20% - var(--sp-4)); } .chart-box { height: 280px; } .chart-box.tall { height: 340px; } }
+
+/* edit / new-record forms: cards flow into balanced columns (as many as fit, ~340px each) with no holes underneath short cards */
+.drawer.wide .eform, dialog.modal.large .eform { display: block; columns: 340px; column-gap: 16px; }
+.drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { break-inside: avoid; margin: 0 0 16px; display: block; }
+.drawer.wide .eform > :not(.fgroup), dialog.modal.large .eform > :not(.fgroup) { column-span: all; }
