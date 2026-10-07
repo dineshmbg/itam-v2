@@ -1188,3 +1188,24 @@ body { background: var(--c-bg); }
 .frow.locked.locked-plain { opacity: 1; }
 .frow.locked.locked-plain input { background: transparent; color: inherit; -webkit-text-fill-color: currentColor; cursor: default; }
 .frow.locked.locked-plain .flabel::after { content: ''; }
+
+/* ---------- dropdown list (ui/dropdown.js): the one popup used by every select and suggestion box ---------- */
+.dd-pop { position: fixed; z-index: 10000; overflow: auto; padding: 4px; background: var(--c-surface); color: var(--c-text); border-radius: var(--r-3, 8px);
+  border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent); box-shadow: 0 18px 44px rgba(22, 26, 31, 0.24), 0 2px 8px rgba(22, 26, 31, 0.08);
+  animation: pop 140ms var(--ease); transform-origin: top left; overscroll-behavior: contain; }
+.dd-opt { display: flex; align-items: baseline; gap: 12px; justify-content: space-between; min-height: 34px; padding: 7px 12px 7px 12px; border-radius: var(--r-1, 4px); cursor: pointer; font-size: 14px; line-height: 20px; }
+.dd-opt .dd-s { color: var(--c-text-3); font-size: 12.5px; font-family: var(--font-mono); }
+.dd-opt.active { background: var(--c-accent-bg); color: var(--c-accent); }
+.dd-opt[aria-selected="true"] { font-weight: 600; padding-right: 34px; background-repeat: no-repeat; background-position: right 12px center; background-size: 12px 9px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 9'%3E%3Cpath d='M1 4.5l3.2 3.2L11 1' fill='none' stroke='%230b5cad' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.dd-opt[aria-selected="true"].active { background-color: var(--c-accent-bg); }
+.dd-opt[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.dd-opt.dd-blank .dd-t { color: var(--c-text-3); }
+.dd-group { padding: 8px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c-text-3); }
+.dd-empty { padding: 12px; color: var(--c-text-2); font-size: 13.5px; }
+:root[data-theme="dark"] .dd-opt[aria-selected="true"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 9'%3E%3Cpath d='M1 4.5l3.2 3.2L11 1' fill='none' stroke='%236cb0f7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] .dd-opt[aria-selected="true"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 9'%3E%3Cpath d='M1 4.5l3.2 3.2L11 1' fill='none' stroke='%236cb0f7' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); } }
+@media (prefers-reduced-motion: reduce) { .dd-pop { animation: none; } }
+/* suggestion boxes get the same chevron the selects have, so every dropdown reads the same closed as well as open */
+.frow .linked > input[role="combobox"], .frow input[role="combobox"] { padding-right: 34px; background-repeat: no-repeat; background-size: 10px 6px; background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7686' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }

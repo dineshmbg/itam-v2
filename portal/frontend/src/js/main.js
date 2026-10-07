@@ -8,6 +8,7 @@ import { buildShell } from './ui/shell.js';
 import { destroyAll } from './ui/charts.js';
 import { closeDrawer } from './ui/drawer.js';
 import { initHoverCards } from './ui/hovercard.js';
+import './ui/dropdown.js';
 import { closeAllModals, openModal } from './ui/modal.js';
 import { mountLogin, passwordDialog, twoFactorSetup } from './views/login.js';
 
