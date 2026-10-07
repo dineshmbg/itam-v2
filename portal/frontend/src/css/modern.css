@@ -371,11 +371,6 @@ button.gt-th { transition: background-color 120ms var(--ease), color 120ms var(-
 dialog.modal { border-radius: 22px; width: min(500px, calc(100vw - 24px)); border: 1px solid color-mix(in srgb, var(--c-border) 70%, transparent);
   box-shadow: 0 28px 70px rgba(22, 26, 31, 0.32), 0 2px 10px rgba(22, 26, 31, 0.1); }
 dialog.modal[open] { animation: pop 200ms var(--ease); }
-/* No backdrop-filter here: it made a <select>'s native option list render behind the dialog/drawer that opened it (the blur forces a
-   compositing layer that Chromium then mis-orders against the select's own popup layer) - a real usability bug, not a cosmetic one,
-   so the blur loses out. Plain dimming only. */
-dialog.modal::backdrop { background: var(--c-scrim); }
-.scrim { }
 .modal-h { position: relative; padding: 20px 22px 14px; border-bottom: 0; align-items: flex-start; }
 .modal-h::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: linear-gradient(90deg, var(--chart-1), var(--chart-6), var(--chart-4)); }
 .modal-h h2 { font-size: 17px; line-height: 26px; font-weight: 700; letter-spacing: 0.03em; }
