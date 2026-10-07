@@ -139,6 +139,12 @@ person is in someone else's territory) without an administrator - the asset must
 `readonly` flags as `auth.check_edit` enforces server-side - both have to agree, or a field can be technically permitted but never
 actually offered in the UI (or vice versa); see the schema-level tests in `tests/test_edit.py` for the regression coverage this needs.
 
+**Hostname, Location, Floor / area, Room (2026-10-07):** a plain User cannot edit **Hostname** (administrator, a User with full asset
+access, or a Team Leader/SI only - `auth.can_manage_places`). **Location, Floor / area and Room** are a dropdown of the values already on
+current assets, in ascending (natural) order - a plain User can only pick from it, and the server refuses any other value
+(`auth.check_place_values`). Administrators, full asset access and Team Leader/SI get the same list as suggestions on a box they can
+still type into, which is how a new value gets added. `routes_edit.py`'s `schema()` sends the list and the closed/open kind.
+
 **A group set by hand survives roster sync (`portal_user.role_locked`):** changing a group in *Manage user* locks it, so *Sync from roster*
 no longer derives it from the designation (e.g. a TEAM LEADER/SI moved to User stays a User).
 

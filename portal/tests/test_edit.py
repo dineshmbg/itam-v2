@@ -21,7 +21,7 @@ except ModuleNotFoundError:      # the loaders need pandas, which the portal's o
     sys.path.append(str(Path(sys.base_prefix) / "Lib" / "site-packages"))
     import call_tracking  # noqa: E402
 import itam_locks  # noqa: E402
-from portal.app import config, db, edit  # noqa: E402
+from portal.app import auth, config, db, edit  # noqa: E402
 from portal.app.main import app  # noqa: E402
 
 ED = "Test Editor"
@@ -361,9 +361,12 @@ def test_groups_limit_what_a_user_can_change(sandbox, monkeypatch):
     sandbox.execute("UPDATE asset SET pm_quarter = 'Q2 JUL-SEP 2026' WHERE asset_key = %s", (a,))      # pin the quarter: the real data moves on every roll-over
     as_user(monkeypatch, "USER", engineer_key=a_row["engineer_name"])
     with TestClient(app) as c:
-        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "STANDBY", "pm_date": "2026-08-01", "location_code": "X1", "hostname": "RENAMED"}}, headers=HDR)
+        sandbox.execute("UPDATE asset SET location_code = 'X1' WHERE asset_key = (SELECT asset_key FROM asset WHERE is_current = 1 AND asset_key <> %s LIMIT 1)", (a,))   # make X1 an existing dropdown value
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "STANDBY", "pm_date": "2026-08-01", "location_code": "X1"}}, headers=HDR)
         assert r.status_code == 200, r.text
-        assert one(sandbox, "SELECT asset_status, pm_status, location_code, hostname FROM asset WHERE asset_key = %s", (a,)) == {"asset_status": "STANDBY", "pm_status": "DONE", "location_code": "X1", "hostname": "RENAMED"}
+        assert one(sandbox, "SELECT asset_status, pm_status, location_code FROM asset WHERE asset_key = %s", (a,)) == {"asset_status": "STANDBY", "pm_status": "DONE", "location_code": "X1"}
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"hostname": "RENAMED"}}, headers=HDR)       # hostname: administrator / Team Leader-SI only
+        assert r.status_code == 403 and "hostname" in r.json()["error"].lower()
         r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"cover_expiry_date": "2027-01-01"}}, headers=HDR)
         assert r.status_code == 403 and "administrator" in r.json()["error"].lower()
         r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "IN_USE", "purchase_cost": 999}}, headers=HDR)
@@ -398,8 +401,11 @@ def test_schema_readonly_matches_asset_locked_fields_for_a_user(sandbox, monkeyp
         fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
     for locked in ("cover_type", "cover_expiry_date", "rate_component", "rate_value", "purchase_date", "purchase_cost", "vendor_name", "po_no", "refresh_due_date"):
         assert fields[locked]["readonly"] is True, locked
-    for open_field in ("asset_status", "hostname", "location_code", "cpf_no", "engineer_name", "make", "model", "remarks"):
+    for open_field in ("asset_status", "location_code", "cpf_no", "engineer_name", "make", "model", "remarks"):
         assert fields[open_field]["readonly"] is False, open_field
+    assert fields["hostname"]["readonly"] is True
+    for col in ("location_code", "floor_area", "room"):                       # a closed dropdown for a plain User
+        assert fields[col]["kind"] == "enum" and fields[col]["values"] == sorted(fields[col]["values"], key=auth._natural_key)
 
 
 def test_schema_unlocks_everything_with_asset_access_full(sandbox, monkeypatch):
@@ -409,6 +415,27 @@ def test_schema_unlocks_everything_with_asset_access_full(sandbox, monkeypatch):
         fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
     assert fields["cover_expiry_date"]["readonly"] is False
     assert fields["purchase_cost"]["readonly"] is False
+    assert fields["hostname"]["readonly"] is False and fields["room"]["kind"] == "suggest"
+
+
+def test_place_fields_are_a_closed_list_for_users_and_open_for_admin_and_team_lead(sandbox, monkeypatch):
+    a_row = one(sandbox, "SELECT asset_key, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL LIMIT 1")
+    a, eng = a_row["asset_key"], a_row["engineer_name"]
+    body = {"key": a, "changes": {"room": "A BRAND NEW ROOM 77"}}
+    as_user(monkeypatch, "USER", engineer_key=eng)
+    with TestClient(app) as c:
+        r = c.post("/api/edit/assets/update", json=body, headers=HDR)
+        assert r.status_code == 403 and "not in the list" in r.json()["error"]
+    as_user(monkeypatch, "USER", engineer_key=eng)["lead_tools"] = True       # Team Leader/SI: may add a value, and rename a host
+    with TestClient(app) as c:
+        r = c.post("/api/edit/assets/update", json={**body, "changes": {**body["changes"], "hostname": "TL-HOST"}}, headers=HDR)
+        assert r.status_code == 200, r.text
+        fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
+        assert fields["hostname"]["readonly"] is False and fields["room"]["kind"] == "suggest"
+    assert "A BRAND NEW ROOM 77" in auth.place_options("room")
+    as_user(monkeypatch, "USER", engineer_key=eng)                            # now it exists, a plain User can pick it
+    with TestClient(app) as c:
+        assert c.post("/api/edit/assets/update", json={"key": a, "changes": {"room": "a brand new room 77"}}, headers=HDR).status_code in (200, 409)
 
 
 def test_text_is_stored_in_upper_case(sandbox):

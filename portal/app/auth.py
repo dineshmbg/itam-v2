@@ -854,6 +854,41 @@ def is_admin(user):
     return user["role"] == "ADMIN"
 
 
+# Hostname is administrator / Team Leader-SI only, and Location, Floor / area and Room are picked from the values already in the
+# register (a dropdown, ascending) - only the same people may type a value that is not in the list yet (2026-10-07).
+PLACE_COLUMNS = ("location_code", "floor_area", "room")
+
+
+def can_manage_places(user):
+    return bool(is_admin(user) or user.get("asset_access") == "FULL" or user.get("lead_tools"))
+
+
+def _natural_key(s):
+    return [(0, int(t), "") if t.isdigit() else (1, 0, t) for t in re.split(r"(\d+)", s) if t]
+
+
+def place_options(column):
+    """Distinct values of Location / Floor / Room on current assets, ascending (natural order: FLOOR 2 before FLOOR 10)."""
+    if column not in PLACE_COLUMNS:      # the column name goes into SQL - only ever from this whitelist
+        raise ValueError(column)
+    rows = db.query(f"SELECT DISTINCT {column} AS v FROM asset WHERE is_current = 1 AND {column} IS NOT NULL AND btrim({column}) <> ''")
+    return sorted({r["v"] for r in rows}, key=_natural_key)
+
+
+def check_place_values(user, dataset, changes):
+    """A plain User may only choose an existing Location / Floor / Room; a value not in the list needs an administrator or Team Leader/SI."""
+    if dataset != "assets" or can_manage_places(user):
+        return
+    for col in PLACE_COLUMNS:
+        raw = (changes or {}).get(col)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        v = re.sub(r"\s+", " ", raw.strip()).upper()
+        if v not in place_options(col):
+            raise AuthError(f"'{v}' is not in the list. Choose an existing value - a new one can only be added by an administrator or Team Leader/SI.",
+                            403, code="forbidden")
+
+
 def check_edit(user, dataset, fields, key=None):
     """`key` is the record being changed - the asset key or the engineer's register key (engineer_key), when known."""
     if is_admin(user):
@@ -865,6 +900,8 @@ def check_edit(user, dataset, fields, key=None):
     if dataset == "assets":
         if user.get("asset_access") == "FULL":
             return
+        if "hostname" in set(fields) and not can_manage_places(user):
+            raise AuthError("Only administrators and Team Leader/SI can change the hostname.", 403, code="forbidden")
         bad = sorted(set(fields) & ASSET_LOCKED_FIELDS)
         if bad:
             raise AuthError("Only administrators can change: " + ", ".join(bad) + " (contract and lifecycle details).", 403, code="forbidden")

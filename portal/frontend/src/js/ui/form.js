@@ -195,7 +195,7 @@ function control(f, id, initial, engineers) {
       i.value = initial;
       return simple(i);
     }
-    case 'enum': return f.required && f.values.length <= 4 ? radios(f, id, initial) : select(id, [['', '—'], ...f.values.map((v) => [v, labelOf(v, f.key)])], initial);
+    case 'enum': return f.required && f.values.length <= 4 ? radios(f, id, initial) : select(id, [['', '—'], ...f.values.map((v) => [v, f.raw_labels ? v : labelOf(v, f.key)])], initial);
     case 'engineer': return select(id, [['', '—'], ...engineers.map((k) => [k, person(k)])], initial);
     case 'ip': { const i = h('input', { ...common, type: 'text', inputmode: 'decimal', maxlength: '15', placeholder: '10.0.0.1', class: 'mono' }); i.value = initial; return simple(i); }
     case 'asset': case 'call': case 'cpf': return linked(f, id, initial);

@@ -77,7 +77,7 @@ ACTIONS = {
     "calls: create": ("POST", "/api/edit/calls/create", {"values": {}}, who("admin", "user+parts_full", "user+extended", "user+lead")),
     "assets: create": ("POST", "/api/edit/assets/create", {"values": {}}, who("admin", "user+asset_full", "user+extended", "user+lead")),
     "assets: archive": ("POST", "/api/edit/assets/archive", "OWN_ARCHIVE", who("admin", "user+asset_full", "user+extended", "user+lead")),
-    "assets: edit hostname, own asset": ("POST", "/api/edit/assets/update", "OWN_HOSTNAME", who("admin", "user", "user+parts_read", "user+parts_full", "user+asset_full", "user+extended", "user+lead")),
+    "assets: edit hostname, own asset": ("POST", "/api/edit/assets/update", "OWN_HOSTNAME", who("admin", "user+asset_full", "user+extended", "user+lead")),    # hostname: administrator / Team Leader-SI only (2026-10-07)
     "assets: edit hostname, someone else's": ("POST", "/api/edit/assets/update", "OTHER_HOSTNAME", who("admin", "user+asset_full", "user+extended", "user+lead")),
     "assets: edit contract field, own asset": ("POST", "/api/edit/assets/update", "OWN_CONTRACT", who("admin", "user+asset_full", "user+extended", "user+lead")),
     "assets: edit lifecycle field, own asset": ("POST", "/api/edit/assets/update", "OWN_LIFECYCLE", who("admin", "user+asset_full", "user+extended", "user+lead")),

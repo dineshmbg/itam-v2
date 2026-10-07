@@ -57,6 +57,7 @@ async def update(request):
     name, b, u, ip = _ctx(request)
     auth.check_edit(u, name, (b.get("changes") or {}).keys(), _key(b))
     def run():
+        auth.check_place_values(u, name, b.get("changes"))
         r = edit.update(name, _key(b), b.get("changes"), b.get("expected"), u["username"], ip, b.get("reason"))
         _act(u, ip, "EDIT", f"{name}:{_key(b)}", {"fields": r["changed"]})
         return {**r, "detail": queries.detail(name, _key(b), include_archived=True, user=u)}
@@ -169,6 +170,17 @@ async def schema(request):
                 locked = auth.ASSET_LOCKED_FIELDS
             for f in s["assets"]["fields"]:
                 f["readonly"] = f["key"] in locked
+                if f["key"] == "hostname" and not auth.can_manage_places(u):
+                    f["readonly"] = True
+        # Location / Floor / Room: a dropdown of what the register already holds, ascending. Administrators and Team Leader/SI get the
+        # same list as suggestions on a box they can still type a new value into; everyone else gets a closed list.
+        closed = not auth.can_manage_places(u)
+        for f in s["assets"]["fields"]:
+            if f["key"] in auth.PLACE_COLUMNS:
+                f["values"] = auth.place_options(f["key"])
+                f["raw_labels"] = True      # shown exactly as stored (upper case), not humanised like a status badge
+                if not f.get("readonly"):
+                    f["kind"] = "enum" if closed else "suggest"
             # engineers: every field is editable for a non-admin - but only on their own record, enforced by auth.check_edit's
             # ownership check (and by record.js only showing the Edit button on the signed-in engineer's own record) rather than
             # by field, since the person is allowed to change all of their own details, not just a fixed contact-details subset
