@@ -63,7 +63,7 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
   // CI number rather than leaving it blank to type from scratch. A plain save then fills it in for real, a natural backfill one
   // edit at a time instead of a one-off bulk update. Only fires once, at form open - unlike the create-mode listener above,
   // the CI here is already fixed, so there is nothing to keep tracking as the person types.
-  if (!create && items.has('hostname') && !items.get('hostname').f.readonly && !values.hostname && values.asset_key) {
+  if (!create && items.has('hostname') && !values.hostname && values.asset_key) {
     items.get('hostname').c.write(values.asset_key);
   }
   // a new asset's Type suggests its Class, when every existing asset of that Type happens to share one - e.g. typing "LAPTOP"
