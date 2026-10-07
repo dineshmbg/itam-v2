@@ -170,8 +170,9 @@ async def schema(request):
                 locked = auth.ASSET_LOCKED_FIELDS
             for f in s["assets"]["fields"]:
                 f["readonly"] = f["key"] in locked
-                if f["key"] == "hostname" and not auth.can_manage_places(u):
-                    f["readonly"] = f["show_locked"] = True      # still shown in the edit form, greyed out and unclickable
+                if f["key"] in auth.IDENTITY_LOCKED and not auth.can_manage_places(u):
+                    f["readonly"] = f["show_locked"] = True      # still shown in the edit form, but not editable or clickable
+                    f["no_grey"] = f["key"] != "hostname"        # serial / asset ID / census no.: locked but at full contrast
         # Location / Floor / Room: a dropdown of what the register already holds, ascending. Administrators and Team Leader/SI get the
         # same list as suggestions on a box they can still type a new value into; everyone else gets a closed list.
         closed = not auth.can_manage_places(u)

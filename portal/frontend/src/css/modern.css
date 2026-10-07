@@ -1184,3 +1184,7 @@ body { background: var(--c-bg); }
 .frow.locked { opacity: .65; }
 .frow.locked input, .frow.locked select, .frow.locked textarea { cursor: not-allowed; background: color-mix(in srgb, currentColor 6%, transparent); }
 .frow.locked .flabel::after { content: ' (locked)'; font-weight: 400; }
+/* locked but not greyed out: readable at full contrast, still not editable */
+.frow.locked.locked-plain { opacity: 1; }
+.frow.locked.locked-plain input { background: transparent; color: inherit; -webkit-text-fill-color: currentColor; cursor: default; }
+.frow.locked.locked-plain .flabel::after { content: ''; }

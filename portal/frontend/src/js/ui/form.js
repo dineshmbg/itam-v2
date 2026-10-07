@@ -25,7 +25,7 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
       for (const n of [c.input, ...c.node.querySelectorAll?.('input,select,textarea') || []]) if (n) { n.disabled = true; n.setAttribute('aria-disabled', 'true'); }
       c.node.style.pointerEvents = 'none';
     }
-    const row = h('div', { class: 'frow' + (f.readonly ? ' locked' : ''), 'data-kind': f.kind }, label, c.node, err);
+    const row = h('div', { class: 'frow' + (f.readonly ? (f.no_grey ? ' locked locked-plain' : ' locked') : ''), 'data-kind': f.kind }, label, c.node, err);
     groups.get(f.group).append(row);
     c.node.addEventListener('input', () => { clearError(f.key); onInput?.(); });
     c.node.addEventListener('change', () => { clearError(f.key); onInput?.(); });

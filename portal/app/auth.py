@@ -857,6 +857,8 @@ def is_admin(user):
 # Hostname is administrator / Team Leader-SI only, and Location, Floor / area and Room are picked from the values already in the
 # register (a dropdown, ascending) - only the same people may type a value that is not in the list yet (2026-10-07).
 PLACE_COLUMNS = ("location_code", "floor_area", "room")
+# Identity fields a plain User sees but cannot change: administrator / full asset access / Team Leader-SI only.
+IDENTITY_LOCKED = {"hostname", "serial_no", "ongc_asset_id", "ongc_census_no"}
 
 
 def can_manage_places(user):
@@ -911,8 +913,9 @@ def check_edit(user, dataset, fields, key=None):
     if dataset == "assets":
         if user.get("asset_access") == "FULL":
             return
-        if "hostname" in set(fields) and not can_manage_places(user):
-            raise AuthError("Only administrators and Team Leader/SI can change the hostname.", 403, code="forbidden")
+        locked_id = sorted(set(fields) & IDENTITY_LOCKED)
+        if locked_id and not can_manage_places(user):
+            raise AuthError("Only administrators and Team Leader/SI can change: " + ", ".join(locked_id) + ".", 403, code="forbidden")
         bad = sorted(set(fields) & ASSET_LOCKED_FIELDS)
         if bad:
             raise AuthError("Only administrators can change: " + ", ".join(bad) + " (contract and lifecycle details).", 403, code="forbidden")
