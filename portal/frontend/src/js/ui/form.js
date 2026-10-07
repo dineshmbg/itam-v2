@@ -195,7 +195,7 @@ function control(f, id, initial, engineers) {
       i.value = initial;
       return simple(i);
     }
-    case 'enum': return f.required && f.values.length <= 4 ? radios(f, id, initial) : select(id, [['', '—'], ...f.values.map((v) => [v, f.raw_labels ? v : labelOf(v, f.key)])], initial);
+    case 'enum': if (f.lookup) return lookupSelect(f, id, initial); return f.required && f.values.length <= 4 ? radios(f, id, initial) : select(id, [['', '—'], ...f.values.map((v) => [v, f.raw_labels ? v : labelOf(v, f.key)])], initial);
     case 'engineer': return select(id, [['', '—'], ...engineers.map((k) => [k, person(k)])], initial);
     case 'ip': { const i = h('input', { ...common, type: 'text', inputmode: 'decimal', maxlength: '15', placeholder: '10.0.0.1', class: 'mono' }); i.value = initial; return simple(i); }
     case 'asset': case 'call': case 'cpf': return linked(f, id, initial);
@@ -218,6 +218,23 @@ function select(id, options, initial) {
   const s = h('select', { id }, options.map(([v, t]) => h('option', { value: v }, t)));
   s.value = options.some(([v]) => v === initial) ? initial : (initial ? (s.append(h('option', { value: initial }, initial)), initial) : '');
   return simple(s);
+}
+
+/** Closed dropdown whose choices come from the server, for the engineer selected on the form (Location / Floor / Room): the unique
+ *  values already used on that engineer's assets, ascending. `_load(filterValue)` re-fills it when the engineer changes. */
+function lookupSelect(f, id, initial) {
+  const ctrl = select(id, [['', '—']], initial);
+  const s = ctrl.input;
+  const fill = (vals) => {
+    const keep = s.value;
+    s.replaceChildren(h('option', { value: '' }, '—'), ...vals.map((v) => h('option', { value: v }, v)));
+    if (keep && !vals.includes(keep)) s.append(h('option', { value: keep }, keep));
+    s.value = keep;
+  };
+  const load = debounce(async (filterValue) => {
+    try { fill((await get('/api/edit/assets/lookup', { field: f.lookup, filter: filterValue || '' })).values); } catch (_) { /* keep what is shown */ }
+  }, 100);
+  return { ...ctrl, _load: load };
 }
 
 /** Icon radio group: native radios stay in the DOM for keyboard and screen readers, the Carbon glyphs are what people see. */

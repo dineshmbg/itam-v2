@@ -361,7 +361,9 @@ def test_groups_limit_what_a_user_can_change(sandbox, monkeypatch):
     sandbox.execute("UPDATE asset SET pm_quarter = 'Q2 JUL-SEP 2026' WHERE asset_key = %s", (a,))      # pin the quarter: the real data moves on every roll-over
     as_user(monkeypatch, "USER", engineer_key=a_row["engineer_name"])
     with TestClient(app) as c:
-        sandbox.execute("UPDATE asset SET location_code = 'X1' WHERE asset_key = (SELECT asset_key FROM asset WHERE is_current = 1 AND asset_key <> %s LIMIT 1)", (a,))   # make X1 an existing dropdown value
+        sandbox.execute("UPDATE asset SET location_code = 'X1' WHERE asset_key = %s", (a,))   # X1 becomes one of this engineer's dropdown values
+        r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"location_code": "NOWHERE-ELSE"}}, headers=HDR)
+        assert r.status_code == 403 and "not in the list" in r.json()["error"]
         r = c.post("/api/edit/assets/update", json={"key": a, "changes": {"asset_status": "STANDBY", "pm_date": "2026-08-01", "location_code": "X1"}}, headers=HDR)
         assert r.status_code == 200, r.text
         assert one(sandbox, "SELECT asset_status, pm_status, location_code FROM asset WHERE asset_key = %s", (a,)) == {"asset_status": "STANDBY", "pm_status": "DONE", "location_code": "X1"}
@@ -405,7 +407,12 @@ def test_schema_readonly_matches_asset_locked_fields_for_a_user(sandbox, monkeyp
         assert fields[open_field]["readonly"] is False, open_field
     assert fields["hostname"]["readonly"] is True
     for col in ("location_code", "floor_area", "room"):                       # a closed dropdown for a plain User
-        assert fields[col]["kind"] == "enum" and fields[col]["values"] == sorted(fields[col]["values"], key=auth._natural_key)
+        assert fields[col]["kind"] == "enum" and fields[col]["lookup"] == col and fields[col]["depends_on"] == "engineer_name"
+    with TestClient(app) as c:
+        vals = c.get("/api/edit/assets/lookup", params={"field": "room", "filter": "SOME-ENGINEER"}).json()["values"]
+        assert vals == []                                                      # only that engineer's own values are offered
+        allv = c.get("/api/edit/assets/lookup", params={"field": "room"}).json()["values"]
+        assert allv == sorted(set(allv), key=auth._natural_key)                # unique and ascending
 
 
 def test_schema_unlocks_everything_with_asset_access_full(sandbox, monkeypatch):
@@ -415,7 +422,7 @@ def test_schema_unlocks_everything_with_asset_access_full(sandbox, monkeypatch):
         fields = {f["key"]: f for f in c.get("/api/edit/schema").json()["datasets"]["assets"]["fields"]}
     assert fields["cover_expiry_date"]["readonly"] is False
     assert fields["purchase_cost"]["readonly"] is False
-    assert fields["hostname"]["readonly"] is False and fields["room"]["kind"] == "suggest"
+    assert fields["hostname"]["readonly"] is False and fields["room"]["kind"] == "suggest" and fields["room"]["depends_on"] == "engineer_name"
 
 
 def test_place_fields_are_a_closed_list_for_users_and_open_for_admin_and_team_lead(sandbox, monkeypatch):

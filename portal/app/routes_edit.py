@@ -57,7 +57,7 @@ async def update(request):
     name, b, u, ip = _ctx(request)
     auth.check_edit(u, name, (b.get("changes") or {}).keys(), _key(b))
     def run():
-        auth.check_place_values(u, name, b.get("changes"))
+        auth.check_place_values(u, name, b.get("changes"), _key(b))
         r = edit.update(name, _key(b), b.get("changes"), b.get("expected"), u["username"], ip, b.get("reason"))
         _act(u, ip, "EDIT", f"{name}:{_key(b)}", {"fields": r["changed"]})
         return {**r, "detail": queries.detail(name, _key(b), include_archived=True, user=u)}
@@ -177,7 +177,7 @@ async def schema(request):
         closed = not auth.can_manage_places(u)
         for f in s["assets"]["fields"]:
             if f["key"] in auth.PLACE_COLUMNS:
-                f["values"] = auth.place_options(f["key"])
+                f["lookup"], f["depends_on"] = f["key"], "engineer_name"     # list reloads for whichever engineer is selected on the form
                 f["raw_labels"] = True      # shown exactly as stored (upper case), not humanised like a status badge
                 if not f.get("readonly"):
                     f["kind"] = "enum" if closed else "suggest"
@@ -226,6 +226,7 @@ LOOKUP_FIELDS = {
     "asset_type": ("asset", "asset_type", "asset_class"), "make": ("asset", "make", None), "model": ("asset", "model", "make"),
     "asset_class": ("asset", "asset_class", "asset_type"),   # reverse of "asset_type" above - used to suggest Class once a Type is typed
     "part_no": ("spare_inward", "part_no", "asset_key"),
+    "location_code": ("asset", "location_code", "engineer_name"), "floor_area": ("asset", "floor_area", "engineer_name"), "room": ("asset", "room", "engineer_name"),
 }
 
 
@@ -238,6 +239,8 @@ async def lookup(request):
     table, col, filter_col = spec
 
     def run():
+        if field in auth.PLACE_COLUMNS:       # unique values for the selected engineer, ascending
+            return auth.place_options(field, filter_value)
         if filter_col and filter_value:
             rows = db.query(f"SELECT DISTINCT {col} AS v FROM {table} WHERE is_current = 1 AND {col} IS NOT NULL AND {filter_col} = %s ORDER BY 1 LIMIT 200", [filter_value])
         else:

@@ -867,25 +867,36 @@ def _natural_key(s):
     return [(0, int(t), "") if t.isdigit() else (1, 0, t) for t in re.split(r"(\d+)", s) if t]
 
 
-def place_options(column):
-    """Distinct values of Location / Floor / Room on current assets, ascending (natural order: FLOOR 2 before FLOOR 10)."""
+def place_options(column, engineer=None):
+    """Distinct values of Location / Floor / Room on current assets - only those of `engineer`'s assets when one is given - ascending
+    (natural order: FLOOR 2 before FLOOR 10)."""
     if column not in PLACE_COLUMNS:      # the column name goes into SQL - only ever from this whitelist
         raise ValueError(column)
-    rows = db.query(f"SELECT DISTINCT {column} AS v FROM asset WHERE is_current = 1 AND {column} IS NOT NULL AND btrim({column}) <> ''")
-    return sorted({r["v"] for r in rows}, key=_natural_key)
+    sql = f"SELECT DISTINCT {column} AS v FROM asset WHERE is_current = 1 AND {column} IS NOT NULL AND btrim({column}) <> ''"
+    params = []
+    if engineer:
+        sql += " AND engineer_name = %s"
+        params.append(str(engineer).strip().upper())
+    return sorted({r["v"] for r in db.query(sql, params)}, key=_natural_key)
 
 
-def check_place_values(user, dataset, changes):
-    """A plain User may only choose an existing Location / Floor / Room; a value not in the list needs an administrator or Team Leader/SI."""
+def check_place_values(user, dataset, changes, key=None):
+    """A plain User may only choose a Location / Floor / Room already used by the asset's engineer (the one being set in the same save, if
+    the engineer is changing too); a value not in that list needs an administrator or Team Leader/SI."""
     if dataset != "assets" or can_manage_places(user):
         return
+    changes = changes or {}
+    engineer = changes.get("engineer_name") if "engineer_name" in changes else None
+    if engineer is None and "engineer_name" not in changes and key:
+        row = db.one("SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", [key])
+        engineer = row["engineer_name"] if row else None
     for col in PLACE_COLUMNS:
-        raw = (changes or {}).get(col)
+        raw = changes.get(col)
         if not isinstance(raw, str) or not raw.strip():
             continue
         v = re.sub(r"\s+", " ", raw.strip()).upper()
-        if v not in place_options(col):
-            raise AuthError(f"'{v}' is not in the list. Choose an existing value - a new one can only be added by an administrator or Team Leader/SI.",
+        if v not in place_options(col, engineer):
+            raise AuthError(f"'{v}' is not in the list for this engineer. Choose an existing value - a new one can only be added by an administrator or Team Leader/SI.",
                             403, code="forbidden")
 
 

@@ -141,7 +141,7 @@ actually offered in the UI (or vice versa); see the schema-level tests in `tests
 
 **Hostname, Location, Floor / area, Room (2026-10-07):** a plain User cannot edit **Hostname** (administrator, a User with full asset
 access, or a Team Leader/SI only - `auth.can_manage_places`). **Location, Floor / area and Room** are a dropdown of the values already on
-current assets, in ascending (natural) order - a plain User can only pick from it, and the server refuses any other value
+assets **of the engineer selected on the form** (unique, ascending, natural order; the lists reload when the engineer changes) - a plain User can only pick from it, and the server refuses any other value
 (`auth.check_place_values`). Administrators, full asset access and Team Leader/SI get the same list as suggestions on a box they can
 still type into, which is how a new value gets added. `routes_edit.py`'s `schema()` sends the list and the closed/open kind.
 
