@@ -614,6 +614,8 @@ def create(dataset, values, editor, ip, reason=None):
         row[sp["pk"]] = key
         if dataset == "assets":
             row["record_level"] = "ASSET"
+            if not row.get("hostname"):
+                row["hostname"] = key          # Asset (CI) = hostname whenever no hostname is given
         row.update(_linked(con, dataset, row, {"asset_key": 1, "cpf_no": 1, **row}))
         row.update(_derive(con, dataset, row, set(norm) | {"cpf_no"}, as_of))
         row.update(snapshot_date=table_snap or as_of, is_current=1, first_seen_date=as_of, last_seen_date=as_of)
