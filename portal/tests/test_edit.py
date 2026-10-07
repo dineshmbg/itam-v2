@@ -406,7 +406,7 @@ def test_schema_readonly_matches_asset_locked_fields_for_a_user(sandbox, monkeyp
     for open_field in ("asset_status", "location_code", "cpf_no", "engineer_name", "make", "model", "remarks"):
         assert fields[open_field]["readonly"] is False, open_field
     assert fields["hostname"]["readonly"] is True
-    for f in ("serial_no", "ongc_asset_id", "ongc_census_no"):                     # locked like hostname, but shown at full contrast
+    for f in ("hostname", "serial_no", "ongc_asset_id", "ongc_census_no"):         # locked, shown at full contrast
         assert fields[f]["readonly"] is True and fields[f]["show_locked"] is True and fields[f]["no_grey"] is True, f
     for col in ("location_code", "floor_area", "room"):                       # a closed dropdown for a plain User
         assert fields[col]["kind"] == "enum" and fields[col]["lookup"] == col and fields[col]["depends_on"] == "engineer_name"
