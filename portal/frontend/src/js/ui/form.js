@@ -21,7 +21,11 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
     const c = control(f, id, initial, engineers);
     const err = h('div', { class: 'ferr', id: id + '-e', role: 'alert', hidden: true });
     const label = h('label', { class: 'flabel', for: c.labelFor || id }, f.label, f.required ? h('span', { class: 'req', title: 'Required' }, ' *') : null);
-    const row = h('div', { class: 'frow', 'data-kind': f.kind }, label, c.node, err);
+    if (f.readonly) {      // shown for reference but locked: not focusable, not clickable, never sent back
+      for (const n of [c.input, ...c.node.querySelectorAll?.('input,select,textarea') || []]) if (n) { n.disabled = true; n.setAttribute('aria-disabled', 'true'); }
+      c.node.style.pointerEvents = 'none';
+    }
+    const row = h('div', { class: 'frow' + (f.readonly ? ' locked' : ''), 'data-kind': f.kind }, label, c.node, err);
     groups.get(f.group).append(row);
     c.node.addEventListener('input', () => { clearError(f.key); onInput?.(); });
     c.node.addEventListener('change', () => { clearError(f.key); onInput?.(); });
@@ -59,7 +63,7 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
   // CI number rather than leaving it blank to type from scratch. A plain save then fills it in for real, a natural backfill one
   // edit at a time instead of a one-off bulk update. Only fires once, at form open - unlike the create-mode listener above,
   // the CI here is already fixed, so there is nothing to keep tracking as the person types.
-  if (!create && items.has('hostname') && !values.hostname && values.asset_key) {
+  if (!create && items.has('hostname') && !items.get('hostname').f.readonly && !values.hostname && values.asset_key) {
     items.get('hostname').c.write(values.asset_key);
   }
   // a new asset's Type suggests its Class, when every existing asset of that Type happens to share one - e.g. typing "LAPTOP"
@@ -153,6 +157,7 @@ export function buildForm({ fields, values = {}, engineers = [], create = false,
     changes() {
       const out = {};
       for (const [k, it] of items) {
+        if (it.f.readonly) continue;
         const v = it.c.read();
         if (v !== it.initial) out[k] = v === '' ? null : v;
       }

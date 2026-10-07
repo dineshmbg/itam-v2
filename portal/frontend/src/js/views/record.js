@@ -104,7 +104,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
 
   function edit() {
     drawer.setTabs(null); drawer.setFoot(null);
-    form = buildForm({ fields: spec.fields.map((f) => ({ ...f, create_only: f.create_only })).filter((f) => !f.readonly), values: p.row, engineers: schema.engineers, onInput: () => { save.disabled = !Object.keys(form.changes()).length; } });
+    form = buildForm({ fields: spec.fields.map((f) => ({ ...f, create_only: f.create_only })).filter((f) => !f.readonly || f.show_locked), values: p.row, engineers: schema.engineers, onInput: () => { save.disabled = !Object.keys(form.changes()).length; } });
     const banner = h('div', { class: 'rec-note bad', role: 'alert', hidden: true });
     const reason = h('input', { type: 'text', id: 'rec-reason', maxlength: '200', placeholder: 'Optional: why is this being changed?' });
     const save = h('button', { class: 'btn primary', type: 'button', disabled: true }, icon('save'), 'Save changes');

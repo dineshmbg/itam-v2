@@ -171,7 +171,7 @@ async def schema(request):
             for f in s["assets"]["fields"]:
                 f["readonly"] = f["key"] in locked
                 if f["key"] == "hostname" and not auth.can_manage_places(u):
-                    f["readonly"] = True
+                    f["readonly"] = f["show_locked"] = True      # still shown in the edit form, greyed out and unclickable
         # Location / Floor / Room: a dropdown of what the register already holds, ascending. Administrators and Team Leader/SI get the
         # same list as suggestions on a box they can still type a new value into; everyone else gets a closed list.
         closed = not auth.can_manage_places(u)
