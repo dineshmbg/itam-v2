@@ -19,7 +19,7 @@ const NAV = [
     ['registers/outward', 'Outward', 'box', 'parts', 'spr'], ['registers/rma', 'OEM RMA', 'tools', 'parts', 'spr'],
   ]],
   ['People', [['registers/engineers', 'Engineers', 'user--avatar', false, 'eng']]],
-  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/history', 'Past quarters', 'time', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', 'lead', 'pm']]],
+  ['Preventive maintenance', [['pm', 'PM dashboard', 'analytics', false, 'pm'], ['pm/work', 'PM work orders', 'in-progress', false, 'pm'], ['pm/findings', 'PM findings', 'warning', false, 'pm'], ['registers/pm', 'PM worklist', 'checkmark--outline', false, 'pm'], ['pm/history', 'Past quarters', 'time', false, 'pm'], ['pm/cycles', 'Cycles and snapshots', 'calendar', 'lead', 'pm']]],
   ['Reports', [['reports', 'Report builder', 'report', false, 'rep'], ['reports/inventory', 'My inventory report', 'compare', false, 'rep']]],
   ['Control', [['integrity', 'Data integrity', 'security', 'strict', 'adm'], ['audit', 'Change log', 'catalog', 'strict', 'adm']]],
   ['Data tools', [['admin/import', 'Data import', 'upload', 'strict', 'data'], ['admin/match', 'Inventory match', 'compare', 'lead_strict', 'data'], ['admin/backup', 'Backup and restore', 'data--base', 'strict', 'data'], ['admin/update', 'Software update', 'restart', 'strict', 'data']]],
@@ -115,6 +115,7 @@ export function buildShell(app) {
   nav.addEventListener('click', () => shell.classList.remove('nav-open'));
   return {
     setActive(path) {
+      if (path.startsWith('pm/wo/')) path = 'pm/work';      // a work order opened from the list keeps that list highlighted
       const items = [...nav.querySelectorAll('a.nav-item')];
       const hit = items.filter((a) => path === a.dataset.path || path.startsWith(a.dataset.path + '/')).sort((x, y) => y.dataset.path.length - x.dataset.path.length)[0];
       items.forEach((a) => { if (a === hit) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });

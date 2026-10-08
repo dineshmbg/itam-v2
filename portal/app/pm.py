@@ -16,7 +16,7 @@ import itam_rules as R  # noqa: E402
 
 from . import db, edit  # noqa: E402
 
-KICKOFF_DAYS = 60
+KICKOFF_DAYS = 40
 MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 IN_SCOPE = "is_current = 1 AND record_level = 'ASSET' AND pm_status <> 'NOT_TRACKED'"
 
@@ -240,11 +240,7 @@ def history_tables(label, as_of, eng=None, status=None, q=None):
 
 
 # ---------------------------------------------------------------- recording
-def record(keys, pm_date, done_by, signed_by, remarks, user, ip):
-    """Record a completed PM for one or many assets in a single transaction."""
-    keys = [str(k).upper() for k in dict.fromkeys(keys or [])][:500]
-    if not keys:
-        raise PmError("Select at least one asset.")
+def _parse_pm_date(pm_date):
     try:
         d = dt.date.fromisoformat(str(pm_date)[:10])
     except ValueError:
@@ -254,24 +250,39 @@ def record(keys, pm_date, done_by, signed_by, remarks, user, ip):
         raise PmError("The PM date cannot be in the future.")
     if not q["start"] <= d <= q["end"]:
         raise PmError(f"The PM date must fall in the current cycle ({q['label']}: {q['start']:%d %b %Y} to {q['end']:%d %b %Y}).")
+    return d, q
+
+
+def record_in(con, keys, d, q, done_by, signed_by, remarks, user, ip):
+    """Write the PM onto each asset (and into pm_record) inside the caller's transaction. Returns the number recorded."""
     done = 0
+    ensure_cycle(con)
+    for k in keys:
+        changes = {"pm_date": d.isoformat()}
+        if done_by:
+            changes["pm_done_by"] = done_by
+        if signed_by:
+            changes["pm_signed_by"] = signed_by
+        row = con.execute("SELECT pm_status, record_level FROM asset WHERE asset_key = %s AND is_current = 1", (k,)).fetchone()
+        if not row:
+            raise PmError(f"{k} is not in the asset register.", 404)
+        if row[0] == "NOT_TRACKED" or row[1] != "ASSET":
+            raise PmError(f"{k} is not in the PM scope (laptops and components are not tracked).")
+        edit.update("assets", k, changes, {}, user["username"], ip, remarks or f"PM {q['label']}", con=con)
+        con.execute("INSERT INTO pm_record (quarter_label, asset_key, pm_date, done_by, signed_by, remarks, recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (q["label"], k, d, (done_by or "").upper() or None, (signed_by or "").upper() or None, (remarks or "").upper() or None, user["username"]))
+        done += 1
+    return done
+
+
+def record(keys, pm_date, done_by, signed_by, remarks, user, ip):
+    """Record a completed PM for one or many assets in a single transaction."""
+    keys = [str(k).upper() for k in dict.fromkeys(keys or [])][:500]
+    if not keys:
+        raise PmError("Select at least one asset.")
+    d, q = _parse_pm_date(pm_date)
     with db.write() as con:
-        ensure_cycle(con)
-        for k in keys:
-            changes = {"pm_date": d.isoformat()}
-            if done_by:
-                changes["pm_done_by"] = done_by
-            if signed_by:
-                changes["pm_signed_by"] = signed_by
-            row = con.execute("SELECT pm_status, record_level FROM asset WHERE asset_key = %s AND is_current = 1", (k,)).fetchone()
-            if not row:
-                raise PmError(f"{k} is not in the asset register.", 404)
-            if row[0] == "NOT_TRACKED" or row[1] != "ASSET":
-                raise PmError(f"{k} is not in the PM scope (laptops and components are not tracked).")
-            edit.update("assets", k, changes, {}, user["username"], ip, remarks or f"PM {q['label']}", con=con)
-            con.execute("INSERT INTO pm_record (quarter_label, asset_key, pm_date, done_by, signed_by, remarks, recorded_by) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                        (q["label"], k, d, (done_by or "").upper() or None, (signed_by or "").upper() or None, (remarks or "").upper() or None, user["username"]))
-            done += 1
+        done = record_in(con, keys, d, q, done_by, signed_by, remarks, user, ip)
     return {"recorded": done, "quarter": q["label"]}
 
 
