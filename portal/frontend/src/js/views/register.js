@@ -178,7 +178,7 @@ export function mountRegister(root, name, opts = {}) {
           columns: cols.filter((c) => c.visible), sort: { key: sort.key, dir: sort.dir }, ariaLabel: ds.label, search: () => q, fetchPage,
           onSort: (key, dir) => { sort = { key, dir }; syncUrl(); requery(); }, onOpen: (row) => openDetail(row.id),
           widthKey,
-          rowClass: myEngineerKey ? (row) => (row.id === myEngineerKey ? 'row-self' : null) : undefined,
+          rowClass: (row) => (name === 'calls' && row.priority === 'P1' && row.call_status === 'OPEN' ? 'row-p1' : (myEngineerKey && row.id === myEngineerKey ? 'row-self' : null)),
         });
       }
       function rebuildTable() {

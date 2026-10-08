@@ -636,6 +636,8 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 .gt-row:not([aria-selected="true"]):not(.row-self):hover { box-shadow: inset 3px 0 0 var(--c-accent); background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface)); }
 .gt-row:not([aria-selected="true"]):hover .gt-td:first-child { font-weight: 600; }
 .gt-row.row-self { box-shadow: inset 4px 0 0 var(--c-ok); }
+.gt-row.row-p1 { background: color-mix(in srgb, var(--c-bad, #da1e28) 12%, var(--c-surface)); box-shadow: inset 4px 0 0 var(--c-bad, #da1e28); font-weight: 600; }
+.gt-row.row-p1:not([aria-selected="true"]):hover { background: color-mix(in srgb, var(--c-bad, #da1e28) 20%, var(--c-surface)); box-shadow: inset 4px 0 0 var(--c-bad, #da1e28); }
 .gt-th { transition: background-color 120ms var(--ease), color 120ms var(--ease); }
 .gt-th .ico { transition: transform 200ms var(--ease), color 120ms var(--ease); }
 button.gt-th:hover .ico { transform: translateY(-1px); color: var(--c-accent); }
