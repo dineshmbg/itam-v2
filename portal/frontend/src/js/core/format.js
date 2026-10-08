@@ -15,6 +15,11 @@ export function month(v) {
   const m = /^(\d{4})-(\d{2})/.exec(v || '');
   return m ? `${MON[+m[2] - 1]} ${m[1]}` : v;
 }
+/** "7 Oct 2026 14:05" from an ISO timestamp (the date alone when it has no time part). */
+export function when(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? iso : `${date(iso.slice(0, 10))} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+}
 export function clock(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour12: false }); }
 export function humanize(v) {
   if (v == null || v === '') return '—';

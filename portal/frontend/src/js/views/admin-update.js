@@ -5,7 +5,7 @@ import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
-import { when } from './audit.js';
+import { when } from '../core/format.js';
 
 const bytes = (n) => (n < 1048576 ? `${Math.round((n || 0) / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const STEPS = [['verifying', 'Check the package'], ['backup', 'Back up the database'], ['loading', 'Load the new version'], ['restarting', 'Restart the portal'], ['health', 'Wait until it is healthy']];

@@ -1,12 +1,11 @@
 // PM cycles: the calendar of quarters, frozen snapshots, and (administrators) roll-over to the next quarter.
 import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { date, int } from '../core/format.js';
+import { date, int, when } from '../core/format.js';
 import { toast } from '../ui/toast.js';
 import { isAdmin, hasLeadTools } from '../core/session.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
-import { when } from './audit.js';
 
 export function mountPmCycles(root) {
   let dead = false;

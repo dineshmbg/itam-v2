@@ -1,7 +1,7 @@
 // The record drawer: read view, edit form, archive / restore, manual-override markers and history. Also the "New record" window.
 import { send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { date, label as fieldLabel } from '../core/format.js';
+import { date, label as fieldLabel, when } from '../core/format.js';
 import { getSchema } from '../core/editor.js';
 import { toast } from '../ui/toast.js';
 import { isAdmin, user as sessionUser } from '../core/session.js';
@@ -222,11 +222,6 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
 
   show();
   return { refresh(next) { if (!form) { p = next; show(); } } };
-}
-
-function when(iso) {
-  const d = new Date(iso);
-  return isNaN(d) ? iso : `${date(iso.slice(0, 10))} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 // The field(s) on each register whose default is "today" - recomputed fresh every time the New-record window opens (see below),

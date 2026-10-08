@@ -1,12 +1,11 @@
 // User management (administrators): accounts, groups, password reset, unlock, two-factor reset and the security policy. Everything happens in floating windows.
 import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { person } from '../core/format.js';
+import { person, when } from '../core/format.js';
 import { toast } from '../ui/toast.js';
 import * as session from '../core/session.js';
 import { confirmBox, openModal } from '../ui/modal.js';
 import { errorBlock, pageHead } from './common.js';
-import { when } from './audit.js';
 
 const SETTING_FIELDS = [
   ['pw_min_length', 'Minimum password length', 'characters', 8, 64], ['pw_history', 'Passwords remembered (cannot be reused)', 'passwords', 0, 24],

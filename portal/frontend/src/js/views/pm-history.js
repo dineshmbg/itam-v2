@@ -1,12 +1,11 @@
 // Past quarters: every quarter that was frozen when it closed, with the asset-by-asset picture, who did the PM, and a download.
 import { get } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { date, int, pct, person } from '../core/format.js';
+import { date, int, pct, person, when } from '../core/format.js';
 import * as router from '../core/router.js';
 import { entity } from '../ui/hovercard.js';
 import { shareMenu } from '../ui/share.js';
 import { barRows, errorBlock, kpiStrip, loading, pageHead, panel } from './common.js';
-import { when } from './audit.js';
 
 const WORDS = { PENDING: ['Scheduled', 'mute'], DONE: ['Completed', 'ok'], DONE_OUTSIDE_QUARTER: ['Completed late', 'warn'] };
 

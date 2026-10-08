@@ -5,7 +5,7 @@ import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
-import { when } from './audit.js';
+import { when } from '../core/format.js';
 
 const STATUS = { UPLOADED: ['mute', 'Staged'], CHECKED: ['info', 'Checked'], CHECK_FAILED: ['bad', 'Check failed'], LOADED: ['ok', 'Loaded'], LOAD_FAILED: ['bad', 'Load failed'] };
 const bytes = (n) => (n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);

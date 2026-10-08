@@ -1,6 +1,6 @@
 import { h, icon } from '../core/dom.js';
-import { when } from './audit.js';
 import { mountListPage } from './list-page.js';
+import { when } from '../core/format.js';
 
 const detailText = (d) => (d == null ? '' : typeof d === 'string' ? d : Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · '));
 

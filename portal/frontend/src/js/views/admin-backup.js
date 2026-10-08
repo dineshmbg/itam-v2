@@ -4,7 +4,7 @@ import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
-import { when } from './audit.js';
+import { when } from '../core/format.js';
 
 const KIND = { MANUAL: ['info', 'Manual'], AUTO: ['mute', 'Automatic'], PRE_RESTORE: ['warn', 'Before restore'], PRE_IMPORT: ['warn', 'Before import'] };
 const bytes = (n) => (n < 1048576 ? `${Math.round((n || 0) / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);

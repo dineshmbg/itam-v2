@@ -1,16 +1,11 @@
 import { h } from '../core/dom.js';
-import { date, label as fieldLabel } from '../core/format.js';
+import { label as fieldLabel, when } from '../core/format.js';
 import { entity } from '../ui/hovercard.js';
 import { mountListPage } from './list-page.js';
 
 const short = (v) => (v == null || v === '' ? '—' : String(v));
 const ACTION = { UPDATE: 'Changed', CREATE: 'Created', ARCHIVE: 'Archived', RESTORE: 'Restored', RESET: 'Override removed', CASCADE: 'Follow-on update', EVENT: 'Event' };
 const KIND = { assets: 'asset', calls: 'call' };
-
-export const when = (iso) => {
-  const d = new Date(iso);
-  return isNaN(d) ? iso : `${date(iso.slice(0, 10))} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
-};
 
 export function mountAudit(root) {
   return mountListPage(root, {

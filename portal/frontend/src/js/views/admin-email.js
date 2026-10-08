@@ -4,7 +4,7 @@ import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
-import { when } from './audit.js';
+import { when } from '../core/format.js';
 
 const PARAM = { lookback_days: 'Look back (days)', within_days: 'Cover ends within (days)', older_than_days: 'Older than (days)' };
 const STATUS = { SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], SKIPPED: ['mute', 'Skipped'] };

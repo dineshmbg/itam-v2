@@ -3,9 +3,8 @@
 import { download, get, send, upload } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
-import { int, pct, titleCase } from '../core/format.js';
+import { int, pct, titleCase, when } from '../core/format.js';
 import { errorBlock, kpiStrip, pageHead, panel, barRows } from './common.js';
-import { when } from './audit.js';
 import { openModal } from '../ui/modal.js';
 
 const SEV = { Critical: 'bad', 'Needs attention': 'warn', Good: 'ok', Information: 'info' };
