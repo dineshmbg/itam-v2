@@ -40,6 +40,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
       if (name === 'assets' && admin && p.row.record_level === 'ASSET') bar.append(h('button', { class: 'btn', type: 'button', title: 'Put this same physical machine back into service under a new name', onClick: redeploy }, icon('play'), 'Redeploy'));
     } else if (!spec.readonly) {
       if (canEditAny() && (name !== 'engineers' || isOwnEngineerRecord())) bar.append(h('button', { class: 'btn primary', type: 'button', onClick: edit }, icon('edit'), 'Edit'));
+      if (name === 'engineers' && admin) bar.append(h('button', { class: 'btn', type: 'button', onClick: renameEngineer }, icon('edit'), 'Rename'));
       if (name === 'assets' && p.row.record_level === 'ASSET' && ['PENDING', 'DONE', 'DONE_OUTSIDE_QUARTER'].includes(p.row.pm_status)) {
         bar.append(h('button', { class: 'btn', type: 'button', onClick: () => recordPmDialog({ keys: [p.id], defaults: { engineer: p.row.pm_done_by || p.row.engineer_name, signed: p.row.pm_signed_by }, onDone: () => reload().then(() => onChange?.()) }) }, icon('checkmark'), 'Record PM'));
       }
@@ -163,6 +164,17 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
   }
 
   function replace() { replaceDialog({ asset: p.row, onDone: (d) => { p = d; show(); onChange?.(); } }); }
+  function renameEngineer() {
+    const name = h('input', { id: 'rn-name', type: 'text', maxlength: '120', value: p.row.display_name || p.row.employee_name || '', class: 'upper' });
+    const why = h('input', { id: 'rn-why', type: 'text', maxlength: '200', placeholder: 'Optional' });
+    const f = (id, lbl, el) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, lbl), el);
+    openModal({ title: `Rename engineer · ${name.value}`, lead: 'Updates this engineer’s name on every asset, call, PM record and linked user account, and is recorded in the change log.',
+      body: h('div', null, f('rn-name', 'New full name', name), f('rn-why', 'Reason', why)),
+      actions: [{ label: 'Cancel' }, { label: 'Rename', primary: true, onClick: async () => {
+        await send(`/api/engineers/${encodeURIComponent(p.id)}/rename`, { name: name.value, reason: why.value });
+        toast('Engineer renamed'); onChange?.(); drawer.close();
+      } }] });
+  }
   function redeploy() { redeployDialog({ asset: p.row, engineers: schema.engineers, onDone: (d, key) => { onChange?.(); if (onOpen) onOpen(key); else drawer.close(); } }); }
 
   /** Physical check (stocktake): record that the asset was, or was not, found where the register says. */
