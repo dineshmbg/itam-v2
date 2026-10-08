@@ -1,7 +1,8 @@
 // The "assign engineer" window - moves many assets to one engineer, optionally only those held by a named old engineer.
 import { send } from '../core/api.js';
 import { h } from '../core/dom.js';
-import { getSchema, toast } from '../core/editor.js';
+import { getSchema } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { person } from '../core/format.js';
 import { openModal } from '../ui/modal.js';
 

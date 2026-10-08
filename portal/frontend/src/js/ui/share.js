@@ -1,7 +1,7 @@
 // Download / share menu used on every dashboard and report: Excel, PDF, CSV, or e-mail (with the file attached).
 import { download, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { toast } from '../core/editor.js';
+import { toast } from './toast.js';
 import { openModal } from './modal.js';
 
 /** opts: {pack, formats:['pdf','xlsx'], endpoint, body: () => request body (reports)} -> element */

@@ -12,7 +12,7 @@ import { getSchema } from '../core/editor.js';
 import { mountRecord, newRecord } from './record.js';
 import { recordPmDialog } from './pm-record.js';
 import { assignEngineerDialog } from './assign-engineer.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { columnsDialog, loadColumns } from '../ui/columns.js';
 import { user as sessionUser, isAdmin } from '../core/session.js';
 

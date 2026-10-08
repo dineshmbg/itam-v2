@@ -2,7 +2,7 @@
 import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { person } from '../core/format.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import * as session from '../core/session.js';
 import { confirmBox, openModal } from '../ui/modal.js';
 import { errorBlock, pageHead } from './common.js';

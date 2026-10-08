@@ -2,7 +2,7 @@
 // An administrator can preview any engineer's view. Analyses appear here once an administrator has shared them with engineers.
 import { download, get } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { int, pct, titleCase } from '../core/format.js';
 import { errorBlock, kpiStrip, loading, pageHead, panel } from './common.js';
 import { when } from './audit.js';

@@ -3,7 +3,7 @@
 import { get, send } from '../core/api.js';
 import { debounce, h, icon } from '../core/dom.js';
 import { date } from '../core/format.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 
 const show = (x) => (x == null || x === '' ? '—' : String(x));

@@ -3,7 +3,7 @@ import { send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import * as session from '../core/session.js';
 import { openModal } from '../ui/modal.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 
 const FAIL_LIMIT = 3;           // wrong passwords before Sign in is swapped for Forgot password
 const failKey = 'itam.loginFails';

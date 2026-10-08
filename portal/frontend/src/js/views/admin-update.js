@@ -2,7 +2,7 @@
 // receives, checks and requests; the update service on the VM re-checks everything, backs up, installs, health-checks and rolls back by itself.
 import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
 import { when } from './audit.js';

@@ -2,7 +2,7 @@
 // Nothing is loaded into the register. The analysis is stored so it can be reopened, and downloaded for the team (Excel) and for management (PDF).
 import { download, get, send, upload } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { int, pct, titleCase } from '../core/format.js';
 import { errorBlock, kpiStrip, pageHead, panel, barRows } from './common.js';
 import { when } from './audit.js';

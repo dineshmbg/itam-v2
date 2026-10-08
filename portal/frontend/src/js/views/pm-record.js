@@ -1,7 +1,8 @@
 // The "record preventive maintenance" window - for one asset (from its drawer) or for many (from the PM worklist).
 import { send } from '../core/api.js';
 import { h } from '../core/dom.js';
-import { getSchema, toast } from '../core/editor.js';
+import { getSchema } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { person } from '../core/format.js';
 import { openModal } from '../ui/modal.js';
 

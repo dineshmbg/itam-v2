@@ -2,7 +2,8 @@
 import { send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { date, label as fieldLabel } from '../core/format.js';
-import { getSchema, toast } from '../core/editor.js';
+import { getSchema } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { isAdmin, user as sessionUser } from '../core/session.js';
 import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';

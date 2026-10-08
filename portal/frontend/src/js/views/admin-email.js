@@ -1,7 +1,7 @@
 // E-mail set-up and the automatic notification rules. Nothing is sent until e-mail is switched on and a rule is enabled.
 import { get, send } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
 import { when } from './audit.js';

@@ -7,7 +7,7 @@ import * as charts from '../ui/charts.js';
 import { openDrawer } from '../ui/drawer.js';
 import { shareMenu } from '../ui/share.js';
 import { send } from '../core/api.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { isAdmin } from '../core/session.js';
 import { openModal } from '../ui/modal.js';
 import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, pageHead, panel, regHref, loading } from './common.js';

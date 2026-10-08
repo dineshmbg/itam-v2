@@ -2,7 +2,7 @@
 import { get, send } from '../core/api.js';
 import { h, icon, debounce } from '../core/dom.js';
 import { date, int } from '../core/format.js';
-import { toast } from '../core/editor.js';
+import { toast } from '../ui/toast.js';
 import { shareMenu } from '../ui/share.js';
 import { confirmBox, openModal } from '../ui/modal.js';
 import { errorBlock, pageHead } from './common.js';
