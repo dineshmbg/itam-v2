@@ -90,7 +90,7 @@ DATASETS = {
     },
     "calls": {
         "table": "svc_call", "pk": "sr_id", "base": "is_current = 1", "label": "Calls", "search": CALL_SEARCH,
-        "sort": ("call_status", "asc"), "then": "CASE WHEN priority = 'P1' AND call_status = 'OPEN' THEN 0 ELSE 1 END, cipl_call_date DESC NULLS LAST", "defaults": {},
+        "sort": ("call_status", "asc"), "then": "CASE WHEN priority = 'P1' AND coalesce(call_status,'OPEN') = 'OPEN' THEN 0 ELSE 1 END, cipl_call_date DESC NULLS LAST", "defaults": {},
         "group": _group("call_status", "call_status", CALL_GROUP),   # heading rows while sorted by this column   # grouped Blank, Raised, Resolved; newest first within each
         "columns": [
             col("sr_id", "SR ID", "mono", ref="call"),
