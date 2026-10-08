@@ -8,10 +8,10 @@ import { isAdmin, user } from '../core/session.js';
 import { entity } from '../ui/hovercard.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, loading, pageHead, panel } from './common.js';
-import { ACK, SEVERITY, closeFindingDialog, frow, linkCallDialog, ownerDialog, setSeverity, stateBadges, today, verifyDialog } from './pm-wo-common.js';
+import { ACK, SEVERITY, closeFindingDialog, frow, linkCallDialog, nextText, ownerDialog, setSeverity, stateBadges, steps, today, verifyDialog } from './pm-wo-common.js';
 
-const EVENTS = { CREATED: 'Work order created', STARTED: 'Started', COMPLETED: 'Completed and signed', COMPLETED_BATCH: 'Completed (batch sheet)', VERIFIED: 'Technically verified', VERIFICATION_REJECTED: 'Sent back by the verifier',
-  OWNER_ACKNOWLEDGED: 'Owner accepted', OWNER_DISPUTED: 'Owner disputed', OWNER_DEEMED: 'Deemed accepted', CLOSED: 'Closed', CANCELLED: 'Cancelled', DEFER_REQUESTED: 'Deferral requested', DEFER_APPROVED: 'Deferral approved',
+const EVENTS = { CREATED: 'Work order created', STARTED: 'Started', COMPLETED: 'Completed and signed', COMPLETED_BATCH: 'Completed (batch sheet)', VERIFIED: 'Second check done', VERIFICATION_REJECTED: 'Sent back by the second check',
+  OWNER_ACKNOWLEDGED: 'Owner said OK', OWNER_DISPUTED: 'Owner disagreed', OWNER_DEEMED: 'Accepted - no reply', CLOSED: 'Closed', CANCELLED: 'Cancelled', DEFER_REQUESTED: 'Deferral requested', DEFER_APPROVED: 'Deferral approved',
   DEFER_DECLINED: 'Deferral declined', FINDING_SEVERITY: 'Finding severity changed', FINDING_CALL_LINKED: 'Call linked to a finding', FINDING_CLOSED: 'Finding closed' };
 
 export function mountPmWo(root) {
@@ -162,11 +162,11 @@ export function mountPmWo(root) {
 
     const signoff = h('div', { class: 'wo-steps' },
       step('1', 'Performed', d.completed_at ? [`${d.done_by ? person(d.done_by) : d.completed_by}`, h('div', { class: 'faint' }, `${d.legacy ? date(d.pm_date) : when(d.completed_at)}${d.minutes_spent ? ` · ${d.minutes_spent} min` : ''}`)] : 'Not yet', d.completed_at ? 'ok' : 'mute'),
-      step('2', 'Technical verification', !d.verify_required ? [h('span', { class: 'faint' }, 'Not required for this work order')] : d.verified_by ? [person(d.verified_by), h('div', { class: 'faint' }, `${when(d.verified_at)}${d.verify_note ? ' · ' + d.verify_note : ''}`)] : 'Required - a different person from the one who did it', d.verified_by ? 'ok' : d.verify_required ? 'warn' : 'mute'),
-      step('3', 'Owner acknowledgement', ownerText(), { ACKNOWLEDGED: 'ok', DEEMED: 'warn', DISPUTED: 'bad', NA: 'mute' }[d.ack_state] || 'info'));
+      step('2', 'Second check', !d.verify_required ? [h('span', { class: 'faint' }, 'Not required for this work order')] : d.verified_by ? [person(d.verified_by), h('div', { class: 'faint' }, `${when(d.verified_at)}${d.verify_note ? ' · ' + d.verify_note : ''}`)] : 'Required - a different person from the one who did it', d.verified_by ? 'ok' : d.verify_required ? 'warn' : 'mute'),
+      step('3', "Owner's OK", ownerText(), { ACKNOWLEDGED: 'ok', DEEMED: 'warn', DISPUTED: 'bad', NA: 'mute' }[d.ack_state] || 'info'));
     const admin = isAdmin() && d.state === 'COMPLETED' ? h('div', { class: 'btn-row' },
-      d.verify_required && !d.verified_by ? [h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids: [id], approve: true, onDone: load }) }, icon('checkmark--outline'), 'Verify'), h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids: [id], approve: false, onDone: load }) }, 'Send back…')] : null,
-      d.ack_state === 'PENDING' ? [h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids: [id], owner: d.owner_name, onDone: load }) }, icon('user'), 'Owner accepts…'), h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids: [id], dispute: true, onDone: load }) }, 'Owner disputes…')] : null) : null;
+      d.verify_required && !d.verified_by ? [h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids: [id], approve: true, onDone: load }) }, icon('checkmark--outline'), 'Second check done'), h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids: [id], approve: false, onDone: load }) }, 'Send back…')] : null,
+      d.ack_state === 'PENDING' ? [h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids: [id], owner: d.owner_name, onDone: load }) }, icon('user'), "Owner says OK…"), h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids: [id], dispute: true, onDone: load }) }, 'Owner disagrees…')] : null) : null;
 
     function ownerText() {
       const label = ACK[d.ack_state]?.[0] || d.ack_state;
@@ -175,7 +175,7 @@ export function mountPmWo(root) {
       return [`${label}${d.ack_by ? ' · ' + d.ack_by : ''}`, h('div', { class: 'faint' }, `${d.ack_at ? when(d.ack_at) : ''}${d.ack_recorded_by && d.ack_state !== 'DEEMED' ? ' · recorded by ' + d.ack_recorded_by : ''}${d.ack_note ? ' · ' + d.ack_note : ''}`)];
     }
 
-    const sign = panel('Sign-off', {}, signoff, admin,
+    const sign = panel('Who signed', {}, signoff, admin,
       d.defer_status === 'REQUESTED' ? h('div', { class: 'wo-defer' }, h('strong', null, 'Deferral requested'), h('div', null, `To ${date(d.defer_to)}: ${d.defer_reason}`),
         isAdmin() ? h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: () => decideDeferral(true) }, 'Approve'), h('button', { class: 'btn', type: 'button', onClick: () => decideDeferral(false) }, 'Decline')) : null) : null,
       isAdmin() && ['OPEN', 'IN_PROGRESS'].includes(d.state) ? h('div', { class: 'btn-row' }, h('button', { class: 'btn danger', type: 'button', onClick: cancelDialog }, 'Cancel work order…')) : null,
@@ -196,7 +196,11 @@ export function mountPmWo(root) {
     const prev = panel('Earlier PM on this asset', { cls: 'span-6', flush: true }, d.previous.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tbody', null, d.previous.map((p) => h('tr', null,
       h('td', null, p.quarter_label), h('td', { class: 'mono' }, p.wo_no), h('td', null, p.state === 'CLOSED' || p.state === 'COMPLETED' ? `${date(p.pm_date)} · ${p.done_by ? person(p.done_by) : ''}` : p.state.toLowerCase())))))) : h('div', { class: 'muted', style: { padding: '16px' } }, 'No earlier work orders.'));
 
-    body.replaceChildren(checklist, h('div', { class: 'span-4 stack-v' }, panel('Asset', { flush: true }, facts), sign), findings, history, prev);
+    const flow = h('div', { class: 'span-12 wo-flow' },
+      h('ol', { class: 'wo-stepper', 'aria-label': 'Steps of this PM' }, steps(d).map((x) => h('li', { class: x.state, 'aria-current': x.state === 'now' ? 'step' : null },
+        h('span', { class: 'n' }, x.state === 'done' ? icon('checkmark') : x.n), h('span', null, h('strong', null, x.label), h('small', null, x.state === 'skip' ? (d.state === 'CANCELLED' ? 'cancelled' : 'not needed') : x.state === 'now' ? 'waiting now' : x.state === 'done' ? 'done' : x.who))))),
+      h('p', { class: 'wo-next' }, nextText(d, { admin: isAdmin(), mine: mine() })));
+    body.replaceChildren(flow, checklist, h('div', { class: 'span-4 stack-v' }, panel('Asset', { flush: true }, facts), sign), findings, history, prev);
   }
 
   function step(n, title, text, tone) {

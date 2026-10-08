@@ -261,3 +261,12 @@ def test_seeding_completes_a_checklist_that_has_no_tasks_and_never_duplicates(bo
     assert one(box, "SELECT count(*) FROM pm_checklist_task t JOIN pm_checklist c USING (checklist_id) WHERE c.asset_class = 'DESKTOP'")[0] == len(pmwo.STARTER["DESKTOP"][1])
     assert one(box, "SELECT count(*) FROM pm_checklist")[0] == len(pmwo.STARTER)
     assert pmwo._first({"checklist_id": 7}) == 7 and pmwo._first((8,)) == 8
+
+
+def test_open_bucket_is_to_do_plus_started_and_matches_the_summary(fresh):
+    box, out = fresh
+    wid = _wo(box)
+    pmwo.save(wid, [], 5, None, ENG)                                   # one work order started, none completed
+    k = pmwo.summary()["kpi"]
+    assert k["progress"] == 1 and pmwo.list_orders(None, bucket="open")["total"] == k["todo"] + k["progress"] == out["created"]
+    assert pmwo.list_orders(None, bucket="todo")["total"] == k["todo"]

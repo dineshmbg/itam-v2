@@ -81,3 +81,33 @@
 .wo-timeline li::before { content: ""; position: absolute; left: -24px; top: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--mod-pm); }
 .wo-rules { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 @media (max-width: 700px) { .wo-line { grid-template-columns: 24px minmax(0, 1fr); } .wo-line .wo-seg, .wo-line .wo-ans { grid-column: 2; } }
+
+/* PM work orders: the four steps, whose turn it is, and the step bar on one work order */
+.wo-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-1); }
+.wo-stage { display: grid; gap: 4px; text-align: left; padding: 12px 16px; background: none; border: 0; border-right: 1px solid var(--c-border); border-top: 3px solid var(--c-border-strong); color: var(--c-text); cursor: pointer; }
+.wo-stage:last-child { border-right: 0; }
+.wo-stage:hover { background: var(--c-surface-2); }
+.wo-stage[aria-pressed="true"] { background: var(--c-accent-bg); }
+.wo-stage[data-tone="bad"] { border-top-color: var(--c-bad); } .wo-stage[data-tone="warn"] { border-top-color: var(--c-warn); } .wo-stage[data-tone="ok"] { border-top-color: var(--c-ok); }
+.wo-stage.turn { border-top-color: var(--c-accent); }
+.wo-stage-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; flex-wrap: wrap; }
+.wo-stage-h .n, .wo-stepper .n { width: 22px; height: 22px; border-radius: 50%; background: var(--c-surface-3); display: inline-grid; place-items: center; font-size: 12px; font-weight: 600; flex: none; }
+.wo-stage-v { font-size: 28px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wo-stage-s { font-size: 12px; color: var(--c-text-2); }
+.wo-attn { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; font-size: 13px; color: var(--c-text-2); }
+.wo-attn.has { background: var(--c-warn-bg); color: var(--c-text); border-left: 3px solid var(--c-warn); margin-top: 8px; }
+.wo-attn .ico { width: 16px; height: 16px; }
+.wo-how { padding: 4px 12px; font-size: 13px; color: var(--c-text-2); }
+.wo-how summary { cursor: pointer; color: var(--c-accent); }
+.wo-how ol { margin: 8px 0; padding-left: 20px; display: grid; gap: 6px; }
+.wo-flow { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-1); padding: 12px 16px; }
+.wo-stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wo-stepper li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-top: 3px solid var(--c-border-strong); padding-top: 8px; }
+.wo-stepper li > span:last-child { display: grid; line-height: 1.25; }
+.wo-stepper small { color: var(--c-text-3); font-size: 12px; }
+.wo-stepper .done { border-top-color: var(--c-ok); } .wo-stepper .done .n { background: var(--c-ok); color: #fff; }
+.wo-stepper .now { border-top-color: var(--c-accent); } .wo-stepper .now .n { background: var(--c-accent); color: var(--c-on-accent); } .wo-stepper .now small { color: var(--c-accent); font-weight: 600; }
+.wo-stepper .skip { opacity: 0.55; }
+.wo-stepper .n .ico { width: 14px; height: 14px; }
+.wo-next { margin: 10px 0 0; font-size: 14px; }
+@media (max-width: 760px) { .wo-stages, .wo-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wo-stage { border-bottom: 1px solid var(--c-border); } }

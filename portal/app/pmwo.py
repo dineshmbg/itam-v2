@@ -230,6 +230,7 @@ def generate(by="system", on=None):
 
 # ---------------------------------------------------------------- reading
 BUCKETS = {
+    "open": "w.state IN ('OPEN','IN_PROGRESS')",
     "todo": "w.state = 'OPEN'",
     "progress": "w.state = 'IN_PROGRESS'",
     "overdue": "w.state IN ('OPEN','IN_PROGRESS') AND EFFDUE < CURRENT_DATE",

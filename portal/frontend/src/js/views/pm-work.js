@@ -8,11 +8,11 @@ import { isAdmin } from '../core/session.js';
 import { columnsDialog, loadColumns } from '../ui/columns.js';
 import { entity } from '../ui/hovercard.js';
 import { openModal } from '../ui/modal.js';
-import { errorBlock, kpiStrip, loading, pageHead } from './common.js';
+import { errorBlock, loading, pageHead } from './common.js';
 import { frow, ownerDialog, report, stateBadges, today, verifyDialog } from './pm-wo-common.js';
 
-const TABS = [['all', 'All'], ['todo', 'To do'], ['progress', 'In progress'], ['overdue', 'Overdue'], ['verify', 'Awaiting verification'], ['owner', 'Awaiting owner'], ['deferral', 'Deferrals'], ['closed', 'Closed']];
-const COUNT_OF = { all: 'total', todo: 'todo', progress: 'progress', overdue: 'overdue', verify: 'verify', owner: 'owner', deferral: 'deferral', closed: 'closed' };
+const TABS = [['all', 'Everything'], ['open', 'To do'], ['overdue', 'Late'], ['verify', 'Waiting for second check'], ['owner', "Waiting for owner's OK"], ['deferral', 'Asked for more time'], ['closed', 'Finished']];
+const COUNT_OF = { all: 'total', open: 'open', overdue: 'overdue', verify: 'verify', owner: 'owner', deferral: 'deferral', closed: 'closed' };
 const PAGE = 300;
 
 // Every column the list can show, in the default order. The person's own order/visibility is saved as the "pm_work" view.
@@ -52,21 +52,40 @@ export function mountPmWork(root) {
     state.quarter = sum.quarter;
     const k = sum.kpi, f = sum.findings;
     sub.textContent = `${sum.quarter} · ${int(k.total)} work orders · due by quarter end${sum.quarter === sum.current ? '' : ' (past quarter)'}`;
-    kpis.replaceChildren(kpiStrip([
-      { id: 'pct', label: 'Completed', value: pct(k.pct_done), sub: `${int(k.done)} of ${int(k.total)}` },
-      { id: 'todo', label: 'To do', value: int(k.todo + k.progress), sub: `${int(k.progress)} in progress` },
-      { id: 'over', label: 'Overdue', value: int(k.overdue), tone: k.overdue ? 'bad' : 'ok', sub: 'past due date' },
-      { id: 'ver', label: 'Awaiting verification', value: int(k.verify), tone: k.verify ? 'warn' : 'ok', sub: 'second person' },
-      { id: 'own', label: 'Awaiting owner', value: int(k.owner), sub: `deemed accepted after ${sum.ack_days} days` },
-      { id: 'fin', label: 'Open findings', value: int(f.open), tone: f.critical ? 'bad' : f.open ? 'warn' : 'ok', sub: f.call_needed ? `${int(f.call_needed)} need a call` : 'none need a call', href: '#/pm/findings' },
-    ]));
+    drawStages();
     drawTabs();
+  }
+
+  function drawStages() {
+    const k = sum.kpi, f = sum.findings, admin = isAdmin();
+    const open = k.todo + k.progress;
+    const card = (n, title, count, line, bucket, turn, tone) => h('button', { type: 'button', class: 'wo-stage' + (turn ? ' turn' : ''), 'data-tone': tone || null, 'aria-pressed': String(state.bucket === bucket),
+      onClick: () => { state.bucket = bucket; selected.clear(); sync(); drawTabs(); drawStages(); load(); } },
+      h('span', { class: 'wo-stage-h' }, h('span', { class: 'n' }, n), title, turn ? h('span', { class: 'badge info' }, 'Your turn') : null), h('span', { class: 'wo-stage-v' }, int(count)), h('span', { class: 'wo-stage-s' }, line));
+    const need = [];
+    if (k.overdue) need.push(`${int(k.overdue)} late`);
+    if (k.deferral) need.push(`${int(k.deferral)} asking for more time`);
+    if (f.call_needed) need.push(`${int(f.call_needed)} problem${f.call_needed > 1 ? 's' : ''} need a call`);
+    if (k.disputed) need.push(`${int(k.disputed)} sent back by the owner`);
+    kpis.replaceChildren(
+      h('div', { class: 'wo-stages', role: 'group', 'aria-label': 'Where the PM work stands' },
+        card('1', 'Do the checks', open, k.progress ? `${int(k.progress)} already started` : 'not started yet', 'open', !admin && open > 0, k.overdue ? 'bad' : null),
+        card('2', 'Second check', k.verify, 'a different person checks the work', 'verify', admin && k.verify > 0, k.verify ? 'warn' : null),
+        card("3", "Owner's OK", k.owner, `no reply in ${sum.ack_days} days = accepted`, 'owner', admin && k.owner > 0, null),
+        card('4', 'Finished', k.closed, `${pct(k.pct_done)} of all ${int(k.total)} done`, 'closed', false, 'ok')),
+      h('div', { class: 'wo-attn' + (need.length ? ' has' : '') }, need.length ? [icon('warning--alt--filled'), h('strong', null, 'Needs attention: '), need.join(' · '), ' ', h('a', { href: '#/pm/findings' }, 'See problems found')] : [icon('checkmark--filled'), 'Nothing needs attention right now.']),
+      h('details', { class: 'wo-how' }, h('summary', null, 'How a PM works'),
+        h('ol', null, h('li', null, h('strong', null, 'Do the checks. '), 'The engineer opens the work order, marks each line Pass, Fail or N/A and signs. Many assets can be marked at once from the list.'),
+          h('li', null, h('strong', null, 'Second check. '), 'For important equipment (and a sample of the rest) a different administrator confirms the work was done properly.'),
+          h('li', null, h('strong', null, "Owner's OK. "), `The person (or section) that uses the asset confirms the visit happened. Until owners can sign in themselves, an administrator records their answer. No reply in ${sum.ack_days} days counts as accepted.`),
+          h('li', null, h('strong', null, 'Finished. '), 'When both checks are done the work order closes. A failed line becomes a "problem found" that needs a call to CIPL.'))));
   }
 
   function drawTabs() {
     const k = sum.kpi;
+    const cnt = { ...k, open: k.todo + k.progress };
     tabs.replaceChildren(...TABS.map(([id, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(state.bucket === id), class: 'wo-tab', onClick: () => { state.bucket = id; selected.clear(); sync(); drawTabs(); load(); } },
-      label, h('span', { class: 'n' }, int(k[COUNT_OF[id]] ?? 0)))));
+      label, h('span', { class: 'n' }, int(cnt[COUNT_OF[id]] ?? 0)))));
   }
 
   function drawFilters() {
@@ -110,9 +129,9 @@ export function mountPmWork(root) {
     const ids = [...selected];
     const b = state.bucket;
     const acts = [];
-    if (['all', 'todo', 'progress', 'overdue'].includes(b)) acts.push(h('button', { class: 'btn primary', type: 'button', onClick: () => batchDialog(ids) }, icon('checkmark'), 'Mark all lines Pass…'));
-    if (isAdmin() && ['all', 'verify'].includes(b)) acts.push(h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids, approve: true, onDone: start }) }, icon('checkmark--outline'), 'Verify'), h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids, approve: false, onDone: start }) }, 'Send back…'));
-    if (isAdmin() && ['all', 'owner'].includes(b)) acts.push(h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids, owner: ids.length === 1 ? rows.find((r) => r.wo_id === ids[0])?.owner_name : '', onDone: start }) }, icon('user'), 'Owner accepts…'), h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids, dispute: true, onDone: start }) }, 'Owner disputes…'));
+    if (['all', 'open', 'overdue'].includes(b)) acts.push(h('button', { class: 'btn primary', type: 'button', onClick: () => batchDialog(ids) }, icon('checkmark'), 'Everything is fine on these…'));
+    if (isAdmin() && ['all', 'verify'].includes(b)) acts.push(h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids, approve: true, onDone: start }) }, icon('checkmark--outline'), 'Second check done'), h('button', { class: 'btn', type: 'button', onClick: () => verifyDialog({ ids, approve: false, onDone: start }) }, 'Send back…'));
+    if (isAdmin() && ['all', 'owner'].includes(b)) acts.push(h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids, owner: ids.length === 1 ? rows.find((r) => r.wo_id === ids[0])?.owner_name : '', onDone: start }) }, icon('user'), "Owner says OK…"), h('button', { class: 'btn', type: 'button', onClick: () => ownerDialog({ ids, dispute: true, onDone: start }) }, 'Owner disagrees…'));
     bar.replaceChildren(h('strong', null, `${n} selected`), ...acts, h('button', { class: 'btn ghost', type: 'button', onClick: () => { selected.clear(); drawTable(); } }, 'Clear'));
   }
 
@@ -120,7 +139,7 @@ export function mountPmWork(root) {
     const d = h('input', { id: 'bt-d', type: 'date', value: today(), max: today() });
     const m = h('input', { id: 'bt-m', type: 'number', min: '0', max: '1440', placeholder: 'Minutes per asset (optional)' });
     openModal({
-      title: `Mark every line Pass for ${ids.length} work order${ids.length > 1 ? 's' : ''}`,
+      title: `Everything is fine on ${ids.length} work order${ids.length > 1 ? 's' : ''}`,
       lead: 'Use this only for assets you have checked. Lines you already answered (including any Fail) are kept. Work orders that need a reading, such as a server temperature, are skipped. The batch is recorded as such in each work order\'s history.',
       body: h('div', null, frow('bt-d', 'PM done on', d), frow('bt-m', 'Time', m)),
       actions: [{ label: 'Cancel' }, { label: 'Complete and sign', primary: true, icon: 'checkmark', onClick: async () => { const r = await send('/api/pmwo/batch', { ids, pm_date: d.value, minutes: m.value }); report(r, 'completed'); selected.clear(); start(); } }],
