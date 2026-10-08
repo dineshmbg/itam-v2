@@ -1096,6 +1096,21 @@ a:not(.btn):not(.nav-item):not(.kpi):not(.brand) { text-underline-offset: 3px; t
 }
 @media print { .main { padding: 0; } .grid { gap: 8px; } }
 
+/* register pages: the page is a flex column that exactly fills the visible area, so the table (not the page) scrolls and its horizontal
+   scrollbar is always on screen, whatever the header height, browser zoom or monitor. No height is guessed in pixels any more. */
+@media (min-width: 901px) {
+  .main:has(> .page > .register) { overflow: hidden; display: flex; flex-direction: column; }
+  .main > .page:has(> .register) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+  .page > .register { flex: 1; height: auto; min-height: 0; }
+  .page > .page-head { flex: none; }
+}
+/* column resize handles (table.js) */
+.gt-rz { position: absolute; top: 0; bottom: 0; width: 11px; margin-left: -6px; z-index: 5; cursor: col-resize; touch-action: none; outline: none; }
+.gt-rz::after { content: ""; position: absolute; left: 5px; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: transparent; transition: background-color 120ms var(--ease); }
+.gt-head:hover .gt-rz::after { background: var(--c-border-strong); }
+.gt-rz:hover::after, .gt-rz:focus-visible::after, .gt-rz.drag::after { background: var(--c-accent); }
+body.gt-resizing, body.gt-resizing * { cursor: col-resize !important; user-select: none !important; }
+
 
 /* ---------- colours and themes ----------
    Cooler, slightly blue-tinted neutrals and a deeper royal-blue accent in light; deep navy surfaces and a soft periwinkle accent in dark.

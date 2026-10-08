@@ -5,7 +5,7 @@ import { int } from '../core/format.js';
 import { setParams, patchParam, current } from '../core/router.js';
 import { openDrawer } from '../ui/drawer.js';
 import { createFacets, optionLabel, BLANK } from '../ui/facets.js';
-import { createTable } from '../ui/table.js';
+import { clearSavedWidths, createTable } from '../ui/table.js';
 import { labelOf } from '../ui/badge.js';
 import { errorBlock, pageHead } from './common.js';
 import { getSchema } from '../core/editor.js';
@@ -163,7 +163,7 @@ export function mountRegister(root, name, opts = {}) {
       } }, icon('user--multiple'), 'Assign engineer'));
       if (schema?.can_create[name]) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: () => newRecord({ name, label: ds.label.replace(/s$/, ''), onCreated: (id) => { table.refresh(); openDetail(id); } }) }, icon('add'), `New ${ds.label.replace(/s$/, '').toLowerCase()}`));
       let cols = await loadColumns(name, ds.columns);
-      const colsBtn = h('button', { class: 'btn', type: 'button', onClick: () => columnsDialog({ name, columns: cols, onApply: (next) => { cols = next || ds.columns.map((c) => ({ ...c, visible: true })); rebuildTable(); } }) }, icon('settings'), 'Columns');
+      const colsBtn = h('button', { class: 'btn', type: 'button', onClick: () => columnsDialog({ name, columns: cols, onApply: (next) => { if (!next) clearSavedWidths(widthKey); cols = next || ds.columns.map((c) => ({ ...c, visible: true })); rebuildTable(); } }) }, icon('settings'), 'Columns');
       tools.push(colsBtn);
       tools.push(h('button', { class: 'btn', type: 'button', title: 'Download everything matching the current search and filters as a CSV file (opens in Excel)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/' + name + '/export', paramsForServer(0, 0, false), name + '.csv'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('download'), 'Export CSV'));
@@ -172,10 +172,12 @@ export function mountRegister(root, name, opts = {}) {
       if (!opts.embedded) holder.append(pageHead(ds.label, `${ds.label} — updates live as records change`, tools));
       facets = createFacets({ facets: ds.facets, onChange: (f, clearAll) => { filters = clearAll ? Object.fromEntries(ds.facets.map((x) => [x.key, []])) : f; applyFilters(); } });
       const myEngineerKey = name === 'engineers' ? sessionUser()?.engineer_key : null;
+      const widthKey = `itam.colw.${sessionUser()?.username || sessionUser()?.id || ''}.${name}`;
       function buildTable() {
         return createTable({
           columns: cols.filter((c) => c.visible), sort: { key: sort.key, dir: sort.dir }, ariaLabel: ds.label, search: () => q, fetchPage,
           onSort: (key, dir) => { sort = { key, dir }; syncUrl(); requery(); }, onOpen: (row) => openDetail(row.id),
+          widthKey,
           rowClass: myEngineerKey ? (row) => (row.id === myEngineerKey ? 'row-self' : null) : undefined,
         });
       }

@@ -7,7 +7,13 @@ import { entity } from './hovercard.js';
 
 const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['172px', '0.8fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
 
-export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass }) {
+const MIN_COL = 56;
+const readWidths = (k) => { try { return k ? JSON.parse(localStorage.getItem(k) || '{}') || {} : {}; } catch (_) { return {}; } };
+const writeWidths = (k, v) => { try { if (k) { if (Object.keys(v).length) localStorage.setItem(k, JSON.stringify(v)); else localStorage.removeItem(k); } } catch (_) { /* private window: widths just won't persist */ } };
+/** Forget a register's saved column widths (used by the Columns dialog's "Reset to default"). */
+export const clearSavedWidths = (k) => writeWidths(k, {});
+
+export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass, widthKey }) {
   let total = 0;
   let epoch = 0;
   let sortState = { key: sort?.key, dir: sort?.dir || 'asc' };
@@ -42,11 +48,52 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
       const w = Math.min(MAX_FIT, Math.max(headW(c), v ? Math.ceil(textW(v, font, c.kind === 'mono' ? 0 : 0.15)) + 20 + 10 : 0, 64));
       if (w > fit[i]) { fit[i] = w; changed = true; }
     });
-    if (!changed) return;
-    const px = columns.map((c, i) => (fit[i] ? fit[i] : parseInt(cols[i][0], 10)));
-    inner.style.setProperty('--cols', px.map((w, i) => `minmax(${w}px, ${fit[i] ? (w / 100).toFixed(2) + 'fr' : cols[i][1]})`).join(' '));
-    inner.style.setProperty('--table-w', px.reduce((a, b) => a + b, 0) + 'px');
+    if (changed) layout();
   }
+
+  // Column widths: every column is as wide as its content (base), unless the person dragged it (manual, remembered per register). Any
+  // width left over on a wide screen is shared equally between the columns they did not size, so the gaps between columns stay even;
+  // when the columns need more than the screen has, the table scrolls sideways instead of squeezing them.
+  let manual = readWidths(widthKey);
+  const baseW = (i) => fit[i] || parseInt(cols[i][0], 10);
+  let widths = columns.map((c, i) => baseW(i));
+  function layout() {
+    const avail = scroller.clientWidth || 0;
+    const auto = columns.map((c, i) => i).filter((i) => manual[columns[i].key] == null);
+    const w = columns.map((c, i) => manual[c.key] ?? baseW(i));
+    const sum = w.reduce((a, b) => a + b, 0);
+    if (avail > sum && auto.length) { const extra = (avail - sum) / auto.length; auto.forEach((i) => { w[i] += extra; }); }
+    widths = w.map((x) => Math.round(x * 100) / 100);
+    inner.style.setProperty('--cols', widths.map((x) => x + 'px').join(' '));
+    inner.style.setProperty('--table-w', Math.max(sum, 0) + 'px');
+    let x = 0;
+    handles.forEach((hd, i) => { x += widths[i]; hd.style.left = x + 'px'; hd.setAttribute('aria-valuenow', String(Math.round(widths[i]))); });
+  }
+  function setManual(i, px) {
+    const key = columns[i].key;
+    if (px == null) delete manual[key]; else manual[key] = Math.max(MIN_COL, Math.round(px));
+    writeWidths(widthKey, manual);
+    layout();
+  }
+  const handles = columns.map((c, i) => {
+    const hd = h('div', { class: 'gt-rz', role: 'separator', 'aria-orientation': 'vertical', tabindex: '0', title: 'Drag to resize - double-click to fit the content', 'aria-label': `Resize ${c.label} column`, 'aria-valuemin': String(MIN_COL) });
+    hd.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      hd.setPointerCapture(e.pointerId);
+      const x0 = e.clientX, w0 = widths[i];
+      hd.classList.add('drag'); document.body.classList.add('gt-resizing');
+      const move = (ev) => setManual(i, w0 + ev.clientX - x0);
+      const done = () => { hd.classList.remove('drag'); document.body.classList.remove('gt-resizing'); hd.removeEventListener('pointermove', move); hd.removeEventListener('pointerup', done); hd.removeEventListener('pointercancel', done); };
+      hd.addEventListener('pointermove', move); hd.addEventListener('pointerup', done); hd.addEventListener('pointercancel', done);
+    });
+    hd.addEventListener('dblclick', () => setManual(i, null));
+    hd.addEventListener('keydown', (e) => {
+      const d = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+      if (d) { e.preventDefault(); setManual(i, widths[i] + d); } else if (e.key === 'Home' || e.key === 'Delete') { e.preventDefault(); setManual(i, null); }
+    });
+    return hd;
+  });
 
   const headCells = columns.map((c) => {
     const btn = h('button', { class: 'gt-th' + (c.align === 'right' ? ' right' : ''), role: 'columnheader', type: 'button', 'data-key': c.key, 'aria-label': `Sort by ${c.label}` }, c.label, icon('chevron--sort', 'sm'));
@@ -57,7 +104,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
     });
     return btn;
   });
-  const head = h('div', { class: 'gt-head', role: 'row' }, headCells);
+  const head = h('div', { class: 'gt-head', role: 'row' }, headCells, handles);
   const rowsEl = h('div', { class: 'gt-rows', role: 'rowgroup' });
   const inner = h('div', { class: 'gt-inner', style: { '--cols': template, '--table-w': tableW + 'px', '--row-h': rowHeight + 'px' } }, head, rowsEl);
   const scroller = h('div', { class: 'gt-scroll', role: 'grid', tabindex: '0', 'aria-label': ariaLabel, 'aria-rowcount': '1' }, inner);
@@ -177,7 +224,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
   }
 
   scroller.addEventListener('scroll', () => render(), { passive: true });   // render() only touches rows that entered or left the window
-  new ResizeObserver(() => render()).observe(scroller);
+  new ResizeObserver(() => { layout(); render(); }).observe(scroller);
 
   rowsEl.addEventListener('click', (e) => {
     if (e.target.closest('a.ent')) return;                        // a reference link follows its link (its hover card shows the details)
