@@ -5,9 +5,8 @@ import { badge, tickCross } from '../ui/badge.js';
 import * as charts from '../ui/charts.js';
 import { shareMenu } from '../ui/share.js';
 import { entity } from '../ui/hovercard.js';
-import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, legend, pageHead, panel, regHref, loading } from './common.js';
+import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, legend, pageHead, panel, regHref, loading, NOISE } from './common.js';
 
-const NOISE = new Set(['portal_activity', 'portal_session', 'portal_backup', 'notify_log', 'portal_import']);   // bookkeeping tables: nothing on a dashboard depends on them
 
 export function mountCallsDash(root) {
   let strip, ch = {}, dead = false, extra;

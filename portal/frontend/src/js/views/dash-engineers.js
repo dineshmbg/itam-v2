@@ -10,11 +10,10 @@ import { send } from '../core/api.js';
 import { toast } from '../ui/toast.js';
 import { isAdmin } from '../core/session.js';
 import { openModal } from '../ui/modal.js';
-import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, pageHead, panel, regHref, loading } from './common.js';
+import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, pageHead, panel, regHref, loading, NOISE } from './common.js';
 
 const ITEM_LABEL = { JOINING_KIT: 'Joining kit', ID_CARD: 'ID card', ONSURITY: 'Onsurity', MEDICAL_ESIC: 'Medical / ESIC', POLICE_VERIFICATION: 'Police verification', SALARY_ACCOUNT: 'Salary account', JACKETS: 'Jackets', ONGC_GATEPASS: 'ONGC gate pass' };
 
-const NOISE = new Set(['portal_activity', 'portal_session', 'portal_backup', 'notify_log', 'portal_import']);   // bookkeeping tables: nothing on a dashboard depends on them
 
 export function mountEngineersDash(root) {
   let strip, ch = {}, dead = false, data, drawer;

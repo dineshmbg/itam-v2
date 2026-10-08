@@ -6,12 +6,11 @@ import * as charts from '../ui/charts.js';
 import { shareMenu } from '../ui/share.js';
 import { entity } from '../ui/hovercard.js';
 import { person } from '../core/format.js';
-import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, legend, pageHead, panel, regHref, loading } from './common.js';
+import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, legend, pageHead, panel, regHref, loading, NOISE } from './common.js';
 
 const STATUS_COLOR = { IN_USE: 2, IN_STORE: 0, SURPLUS: 6, NOT_IN_USE: 4, NOT_ON_NETWORK: 1, STANDBY: 5, REMOVED_FROM_AMC: 7, TRANSFERRED: 3 };
 const COVER_COLOR = { ACTIVE: 2, EXPIRING_90D: 1, EXPIRED: 7, REMOVED: 6, UNKNOWN: 4 };
 
-const NOISE = new Set(['portal_activity', 'portal_session', 'portal_backup', 'notify_log', 'portal_import']);   // bookkeeping tables: nothing on a dashboard depends on them
 
 export function mountAssetsDash(root) {
   let strip, ch = {}, dead = false, data, extra;

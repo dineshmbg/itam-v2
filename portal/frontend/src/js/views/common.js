@@ -3,6 +3,9 @@ import { int } from '../core/format.js';
 import { href } from '../core/router.js';
 import { colorVar } from '../ui/charts.js';
 
+/** Bookkeeping tables: a live-update that touches only these never changes anything a dashboard shows. */
+export const NOISE = new Set(['portal_activity', 'portal_session', 'portal_backup', 'notify_log', 'portal_import']);
+
 export function pageHead(title, sub, right) {
   return h('div', { class: 'page-head' }, h('div', null, h('h1', null, title), sub ? h('div', { class: 'sub', 'data-sub': '' }, sub) : null), right ? h('div', { class: 'page-tools' }, right) : null);
 }
