@@ -662,6 +662,45 @@ def create_engineer(values, editor, ip, reason=None):
     return {"id": engineer_key}
 
 
+# (table, column) pairs holding an engineer's name as plain text - every one is rewritten, history rows included, so a rename never
+# leaves an engineer's past assets/calls pointing at a name that no longer exists.
+ENGINEER_NAME_COLUMNS = [("asset", "engineer_name"), ("asset", "pm_done_by"), ("asset_snapshot", "engineer_name"), ("asset_snapshot", "pm_done_by"),
+                         ("pm_snapshot", "engineer_name"), ("pm_snapshot", "pm_done_by"), ("svc_call", "engineer"), ("spare_inward", "received_by"),
+                         ("portal_user", "engineer_key")]
+
+
+def rename_engineer(key, new_name, editor, ip, reason=None):
+    """Administrator renames an engineer. The upper-case name is the engineer's key everywhere (assets, calls, PM, user links), so the
+    new name is written to all of them in one transaction; refused if another engineer already has it."""
+    new_name = re.sub(r"\s+", " ", (new_name or "").strip())
+    if not new_name:
+        raise Invalid("Enter the engineer's new full name.", {"employee_name": "required"})
+    if len(new_name) > 120:
+        raise Invalid("The name is too long (120 characters at most).", {"employee_name": "too long"})
+    new_key = new_name.upper()
+    with db.write() as con:
+        row = _rows(con, "SELECT engineer_key, ecode FROM portal_engineer WHERE engineer_key = %s", (key,))
+        if not row:
+            raise NotFound("No such engineer.")
+        if new_key == key:
+            raise Invalid("That is already the engineer's name.", {"employee_name": "unchanged"})
+        if _exists(con, "SELECT 1 FROM portal_engineer WHERE engineer_key = %s", (new_key,)):
+            raise Conflict(f"An engineer named {new_key} already exists. Use a fuller name to tell them apart.")
+        moved = {}
+        con.execute("UPDATE portal_engineer SET engineer_key = %s, display_name = %s WHERE engineer_key = %s", (new_key, new_name, key))
+        for table, col in ENGINEER_NAME_COLUMNS:
+            n = con.execute(f"UPDATE {table} SET {col} = %s WHERE {col} = %s", (new_key, key)).rowcount
+            if n:
+                moved[f"{table}.{col}"] = n
+        if row[0]["ecode"]:
+            con.execute("UPDATE cipl_employee SET employee_name = %s WHERE ecode = %s", (new_name.upper(), row[0]["ecode"]))
+        con.execute("UPDATE portal_lock SET value = to_jsonb(%s::text) WHERE field IN ('engineer_name','engineer','pm_done_by') AND value = to_jsonb(%s::text)", (new_key, key))
+        con.execute("UPDATE portal_lock SET record_key = %s WHERE dataset = 'engineers' AND record_key = %s", (new_key, key))
+        con.execute("UPDATE portal_audit SET record_key = %s WHERE dataset = 'engineers' AND record_key = %s", (new_key, key))
+        _audit(con, editor, ip, "engineers", new_key, "RENAME", {"engineer_key": {"old": key, "new": new_key}, "rows_updated": moved}, reason)
+    return {"id": new_key, "rows_updated": moved}
+
+
 VERIFY_RESULTS = ("FOUND", "NOT_FOUND")
 
 

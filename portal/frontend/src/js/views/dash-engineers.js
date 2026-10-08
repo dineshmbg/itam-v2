@@ -110,7 +110,8 @@ export function mountEngineersDash(root) {
       drawer.setTitle(e.display_name, [e.designation, e.ecode].filter(Boolean).join(' · ') || 'Not on the CIPL roster');
       const b = drawer.body;
       const card = (title, ...kids) => h('div', { class: 'dsec' }, h('h3', null, title), h('div', { class: 'dbody' }, ...kids));
-      if (isAdmin() && e.ecode) drawer.setFoot(h('div', { class: 'rec-bar' }, h('button', { class: 'btn', type: 'button', onClick: () => rosterEvent(e) }, icon('user'), e.employment_status === 'ACTIVE' ? 'Record resignation / transfer…' : 'Record rejoining…')));
+      if (isAdmin()) drawer.setFoot(h('div', { class: 'rec-bar' }, h('button', { class: 'btn', type: 'button', onClick: () => renameEngineer(e) }, icon('edit'), 'Rename…'),
+        e.ecode ? h('button', { class: 'btn', type: 'button', onClick: () => rosterEvent(e) }, icon('user'), e.employment_status === 'ACTIVE' ? 'Record resignation / transfer…' : 'Record rejoining…') : null));
       b.replaceChildren(h('div', { class: 'dpane two-col' },
         h('div', { class: 'dsec' }, h('h3', null, 'Profile'), h('div', { class: 'kv' },
           kv('Gender', genderGlyph(e.gender)), kv('Level', e.level || '—'), kv('Roster status', e.employment_status ? badge(e.employment_status === 'ACTIVE' ? 'ACTIVE' : e.employment_status) : h('span', { class: 'faint' }, 'Not on roster')),
@@ -124,6 +125,18 @@ export function mountEngineersDash(root) {
     } catch (err) { drawer.body.replaceChildren(errorBlock(err)); }
   }
   const kv = (k, v) => [h('div', { class: 'k' }, k), h('div', { class: 'v' }, v)];
+
+  function renameEngineer(e) {
+    const name = h('input', { id: 'rn-name', type: 'text', maxlength: '120', value: e.display_name, class: 'upper' });
+    const why = h('input', { id: 'rn-why', type: 'text', maxlength: '200', placeholder: 'Optional' });
+    const f = (id, label, el) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el);
+    openModal({ title: `Rename engineer · ${e.display_name}`, lead: 'Updates this engineer’s name on every asset, call, PM record and linked user account, and is recorded in the change log.',
+      body: h('div', null, f('rn-name', 'New full name', name), f('rn-why', 'Reason', why)),
+      actions: [{ label: 'Cancel' }, { label: 'Rename', primary: true, onClick: async () => {
+        const r = await send(`/api/engineers/${encodeURIComponent(e.id)}/rename`, { name: name.value, reason: why.value });
+        toast('Engineer renamed'); patchParam('eng', r.id); showEngineer(r.id); load(false);
+      } }] });
+  }
 
   function rosterEvent(e) {
     const active = e.employment_status === 'ACTIVE';

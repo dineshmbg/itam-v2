@@ -151,6 +151,14 @@ async def qr_label(request):
                           "lines": [row.get("asset_class"), row.get("asset_type"), " ".join(filter(None, [row.get("make"), row.get("model")])), row.get("serial_no")]})
 
 
+async def engineer_rename(request):
+    b, u, ip = request.state.body, request.state.user, client_ip(request)
+    key = request.path_params["key"]
+    r = await run_in_threadpool(edit.rename_engineer, key, b.get("name"), u["username"], ip, b.get("reason"))
+    await run_in_threadpool(_act, u, ip, "ENGINEER_RENAME", key, {"to": r["id"]})
+    return json_response(r)
+
+
 async def engineer_event(request):
     b, u, ip = request.state.body, request.state.user, client_ip(request)
     key = request.path_params["key"]
@@ -285,6 +293,7 @@ routes = [
     Route("/api/edit/{name}/archive", write(archive), methods=["POST"]),
     Route("/api/edit/{name}/restore", write(restore), methods=["POST"]),
     Route("/api/edit/{name}/reset", write(reset), methods=["POST"]),
+    Route("/api/engineers/{key}/rename", write(engineer_rename, admin=True), methods=["POST"]),
     Route("/api/engineers/{key}/event", write(engineer_event, admin=True), methods=["POST"]),
     Route("/api/audit", read(audit_list, admin="strict")),
     Route("/api/views/{name}", read(view_get)),

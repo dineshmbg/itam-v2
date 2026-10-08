@@ -486,6 +486,24 @@ def test_create_engineer_rejects_duplicate_name_and_missing_name(sandbox):
     assert "employee_name" in e.value.fields
 
 
+def test_rename_engineer_moves_assets_and_calls_and_refuses_duplicates(sandbox):
+    old = edit.create_engineer({"employee_name": "Rename Me Engineer"}, ED, "127.0.0.1")["id"]
+    other = edit.create_engineer({"employee_name": "Rename Taken Engineer"}, ED, "127.0.0.1")["id"]
+    akey = one(sandbox, "SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' ORDER BY asset_key LIMIT 1")["asset_key"]
+    edit.update("assets", akey, {"engineer_name": old}, {}, ED, "127.0.0.1")
+    with pytest.raises(edit.Conflict):
+        edit.rename_engineer(old, other.title(), ED, "127.0.0.1")
+    with pytest.raises(edit.Invalid):
+        edit.rename_engineer(old, "  ", ED, "127.0.0.1")
+    r = edit.rename_engineer(old, "Renamed  Engineer", ED, "127.0.0.1", "typo")
+    assert r["id"] == "RENAMED ENGINEER" and r["rows_updated"]["asset.engineer_name"] >= 1
+    assert one(sandbox, "SELECT engineer_name FROM asset WHERE asset_key = %s AND is_current = 1", (akey,))["engineer_name"] == "RENAMED ENGINEER"
+    eng = one(sandbox, "SELECT display_name FROM portal_engineer WHERE engineer_key = 'RENAMED ENGINEER'")
+    assert eng["display_name"].upper() == "RENAMED ENGINEER"
+    assert one(sandbox, "SELECT count(*) n FROM portal_engineer WHERE engineer_key = %s", (old,))["n"] == 0
+    assert one(sandbox, "SELECT count(*) n FROM portal_audit WHERE dataset = 'engineers' AND record_key = 'RENAMED ENGINEER' AND action = 'RENAME'")["n"] == 1
+
+
 def test_create_engineer_ecodes_are_sequential(sandbox):
     a = edit.create_engineer({"employee_name": "Seq Engineer One"}, ED, "127.0.0.1")["id"]
     b = edit.create_engineer({"employee_name": "Seq Engineer Two"}, ED, "127.0.0.1")["id"]
