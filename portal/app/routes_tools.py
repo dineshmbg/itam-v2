@@ -401,6 +401,15 @@ async def match_mine(request):
     return json_response(out)
 
 
+async def match_notice(request):
+    return json_response({"notice": await run_in_threadpool(inventory_match.notice, request.state.user)})
+
+
+async def match_notice_seen(request):
+    await run_in_threadpool(inventory_match.mark_seen, request.state.user["username"], str(request.state.body.get("run_id") or ""))
+    return json_response({"ok": True})
+
+
 async def match_mine_run(request):
     u = request.state.user
     eng = _my_engineer(request, request.query_params)
@@ -573,6 +582,8 @@ routes = [
     Route("/api/match/meta", R_(match_meta, admin="lead_strict")),
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
     Route("/api/match/run", W_(match_run, admin="lead_strict"), methods=["POST"]),
+    Route("/api/match/notice", R_(match_notice)),
+    Route("/api/match/notice/seen", W_(match_notice_seen, mutates=False), methods=["POST"]),     # per-user "I have seen it", not a data change
     Route("/api/match/mine", R_(match_mine)),
     Route("/api/match/mine/export", W_(match_mine_export, mutates=False), methods=["POST"]),     # a download, not a write
     Route("/api/match/mine/{run}", R_(match_mine_run)),

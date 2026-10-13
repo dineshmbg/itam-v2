@@ -91,6 +91,7 @@ function startApp() {
   live.start();
   session.start();
   render(router.current());
+  import('./ui/match-notice.js').then((m) => m.showMatchNotice()).catch(() => {});
 }
 
 function stopApp() {

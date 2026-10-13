@@ -33,7 +33,8 @@ PRIORITY_BY_STATUS = {"IN_USE": HIGH, "NOT_ON_NETWORK": MEDIUM, "NOT_IN_USE": ME
 DDL = ["""CREATE TABLE IF NOT EXISTS portal_match_run (
           run_id TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), username TEXT NOT NULL, tool TEXT NOT NULL, filename TEXT NOT NULL,
           params JSONB NOT NULL, summary JSONB NOT NULL, result JSONB NOT NULL)""",
-       "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ", "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_by TEXT"]
+       "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ", "ALTER TABLE portal_match_run ADD COLUMN IF NOT EXISTS published_by TEXT",
+       "CREATE TABLE IF NOT EXISTS portal_match_seen (username TEXT NOT NULL, run_id TEXT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (username, run_id))"]
 
 # Products the portal recognises from the columns of a file (never from its name). A file with at least `min` of the signature columns is that product.
 PRODUCTS = {
@@ -717,6 +718,25 @@ def publish(run_id, user, on=True):
 
 def published(limit=10):
     return db.query("SELECT run_id, at, tool, filename, published_at, summary->>'report_as_of' AS report_as_of FROM portal_match_run WHERE published_at IS NOT NULL ORDER BY published_at DESC LIMIT %s", [limit])
+
+
+def notice(user):
+    """The sign-in message for an engineer: the newest shared analysis they have not yet opened, with their own figures. None when there is nothing to tell."""
+    eng = user.get("engineer_key")
+    last = (published(1) or [None])[0]
+    if user["role"] == "ADMIN" or not eng or not last or db.one("SELECT 1 AS x FROM portal_match_seen WHERE username = %s AND run_id = %s", [user["username"], last["run_id"]]):
+        return None
+    sc = scoped(get(last["run_id"]), eng)
+    if not sc["assets"]:
+        return None
+    urgent = [r for r in sc["assets"] if not r["installed"] and r["priority"] == HIGH][:8]
+    return {"run_id": last["run_id"], "shared_at": last["published_at"], "summary": sc["summary"],
+            "urgent": [{k: r[k] for k in ("ci", "user", "location", "action")} for r in urgent], "needs": bool(sc["summary"]["missing"] or sc["summary"]["attention"])}
+
+
+def mark_seen(username, run_id):
+    with db.write() as con:
+        con.execute("INSERT INTO portal_match_seen (username, run_id) VALUES (%s, %s) ON CONFLICT DO NOTHING", (username, run_id))
 
 
 def engineer_choices(run_id):

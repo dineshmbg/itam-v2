@@ -266,6 +266,29 @@ def test_engineers_see_only_their_own_machines_and_only_once_shared(box, tmp_pat
         assert ok.status_code == 200 and {a["ci"] for a in ok.json()["assets"]} == theirs
 
 
+def test_engineer_gets_a_sign_in_notice_for_a_shared_run_until_opened(box, tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                          AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 400""").fetchall()
+    if not rows:
+        pytest.skip("needs desktops with an engineer")
+    me = rows[0][1]
+    st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")
+    rid = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")["run_id"]
+    fake_user(monkeypatch, "USER", username="ENG1", engineer_key=me)
+    with TestClient(app) as c:
+        assert c.get("/api/match/notice").json()["notice"] in (None,) or c.get("/api/match/notice").json()["notice"]["run_id"] != rid      # not shared yet
+        m.publish(rid, "ADMIN1")
+        n = c.get("/api/match/notice").json()["notice"]
+        assert n["run_id"] == rid and n["summary"]["machines"] > 0 and n["summary"]["machines"] == m.scoped(m.get(rid), me)["summary"]["machines"]
+        assert c.post("/api/match/notice/seen", json={"run_id": rid}, headers=HDR).status_code == 200
+        again = c.get("/api/match/notice").json()["notice"]
+        assert again is None or again["run_id"] != rid                                                                                        # opened: not shown again
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        assert c.get("/api/match/notice").json()["notice"] is None                                                                           # administrators get no engineer notice
+
+
 def test_every_run_is_shared_and_mailed_automatically(box, tmp_path, monkeypatch):
     from portal.app import mailer
     monkeypatch.setattr(m, "STAGE", tmp_path)
