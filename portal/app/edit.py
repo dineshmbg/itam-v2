@@ -666,7 +666,7 @@ def create_engineer(values, editor, ip, reason=None):
 # leaves an engineer's past assets/calls pointing at a name that no longer exists.
 ENGINEER_NAME_COLUMNS = [("asset", "engineer_name"), ("asset", "pm_done_by"), ("asset_snapshot", "engineer_name"), ("asset_snapshot", "pm_done_by"),
                          ("pm_snapshot", "engineer_name"), ("pm_snapshot", "pm_done_by"), ("svc_call", "engineer"), ("spare_inward", "received_by"),
-                         ("portal_user", "engineer_key")]
+                         ("portal_user", "engineer_key"), ("portal_engineer_doc", "engineer_key")]
 
 
 def rename_engineer(key, new_name, editor, ip, reason=None):

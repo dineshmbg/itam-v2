@@ -111,3 +111,12 @@
 .wo-stepper .n .ico { width: 14px; height: 14px; }
 .wo-next { margin: 10px 0 0; font-size: 14px; }
 @media (max-width: 760px) { .wo-stages, .wo-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wo-stage { border-bottom: 1px solid var(--c-border); } }
+
+/* Engineer documents tab */
+.edocs-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
+.edoc { border: 1px solid var(--c-border); border-radius: var(--r-1); padding: 10px 12px; display: grid; gap: 6px; }
+.edoc-h { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.edoc-info { font-size: 13px; overflow-wrap: anywhere; }
+.edoc-act { display: flex; gap: 8px; flex-wrap: wrap; }
+.edoc-old { margin-top: 14px; font-size: 13px; }
+.edoc-old ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }

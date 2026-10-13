@@ -40,7 +40,7 @@ python portal\db\restore_drill.py                 # restore a fresh dump into a 
 
 **Scheduled work inside the portal.** Daily automatic backup (default 02:00, keeps the newest 14); PM cycle bookkeeping daily and a PM snapshot every Monday; the e-mail rules (off until a mail server is configured and a rule is switched on).
 
-**Not built / known gaps** (so nobody assumes otherwise): ownership/custody history, document attachments (invoices, contracts), software and licence tracking, bulk edit, per-call SLA alerts, a scan-to-verify mobile flow, an "undo this load" button, automatic disabling of leavers' accounts, hosted CI and browser tests (the tests read the dev database's real data, so a hosted runner has nothing to test against), a measured accessibility audit (WCAG 2.2 AA is the design target, not a measured result), and an alert if the production portal goes down.
+**Not built / known gaps** (so nobody assumes otherwise): ownership/custody history, document attachments on assets and calls (invoices, contracts; engineers' own documents are built, see "Engineer documents"), software and licence tracking, bulk edit, per-call SLA alerts, a scan-to-verify mobile flow, an "undo this load" button, automatic disabling of leavers' accounts, hosted CI and browser tests (the tests read the dev database's real data, so a hosted runner has nothing to test against), a measured accessibility audit (WCAG 2.2 AA is the design target, not a measured result), and an alert if the production portal goes down.
 
 **How to read the rest of this file.** The sections from "Who can do what" to "Rules built in" describe the current behaviour. The dated sections after that are the change history in the order things happened; where a later section changes an earlier one, **the later one wins** (for example, everyone now lands on the Call tracker after sign-in, and the OS family list is the closed list from 2026-09-23).
 
@@ -757,3 +757,15 @@ E-mail and alerts, Data integrity and Change log stay real-administrator-only.
 **Same day, later: administrator-level view as well.** A Team Leader/SI User now also works like an extended-access account for every dashboard and register
 (Engineers dashboard, Calls/Inward/Outward/OEM RMA, unscoped Assets/Employees/PM, reports, hover cards, edits): `auth.session_user` sets the effective role
 to ADMIN while the real group stays User. Control, Data import, Backup and restore, Software update and E-mail and alerts remain real-administrator-only.
+
+## Engineer documents (2026-10-13)
+
+*Engineers register > open an engineer > **Documents** tab.* Cancelled cheque, medical card, ESIC card, gate pass, and any number of "Other" documents (EPFO, ID proof... - each needs a label). Each slot shows **Missing / On file / Expires soon (30 days) / Expired** from the optional *Valid until* date.
+
+- **Who:** an administrator, a Team Leader/SI User, and the engineer themselves (their own record only) can see, download and upload. Only an administrator or Team Leader/SI can **Remove**. The read-only demo login is refused everywhere, because it has a public password.
+- **Stored in PostgreSQL** (`portal_engineer_doc`, `bytea`), so every backup, restore drill and release rollback covers the files. PDF, JPG or PNG only, **10 MB** each; the file's real signature is checked, not its extension. Contents never appear in any list, register, report or export.
+- **Nothing is erased.** Replacing a file, or *Remove*, marks the old row superseded and keeps its bytes (shown under *Earlier versions*). A real purge is manual SQL and needs the user's `CONFIRM DELETE`.
+- **Logged:** every upload, download and removal is written to the Activity log (`ENG_DOC_UPLOAD / ENG_DOC_DOWNLOAD / ENG_DOC_REMOVE`).
+- **Rename** of an engineer carries the documents with the name (`edit.ENGINEER_NAME_COLUMNS`).
+- Code: `app/engdocs.py`, `app/routes_engdocs.py`, `frontend/src/js/views/eng-docs.js`; tests `tests/test_engdocs.py`. The table is created by `db/setup.py` (so a release / software update creates it).
+- **Not built:** a "documents on file" column in the register, e-mail alerts for expiring documents, the dashboard drawer's own copy of the tab.

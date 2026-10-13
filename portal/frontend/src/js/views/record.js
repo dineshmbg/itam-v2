@@ -4,10 +4,11 @@ import { h, icon } from '../core/dom.js';
 import { date, label as fieldLabel, when } from '../core/format.js';
 import { getSchema } from '../core/editor.js';
 import { toast } from '../ui/toast.js';
-import { isAdmin, user as sessionUser } from '../core/session.js';
+import { hasLeadTools, isAdmin, user as sessionUser } from '../core/session.js';
 import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';
 import { renderDetail } from './detail.js';
+import { engineerDocs } from './eng-docs.js';
 import { recordPmDialog } from './pm-record.js';
 import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
@@ -28,6 +29,9 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
   const canEditAny = () => spec.fields.some((f) => !f.readonly && !f.create_only);
   // Engineer records: an admin can edit any of them; anyone else only their own (the one matching their own login).
   const isOwnEngineerRecord = () => admin || sessionUser()?.engineer_key === p.id;
+  // Documents (cheque, cards, gate pass): an administrator, a Team Leader/SI, or the engineer themselves - never the read-only demo login.
+  const canDocs = () => name === 'engineers' && !sessionUser()?.read_only && (admin || hasLeadTools() || sessionUser()?.engineer_key === p.id);
+  let docsEl = null;
   const canArchiveThis = name !== 'engineers' && (admin || name !== 'assets');
 
   function show() {
@@ -68,6 +72,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     const rel = nodes.filter((n) => n.classList.contains('rel'));
     const tabs = [['details', 'Details', nodes.filter((n) => !n.classList.contains('rel')), 'two-col']];
     if (rel.length) tabs.push(['related', name === 'assets' ? `Calls and parts (${relCount(rel)})` : 'Related', rel, '']);
+    if (canDocs()) tabs.push(['documents', 'Documents', [docsEl ||= engineerDocs(p.id)], '']);
     if (hist.length) tabs.push(['history', `History (${hist.length})`, [history(hist)], '']);
     if (!tabs.some((t) => t[0] === tab)) tab = 'details';
     drawer.setFoot(bar.children.length ? bar : null);
