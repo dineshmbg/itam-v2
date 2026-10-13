@@ -8,7 +8,8 @@ import { openDrawer } from '../ui/drawer.js';
 import { shareMenu } from '../ui/share.js';
 import { send } from '../core/api.js';
 import { toast } from '../ui/toast.js';
-import { isAdmin } from '../core/session.js';
+import { isAdmin, user as sessionUser } from '../core/session.js';
+import { engineerDocs } from './eng-docs.js';
 import { openModal } from '../ui/modal.js';
 import { barRows, canvas, errorBlock, kpiStrip, kpiUpdate, pageHead, panel, regHref, loading, NOISE } from './common.js';
 
@@ -111,7 +112,7 @@ export function mountEngineersDash(root) {
       const card = (title, ...kids) => h('div', { class: 'dsec' }, h('h3', null, title), h('div', { class: 'dbody' }, ...kids));
       if (isAdmin()) drawer.setFoot(h('div', { class: 'rec-bar' }, h('button', { class: 'btn', type: 'button', onClick: () => renameEngineer(e) }, icon('edit'), 'Rename…'),
         e.ecode ? h('button', { class: 'btn', type: 'button', onClick: () => rosterEvent(e) }, icon('user'), e.employment_status === 'ACTIVE' ? 'Record resignation / transfer…' : 'Record rejoining…') : null));
-      b.replaceChildren(h('div', { class: 'dpane two-col' },
+      const overview = h('div', { class: 'dpane two-col', id: 'dpane-overview', role: 'tabpanel' },
         h('div', { class: 'dsec' }, h('h3', null, 'Profile'), h('div', { class: 'kv' },
           kv('Gender', genderGlyph(e.gender)), kv('Level', e.level || '—'), kv('Roster status', e.employment_status ? badge(e.employment_status === 'ACTIVE' ? 'ACTIVE' : e.employment_status) : h('span', { class: 'faint' }, 'Not on roster')),
           kv('Joined ONGC site', date(e.date_of_joining_ongc)), kv('Skill category', e.skill_category || '—'), kv('Deployed at', humanize(e.deployed_at)), kv('Work email', e.company_email || '—'),
@@ -120,7 +121,14 @@ export function mountEngineersDash(root) {
         card(`Open calls (${e.open_calls.length})`, e.open_calls.length ? miniTable(e.open_calls, ['id', 'cipl_call_date', 'problem_description', 'ageing_days'], ['SR ID', 'Logged', 'Problem', 'Age (d)'], 'calls') : h('div', { class: 'muted' }, 'No open calls.')),
         card('Recently closed', e.recent_closed.length ? miniTable(e.recent_closed, ['id', 'closed_date', 'problem_description', 'tat_days'], ['SR ID', 'Closed', 'Problem', 'Days'], 'calls') : h('div', { class: 'muted' }, 'None.')),
         card('Assets by class', e.assets_by_class.length ? barRows(e.assets_by_class.map((a) => ({ label: `${humanize(a.label)}${a.pm_pending ? ` · ${a.pm_pending} PM pending` : ''}`, n: a.n, href: regHref('assets', { 'f.asset_class': a.label, 'f.engineer_name': e.id }) }))) : h('div', { class: 'muted' }, 'No assets assigned.')),
-      ));
+      );
+      if (sessionUser()?.read_only) { drawer.setTabs(null); b.replaceChildren(overview); return; }
+      const docs = h('div', { class: 'dpane', id: 'dpane-documents', role: 'tabpanel', hidden: true }, engineerDocs(e.id));
+      const tabs = [['overview', 'Overview', overview], ['documents', 'Documents', docs]];
+      const btns = tabs.map(([id, text]) => h('button', { class: 'dtab', type: 'button', role: 'tab', id: 'dtab-' + id, 'aria-controls': 'dpane-' + id, onClick: () => pick(id) }, text));
+      const pick = (id) => { btns.forEach((x, i) => { const on = tabs[i][0] === id; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1; tabs[i][2].hidden = !on; }); b.scrollTop = 0; };
+      drawer.setTabs(h('div', { class: 'dtabs', role: 'tablist', 'aria-label': 'Engineer sections' }, btns));
+      b.replaceChildren(overview, docs); pick('overview');
     } catch (err) { drawer.body.replaceChildren(errorBlock(err)); }
   }
   const kv = (k, v) => [h('div', { class: 'k' }, k), h('div', { class: 'v' }, v)];

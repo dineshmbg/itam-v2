@@ -760,7 +760,7 @@ to ADMIN while the real group stays User. Control, Data import, Backup and resto
 
 ## Engineer documents (2026-10-13)
 
-*Engineers register > open an engineer > **Documents** tab.* Cancelled cheque, medical card, ESIC card, gate pass, and any number of "Other" documents (EPFO, ID proof... - each needs a label). Each slot shows **Missing / On file / Expires soon (30 days) / Expired** from the optional *Valid until* date.
+*Engineers register > open an engineer > **Documents** tab (also the Engineers dashboard's drawer: Overview / Documents tabs).* Cancelled cheque, medical card, ESIC card, gate pass, and any number of "Other" documents (EPFO, ID proof... - each needs a label). Each slot shows **Missing / On file / Expires soon (30 days) / Expired** from the optional *Valid until* date.
 
 - **Who:** an administrator, a Team Leader/SI User, and the engineer themselves (their own record only) can see, download and upload. Only an administrator or Team Leader/SI can **Remove**. The read-only demo login is refused everywhere, because it has a public password.
 - **Stored in PostgreSQL** (`portal_engineer_doc`, `bytea`), so every backup, restore drill and release rollback covers the files. PDF, JPG or PNG only, **10 MB** each; the file's real signature is checked, not its extension. Contents never appear in any list, register, report or export.
@@ -768,4 +768,4 @@ to ADMIN while the real group stays User. Control, Data import, Backup and resto
 - **Logged:** every upload, download and removal is written to the Activity log (`ENG_DOC_UPLOAD / ENG_DOC_DOWNLOAD / ENG_DOC_REMOVE`).
 - **Rename** of an engineer carries the documents with the name (`edit.ENGINEER_NAME_COLUMNS`).
 - Code: `app/engdocs.py`, `app/routes_engdocs.py`, `frontend/src/js/views/eng-docs.js`; tests `tests/test_engdocs.py`. The table is created by `db/setup.py` (so a release / software update creates it).
-- **Not built:** a "documents on file" column in the register, e-mail alerts for expiring documents, the dashboard drawer's own copy of the tab.
+- **Not built:** a "documents on file" column in the register, e-mail alerts for expiring documents.
