@@ -555,7 +555,7 @@ select option { background: var(--c-surface); color: var(--c-text); padding: 8px
 @media print { .app-foot { display: none; } }
 
 /* ---------- page titles ---------- */
-.page-head { align-items: center; margin-bottom: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--c-border); position: relative; }
+.page-head { align-items: center; margin-bottom: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--c-border); position: relative; z-index: 5; }
 .page-head::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 72px; height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--page-mod, var(--chart-1)), var(--chart-6)); }
 .page-head h1 { font-size: 26px; line-height: 34px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
   background: linear-gradient(90deg, var(--c-text) 55%, var(--page-mod, var(--c-accent))); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
