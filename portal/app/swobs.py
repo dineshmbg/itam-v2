@@ -130,3 +130,28 @@ def ingest_report(filename, data, by):
     out["ignored_other_sites"] = ignored
     out["unmatched_names"] = out["unmatched_names"][:50]
     return out
+
+
+# ---------------------------------------------------------------- the asset record's "Software" tab
+def _build_tail(v):
+    """BigFix says 10.0.19045.6456, Trend only 19045: compare on the Windows build number (third part) so the two can be set side by side."""
+    parts = str(v or "").split(".")
+    return parts[2] if len(parts) >= 3 else (parts[0] if parts and parts[0].isdigit() else None)
+
+
+def panel(asset_key, asset_class):
+    """What the record window shows: the newest observation per source (with its flags), conflicts between sources for the engineer to judge,
+    and the full history. None for classes outside the tracked scope."""
+    if asset_class not in SCOPE_CLASSES:
+        return None
+    latest = latest_by_source(asset_key)
+    for r in latest:
+        r["flags"] = [f for f in (r["stale"] and ("Report is more than %d days old" % (VERY_STALE_DAYS if r["stale"] == "VERY_STALE" else STALE_DAYS)),
+                                  r["os_edition"] == "Windows 10" and "Windows 10 is past end of support") if f]
+    conflicts = []
+    for label, get in (("Windows edition", lambda r: r["os_edition"]), ("Windows build", lambda r: _build_tail(r["os_build"]))):
+        seen = {r["source"]: get(r) for r in latest if get(r)}
+        if len(set(seen.values())) > 1:
+            conflicts.append({"field": label, "values": seen})
+    history = db.query("SELECT * FROM portal_sw_obs WHERE asset_key = %s ORDER BY obs_id DESC LIMIT 100", [asset_key])
+    return {"latest": latest, "conflicts": conflicts, "history": history}

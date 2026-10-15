@@ -103,3 +103,18 @@ def test_names_not_starting_with_ank_are_discarded_not_reported(box):
     other = BIGFIX + b"AAAA-INTWS103,Desktop,10.0.0.9,Win11 10.0.26200.9445 (25H2),i7,\"Wed, 14 Oct 2026 21:16:35 +0000\"\n"
     s = swobs.ingest_report("b.csv", other, by="T")
     assert (s["rows"], s["ignored_other_sites"], s["unmatched_names"]) == (4, 1, ["ankzz-pc2.ongc.local", "ANKNOPE-9"])
+
+
+# ---------------------------------------------------------------- record view (task 3)
+def test_asset_record_carries_software_panel_only_for_in_scope_classes(box):
+    from portal.app import queries
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PR1", "PRINTER")
+    swobs.record("ANKZZ-PC1", "BIGFIX_REPORT", {"os_edition": "Windows 10", "os_build": "10.0.19045.6456"}, by="T")
+    swobs.record("ANKZZ-PC1", "TREND_REPORT", {"os_edition": "Windows 11", "os_build": "19045", "last_user": "ONGC\68047"}, by="T")
+    swobs.record("ANKZZ-PR1", "MANUAL", {"remarks": "x"}, by="T")
+    sw = queries.detail("assets", "ANKZZ-PC1", user={"role": "ADMIN"})["related"]["software"]
+    assert {r["source"] for r in sw["latest"]} == {"BIGFIX_REPORT", "TREND_REPORT"} and len(sw["history"]) == 2
+    big = next(r for r in sw["latest"] if r["source"] == "BIGFIX_REPORT")
+    assert "Windows 10 is past end of support" in big["flags"] and big["inspected_at"]
+    assert [c["field"] for c in sw["conflicts"]] == ["Windows edition"]            # builds agree (19045 both); editions differ
+    assert queries.detail("assets", "ANKZZ-PR1", user={"role": "ADMIN"})["related"]["software"] is None

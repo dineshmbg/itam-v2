@@ -9,6 +9,7 @@ import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';
 import { renderDetail } from './detail.js';
 import { engineerDocs } from './eng-docs.js';
+import { softwareTab } from './sw-tab.js';
 import { recordPmDialog } from './pm-record.js';
 import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
@@ -72,6 +73,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     const rel = nodes.filter((n) => n.classList.contains('rel'));
     const tabs = [['details', 'Details', nodes.filter((n) => !n.classList.contains('rel')), 'two-col']];
     if (rel.length) tabs.push(['related', name === 'assets' ? `Calls and parts (${relCount(rel)})` : 'Related', rel, '']);
+    if (p.related.software) tabs.push(['software', `Software (${p.related.software.latest.length})`, softwareTab(p.related.software), '']);
     if (canDocs()) tabs.push(['documents', 'Documents', [docsEl ||= engineerDocs(p.id)], '']);
     if (hist.length) tabs.push(['history', `History (${hist.length})`, [history(hist)], '']);
     if (!tabs.some((t) => t[0] === tab)) tab = 'details';
