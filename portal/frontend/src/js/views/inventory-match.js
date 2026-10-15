@@ -192,6 +192,15 @@ function checkScriptPanel() {
   const drop = h('input', { type: 'text', id: 'sw-drop', value: '\\\\10.205.64.203\\ank-helpdesk\\common-for-all\\check-results', maxlength: 200 });
   const picks = h('input', { type: 'file', id: 'sw-files', accept: '.txt', multiple: true });
   const result = h('div', { class: 'stack-v', role: 'status' });
+  const bulk = h('input', { type: 'file', id: 'sw-bulk', accept: '.xlsx' });
+  const bulkOut = h('div', { class: 'stack-v', role: 'status' });
+  const doBulk = async () => {
+    if (!bulk.files[0]) { toast('Choose the filled template.', 'bad'); return; }
+    try {
+      const r = await upload('/api/software/bulk', bulk.files[0]);
+      bulkOut.replaceChildren(r.errors.length ? h('div', null, h('span', { class: 'badge bad' }, 'Nothing saved'), h('ul', null, r.errors.slice(0, 30).map((t) => h('li', null, t)))) : h('div', null, h('span', { class: 'badge ok' }, 'Saved'), ` ${r.recorded} machine(s) recorded.`));
+    } catch (e) { bulkOut.replaceChildren(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', e.message || 'unreadable')); }
+  };
   const getScript = async () => {
     try { await download('/api/software/script', { rotate: rotate.checked, drop: drop.value }, 'ankcheck.bat'); rotate.checked = false; toast('Script downloaded. Put it on the share.'); } catch (e) { toast(e.message || 'Could not build the script.', 'bad'); }
   };
@@ -214,6 +223,11 @@ function checkScriptPanel() {
     h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: getScript }, icon('download'), 'Download ankcheck.bat')),
     frow2('sw-files', 'Saved result files (ankcheck_*.txt)', picks),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: doUpload }, icon('upload'), 'Upload results')),
+    h('h4', null, 'Enter many machines at once (Excel)'),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: () => download('/api/software/template', {}, 'Software_Observation_Upload_Template.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('download'), 'Download Excel template')),
+    frow2('sw-bulk', 'Filled template (.xlsx)', bulk),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: doBulk }, icon('upload'), 'Upload filled template')),
+    bulkOut,
     result));
 }
 const frow2 = (id, label, el) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el);

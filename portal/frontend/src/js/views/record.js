@@ -9,7 +9,7 @@ import { buildForm } from '../ui/form.js';
 import { openModal } from '../ui/modal.js';
 import { renderDetail } from './detail.js';
 import { engineerDocs } from './eng-docs.js';
-import { softwareTab } from './sw-tab.js';
+import { addObservationDialog, softwareTab } from './sw-tab.js';
 import { recordPmDialog } from './pm-record.js';
 import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
@@ -73,7 +73,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     const rel = nodes.filter((n) => n.classList.contains('rel'));
     const tabs = [['details', 'Details', nodes.filter((n) => !n.classList.contains('rel')), 'two-col']];
     if (rel.length) tabs.push(['related', name === 'assets' ? `Calls and parts (${relCount(rel)})` : 'Related', rel, '']);
-    if (p.related.software) tabs.push(['software', `Software (${p.related.software.latest.length})`, softwareTab(p.related.software), '']);
+    if (p.related.software) tabs.push(['software', `Software (${p.related.software.latest.length})`, softwareTab(p.related.software, canAddSoftware() ? () => addObservationDialog(p.id, (sw) => { p.related.software = sw; show(); onChange?.(); }) : null), '']);
     if (canDocs()) tabs.push(['documents', 'Documents', [docsEl ||= engineerDocs(p.id)], '']);
     if (hist.length) tabs.push(['history', `History (${hist.length})`, [history(hist)], '']);
     if (!tabs.some((t) => t[0] === tab)) tab = 'details';
@@ -97,6 +97,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     drawer.body.replaceChildren(...panes);
   }
 
+  const canAddSoftware = () => !spec.readonly && !p.archived && (isAdmin() || hasLeadTools() || sessionUser()?.engineer_key === p.row.engineer_name);
   const relCount = (rel) => rel.reduce((n, el) => n + Number((el.querySelector('h3')?.textContent.match(/\((\d+)\)/) || [0, 0])[1]), 0);
 
   function history(rows) {

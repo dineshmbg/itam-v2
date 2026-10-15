@@ -259,3 +259,81 @@ def test_check_endpoints(box, monkeypatch):
     u = fake_user(monkeypatch, role="USER", username="U1")
     assert c.post("/api/software/script", json={}, headers=HDR).status_code == 403
     assert c.post("/api/software/check-upload", content=CHECK, headers={"X-Requested-With": "itam-portal"}).status_code == 403
+
+
+# ---------------------------------------------------------------- manual entry + Excel template (task 6)
+def _wb(rows, header=None):
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(header or swobs.template_headers())
+    for r in rows:
+        ws.append(r)
+    b = io.BytesIO()
+    wb.save(b)
+    return b.getvalue()
+
+
+def test_manual_entry_cleans_values_and_records_a_manual_observation(box):
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PR1", "PRINTER")
+    oid = swobs.record_manual("ANKZZ-PC1", {"os_edition": "Windows 11", "trend_installed": "Yes", "bigfix_installed": "no", "vpn_name": " Zscaler ", "sap_gui_version": "", "remarks": "checked at desk"}, by="ENG1")
+    row = box.execute("SELECT source, recorded_by, trend_installed, bigfix_installed, vpn_name, sap_gui_version FROM portal_sw_obs WHERE obs_id = %s", (oid,)).fetchone()
+    assert tuple(row) == ("MANUAL", "ENG1", True, False, "Zscaler", None)
+    for bad in ({}, {"colour": "red"}, {"trend_installed": "maybe"}, {"os_build": "x" * 300}):
+        with pytest.raises(swobs.ObsError):
+            swobs.record_manual("ANKZZ-PC1", bad, by="E")
+    with pytest.raises(swobs.ObsError):
+        swobs.record_manual("ANKZZ-PR1", {"remarks": "x"}, by="E")          # printer: out of scope
+
+
+def test_template_headers_roundtrip_and_workbook_all_or_nothing(box):
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PC2")
+    h = swobs.template_headers()
+    assert h[0] == "Asset (CI)" and "Windows edition" in h and "Trend Micro installed (Yes/No)" in h
+    def line(ci, **kv):
+        r = [""] * len(h)
+        r[0] = ci
+        for k, v in kv.items():
+            r[h.index(k)] = v
+        return r
+    good = swobs.ingest_workbook(_wb([line("ANKZZ-PC1", **{"Windows edition": "Windows 11", "Trend Micro installed (Yes/No)": "Yes"}), line("ankzz-pc2", **{"VPN": "Zscaler"})]), by="ENG")
+    assert good == {"recorded": 2, "errors": []}
+    assert {x["source"] for x in swobs.latest_by_source("ANKZZ-PC2")} == {"MANUAL"}
+    before = box.execute("SELECT count(*) FROM portal_sw_obs").fetchone()[0]
+    bad = swobs.ingest_workbook(_wb([line("ANKZZ-PC1", **{"Windows edition": "Windows 10"}), line("ANKNOPE", **{"Windows edition": "Windows 10"}), line("ANKZZ-PC2", **{"Trend Micro installed (Yes/No)": "perhaps"})]), by="ENG")
+    assert bad["recorded"] == 0 and len(bad["errors"]) == 2 and "Row 3" in bad["errors"][0] and "Row 4" in bad["errors"][1]
+    assert box.execute("SELECT count(*) FROM portal_sw_obs").fetchone()[0] == before          # one bad row: nothing recorded
+    with pytest.raises(swobs.ObsError):
+        swobs.ingest_workbook(_wb([["x"]], header=["Something else"]), by="E")
+    with pytest.raises(swobs.ObsError):
+        swobs.ingest_workbook(b"not an excel file", by="E")
+
+
+def test_manual_and_bulk_endpoints_and_permissions(box, monkeypatch):
+    from starlette.testclient import TestClient
+    from conftest import HDR, fake_user
+    from portal.app import routes_swobs
+    from portal.app.main import app
+    _asset(box, "ANKZZ-PC1")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_ENG' WHERE asset_key = 'ANKZZ-PC1'")
+    c = TestClient(app)
+    u = fake_user(monkeypatch, role="USER", username="E1", engineer_key="ZZ_ENG")
+    ok = c.post("/api/software/manual", json={"key": "ANKZZ-PC1", "facts": {"trend_installed": "Yes"}}, headers=HDR)
+    assert ok.status_code == 200 and ok.json()["software"]["latest"][0]["source"] == "MANUAL"
+    u2 = fake_user(monkeypatch, role="USER", username="E2", engineer_key="SOMEONE_ELSE")
+    assert c.post("/api/software/manual", json={"key": "ANKZZ-PC1", "facts": {"trend_installed": "Yes"}}, headers=HDR).status_code == 403
+    fake_user(monkeypatch, role="ADMIN", username="ADM")
+    assert c.post("/api/software/manual", json={"key": "ANKZZ-PC1", "facts": {"remarks": "by admin"}}, headers=HDR).status_code == 200
+    tpl = c.post("/api/software/template", json={}, headers=HDR)
+    assert tpl.status_code == 200 and tpl.content[:2] == b"PK"
+    admin = fake_user(monkeypatch, role="ADMIN", username="ADM")
+
+    async def me(request):
+        return admin
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    h = swobs.template_headers()
+    r = [""] * len(h)
+    r[0], r[h.index("VPN")] = "ANKZZ-PC1", "Zscaler"
+    up = c.post("/api/software/bulk", content=_wb([r]), headers={"X-Requested-With": "itam-portal"})
+    assert up.status_code == 200 and up.json() == {"recorded": 1, "errors": []}

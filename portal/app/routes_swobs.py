@@ -5,7 +5,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, swobs
+from . import auth, db, swobs
 from .web import client_ip, current_user, error, guarded, json_response, write
 
 
@@ -50,7 +50,46 @@ async def script_download(request):
     return Response(text.encode("utf-8"), media_type="application/octet-stream", headers={"Content-Disposition": 'attachment; filename="ankcheck.bat"', "Cache-Control": "no-store"})
 
 
+async def manual_post(request):
+    """One observation typed in from the asset's record window: the administrator, a team lead, or the asset's own engineer."""
+    u, b = request.state.user, request.state.body
+    key = str(b.get("key") or "")
+    asset = await run_in_threadpool(db.one, "SELECT asset_key, asset_class, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_key = %s", [key])
+    mine = bool(asset) and bool(u.get("engineer_key")) and u["engineer_key"] == asset["engineer_name"]
+    if not asset or not (auth.is_full_admin(u) or auth.is_lead(u) or mine):
+        return error(403, "Only an administrator, a team lead, or the asset's engineer can add this.")
+    await run_in_threadpool(swobs.record_manual, key, b.get("facts") or {}, u["username"])
+    await run_in_threadpool(auth.log, u["username"], client_ip(request), "SW_MANUAL", key, None)
+    return json_response({"software": await run_in_threadpool(swobs.panel, asset["asset_key"], asset["asset_class"])})
+
+
+async def template_download(request):
+    return Response(await run_in_threadpool(swobs.template_bytes), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Software_Observation_Upload_Template.xlsx"', "Cache-Control": "no-store"})
+
+
+@guarded
+async def bulk_upload(request):
+    """The filled Excel template as the raw request body (administrator or team lead). All or nothing."""
+    user = await current_user(request)
+    if not user or user["state"] != "ok" or user.get("read_only") or not (auth.is_full_admin(user) or auth.is_lead(user)):
+        return error(403, "This needs an administrator.")
+    if request.headers.get("x-requested-with") != "itam-portal":
+        return error(403, "Rejected: not a portal request.")
+    origin = request.headers.get("origin")
+    if origin and origin.split("://", 1)[-1] != request.headers.get("host"):
+        return error(403, "Rejected: cross-site request.")
+    if int(request.headers.get("content-length") or 0) > 5 * 1024 * 1024:
+        return error(413, "The file is too large.")
+    out = await run_in_threadpool(swobs.ingest_workbook, await request.body(), user["username"])
+    await run_in_threadpool(auth.log, user["username"], client_ip(request), "SW_BULK_UPLOAD", None, {"recorded": out["recorded"], "errors": len(out["errors"])})
+    return json_response(out)
+
+
 routes = [
+    Route("/api/software/manual", write(manual_post), methods=["POST"]),
+    Route("/api/software/template", write(template_download, admin="lead", mutates=False), methods=["POST"]),
+    Route("/api/software/bulk", bulk_upload, methods=["POST"]),
     Route("/api/software/check", check_post, methods=["POST"]),
     Route("/api/software/check-upload", check_upload, methods=["POST"]),
     Route("/api/software/script", write(script_download, admin=True), methods=["POST"]),

@@ -278,3 +278,114 @@ def script_text(portal_url, token, drop=DEFAULT_DROP):
     """The .bat, ready to put on the share: this portal's address and the token are filled in, Windows line endings."""
     body = _TEMPLATE.read_text(encoding="utf-8").replace("__URL__", portal_url.rstrip("/")).replace("__TOKEN__", token).replace("__DROP__", drop)
     return body.replace("\r\n", "\n").replace("\n", "\r\n")
+
+
+
+# ---------------------------------------------------------------- manual entry and the Excel bulk template
+TEMPLATE_COLUMNS = [("Windows edition", "os_edition"), ("Windows build", "os_build"), ("Windows feature version", "os_feature_version"), ("Trend Micro installed (Yes/No)", "trend_installed"),
+                    ("Trend Micro version", "trend_version"), ("BigFix installed (Yes/No)", "bigfix_installed"), ("BigFix version", "bigfix_version"), ("VPN", "vpn_name"), ("VPN version", "vpn_version"),
+                    ("Other VPN present (Yes/No)", "vpn_other"), ("SAP GUI version", "sap_gui_version"), ("Microsoft 365 account", "o365_account"), ("Office version", "o365_version"),
+                    ("Office update channel", "office_channel"), ("Last logged-on user", "last_user"), ("BitLocker on (Yes/No)", "bitlocker"), ("TPM / Secure Boot on (Yes/No)", "tpm_secureboot"),
+                    ("Domain joined (Yes/No)", "domain_joined"), ("Last boot", "last_boot"), ("Browser version", "browser_version"), ("Local administrators", "local_admins"), ("Remarks", "remarks")]
+_YES, _NO = {"yes", "y", "true", "1"}, {"no", "n", "false", "0"}
+
+
+def template_headers():
+    return ["Asset (CI)"] + [h for h, _ in TEMPLATE_COLUMNS]
+
+
+def _clean_facts(raw):
+    """Typed values for one manual observation: blanks are dropped, Yes/No become booleans, nothing unknown or oversized gets through."""
+    facts = {}
+    for k, v in (raw or {}).items():
+        if k not in FIELDS:
+            raise ObsError(f"Unknown field: {k}.")
+        if v is None or (isinstance(v, str) and not v.strip()):
+            continue
+        if k in BOOLS:
+            s = str(v).strip().lower()
+            if s not in _YES | _NO:
+                raise ObsError(f"{k}: answer Yes or No.")
+            facts[k] = s in _YES
+        else:
+            s = str(v).strip()
+            if len(s) > 200:
+                raise ObsError(f"{k}: too long (200 characters at most).")
+            facts[k] = s
+    if not facts:
+        raise ObsError("Enter at least one value.")
+    return facts
+
+
+def _in_scope_asset(key):
+    return db.one("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(asset_key) = upper(%s)", [SCOPE_CLASSES, str(key or "").strip()])
+
+
+def record_manual(asset_key, raw, by):
+    facts = _clean_facts(raw)
+    asset = _in_scope_asset(asset_key)
+    if not asset:
+        raise ObsError("Software is tracked for desktops, workstations and servers only.", 404)
+    return record(asset["asset_key"], "MANUAL", facts, by)
+
+
+def template_bytes():
+    import io
+    from openpyxl import Workbook
+    from openpyxl.worksheet.datavalidation import DataValidation
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Software"
+    ws.append(template_headers())
+    dv = DataValidation(type="list", formula1='"Yes,No"', allow_blank=True)
+    ws.add_data_validation(dv)
+    for i, (h, f) in enumerate(TEMPLATE_COLUMNS, start=2):
+        letter = ws.cell(1, i).column_letter
+        ws.column_dimensions[letter].width = 22
+        if f in BOOLS:
+            dv.add(f"{letter}2:{letter}1000")
+    ws.column_dimensions["A"].width = 20
+    ws.freeze_panes = "B2"
+    n = wb.create_sheet("How to fill")
+    for line in ("One row per machine. Asset (CI) must be a desktop, workstation or server in the register.", "Leave a cell blank when you did not check it - blank is not the same as No.",
+                 "Yes/No columns accept Yes or No only.", "Every row is saved as an observation 'Entered by hand' with the date and your name; the date cannot be set or changed.",
+                 "If any row has a problem, nothing from the file is saved: fix the rows listed and upload again."):
+        n.append([line])
+    n.column_dimensions["A"].width = 110
+    b = io.BytesIO()
+    wb.save(b)
+    return b.getvalue()
+
+
+def ingest_workbook(data, by):
+    """Read a filled template. All or nothing: observations cannot be deleted, so one bad row means nothing is saved."""
+    import io
+    from openpyxl import load_workbook
+    if data[:2] != b"PK":
+        raise ObsError("That is not an Excel workbook (.xlsx).")
+    try:
+        ws = load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0]
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+    except Exception as e:      # noqa: BLE001
+        raise ObsError("That Excel file could not be read.") from e
+    if not rows or str(rows[0][0] or "").strip() != "Asset (CI)":
+        raise ObsError("This is not the Software upload template (the first column must be 'Asset (CI)'). Download the template again.")
+    field_of = {h: f for h, f in TEMPLATE_COLUMNS}
+    cols = {i: field_of[str(c).strip()] for i, c in enumerate(rows[0]) if str(c or "").strip() in field_of}
+    todo, errors = [], []
+    for n, r in enumerate(rows[1:], start=2):
+        ci = str(r[0] or "").strip()
+        if not ci and not any(str(c or "").strip() for c in r):
+            continue
+        try:
+            asset = _in_scope_asset(ci)
+            if not asset:
+                raise ObsError(f"{ci or '(blank)'} is not a desktop, workstation or server in the register.")
+            todo.append((asset["asset_key"], _clean_facts({f: r[i] for i, f in cols.items() if i < len(r)})))
+        except ObsError as e:
+            errors.append(f"Row {n}: {e}")
+    if errors or not todo:
+        return {"recorded": 0, "errors": errors or ["The file has no rows to save."]}
+    for key, facts in todo:
+        record(key, "MANUAL", facts, by)
+    return {"recorded": len(todo), "errors": []}
