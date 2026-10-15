@@ -155,3 +155,34 @@ def panel(asset_key, asset_class):
             conflicts.append({"field": label, "values": seen})
     history = db.query("SELECT * FROM portal_sw_obs WHERE asset_key = %s ORDER BY obs_id DESC LIMIT 100", [asset_key])
     return {"latest": latest, "conflicts": conflicts, "history": history}
+
+
+# ---------------------------------------------------------------- inventory match: report versus what was seen on the machine
+SOURCE_LABELS = {"BIGFIX_REPORT": "BigFix report", "TREND_REPORT": "Trend Micro report", "SCRIPT": "Script", "MANUAL": "Entered by hand"}
+_PRODUCT_FLAG = {"trendmicro": ("trend_installed", "Trend Micro"), "bigfix": ("bigfix_installed", "BigFix")}
+
+
+def cross_check(rows, product):
+    """Add `observed` / `xcheck` to every inventory-match row whose machine has a Script or hand-entered observation about this product, and say where
+    it contradicts the report. Rows with no such observation are left exactly as they were. Returns how many rows contradict."""
+    if product not in _PRODUCT_FLAG or not rows:
+        return 0
+    flag, label = _PRODUCT_FLAG[product]
+    obs = db.query(f"""SELECT DISTINCT ON (asset_key, source) asset_key, source, inspected_at, {flag} AS state FROM portal_sw_obs
+                       WHERE asset_key = ANY(%s) AND source IN ('SCRIPT', 'MANUAL') AND {flag} IS NOT NULL ORDER BY asset_key, source, obs_id DESC""", [[r["ci"] for r in rows]])
+    by = {}
+    for o in obs:
+        by.setdefault(o["asset_key"], []).append(o)
+    n = 0
+    for r in rows:
+        mine = by.get(r["ci"])
+        if not mine:
+            continue
+        r["observed"] = "; ".join(f"{SOURCE_LABELS[o['source']]} {o['inspected_at']:%d %b %Y}: {label} {'installed' if o['state'] else 'not installed'}" for o in mine)
+        bad = [o for o in mine if bool(o["state"]) != bool(r["installed"])]
+        if bad:
+            o = bad[0]
+            r["xcheck"] = (f"The report lists this machine, but {SOURCE_LABELS[o['source']]} ({o['inspected_at']:%d %b %Y}) found {label} not installed." if r["installed"]
+                           else f"The report does not list this machine, but {SOURCE_LABELS[o['source']]} ({o['inspected_at']:%d %b %Y}) found {label} installed.")
+            n += 1
+    return n

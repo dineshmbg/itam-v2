@@ -19,7 +19,7 @@ from collections import Counter
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from . import db, export
+from . import db, export, swobs
 from .importer import UPLOADS
 
 MAX_BYTES = 40 * 1024 * 1024
@@ -604,6 +604,9 @@ def analyse(files, mapping, params, today=None):
         ("Installed machines: need attention", attn, ""),
     ]
     ok = [summary["report_rows"] - blank - dup_rows == len(by_key), inst + len(miss) == total, healthy + attn == inst, sum(x["total"] for x in summary["by_class"]) == total, sum(x["installed"] for x in summary["by_engineer"]) == inst, len(in_scope) == inst + len(unreg)]
+    nx = swobs.cross_check(out, product)
+    if nx:
+        summary["xcheck"] = nx
     summary["reconciled"] = all(ok)
     summary["recon"] = [{"label": a, "n": b, "note": c} for a, b, c in recon]
     summary["checks"] = checks
@@ -677,6 +680,21 @@ def findings(s):
 
 
 # ---------------------------------------------------------------- run, store, reopen
+def _observe(ids, user):
+    """The same report also becomes per-machine observations (shown on each asset's Software tab). A file that is not a BigFix/Trend export, or any
+    failure here, never stops the match itself."""
+    tot = {"recorded": 0, "unchanged": 0, "matched": 0}
+    for sid in ids:
+        try:
+            fname, data = _staged(sid)
+            r = swobs.ingest_report(fname, data, user)
+        except Exception:      # noqa: BLE001 - observations are a by-product
+            continue
+        for k in tot:
+            tot[k] += r[k]
+    return tot
+
+
 def run(stage_ids, mapping, params, user):
     ids = [stage_ids] if isinstance(stage_ids, str) else list(stage_ids or [])
     if not ids or len(ids) > MAX_FILES:
@@ -687,6 +705,7 @@ def run(stage_ids, mapping, params, user):
         headers, rows = read_file(fname, data)
         files.append({"name": fname, "headers": headers, "rows": rows, "product": profile_file(headers)["product"]})
     summary, result = analyse(files, mapping or {}, params or {})
+    summary["observations"] = _observe(ids, user)
     label = files[0]["name"] if len(files) == 1 else f"{files[0]['name']} + {len(files) - 1} more"
     run_id = uuid.uuid4().hex[:12]
     with db.write() as con:
@@ -825,6 +844,7 @@ def tables(d, management=False):
     t += [_group("Coverage by location", "Location", s["by_location"]), _group("Coverage by asset status", "Asset status", s["by_status"]),
           _t("Problems seen on installed machines", [("label", "Problem"), ("n", "Machines")], s.get("issue_counts", [])), _t("Things to improve (not faults)", [("label", "Note"), ("n", "Machines")], s.get("advice_counts", [])),
           _t("Models with most gaps", [("label", "Make / model"), ("n", "Not installed")], s["gap_models"]),
+          _t("Report versus what was seen on the machine", [("ci", "Asset (CI)"), ("observed", "Observed on the machine"), ("xcheck", "Disagreement"), ("engineer", "Engineer")], [r for r in a if r.get("xcheck")]),
           _t("Not installed - action list", ASSET_COLS, miss),
           _t("Installed - needs attention", INSTALLED_COLS, attn),
           _t("Probably the same machine", [("ci", "Asset (CI) in register"), ("possible", "Name in report"), ("possible_by", "Because"), ("engineer", "Engineer"), ("action", "Action")], [r for r in miss if r["possible"]]),

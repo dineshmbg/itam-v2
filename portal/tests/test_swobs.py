@@ -118,3 +118,42 @@ def test_asset_record_carries_software_panel_only_for_in_scope_classes(box):
     assert "Windows 10 is past end of support" in big["flags"] and big["inspected_at"]
     assert [c["field"] for c in sw["conflicts"]] == ["Windows edition"]            # builds agree (19045 both); editions differ
     assert queries.detail("assets", "ANKZZ-PR1", user={"role": "ADMIN"})["related"]["software"] is None
+
+
+# ---------------------------------------------------------------- inventory match integration (task 4)
+def _ank(box, n=3):
+    from test_inventory_match import _machines
+    rows = [r[0] for r in _machines(box, 40) if r[0].startswith("ANK")]
+    if len(rows) < n:
+        pytest.skip("not enough ANK desktops in the dev database")
+    return rows[:n]
+
+
+def test_match_cross_checks_report_against_script_and_manual_observations(box):
+    from test_inventory_match import TM, _go, _tm
+    a, b, c = _ank(box)
+    swobs.record(a, "SCRIPT", {"trend_installed": False}, by="T")           # report will list a, the machine says no agent
+    swobs.record(b, "MANUAL", {"trend_installed": True}, by="T")            # report will not list b, an engineer saw the agent
+    summary, res = _go([(TM, [_tm(a), _tm(c)])], {"prefix": "ANK"})
+    by = {r["ci"]: r for r in res["assets"]}
+    assert "not installed" in by[a]["xcheck"] and "Script" in by[a]["xcheck"]
+    assert "installed" in by[b]["xcheck"] and "Entered by hand" in by[b]["xcheck"]
+    assert "xcheck" not in by[c] and "observed" not in by[c]                  # no observation: the row is exactly as before
+    assert summary["xcheck"] == 2
+
+
+def test_match_without_observations_adds_nothing(box):
+    from test_inventory_match import TM, _go, _tm
+    a, *_ = _ank(box, 1)
+    summary, res = _go([(TM, [_tm(a)])], {"prefix": "ANK"})
+    assert "xcheck" not in summary and all("xcheck" not in r for r in res["assets"])
+
+
+def test_running_a_match_records_the_report_as_observations(box):
+    from test_inventory_match import TM, _csv, _tm
+    from portal.app import inventory_match as m
+    a, *_ = _ank(box, 1)
+    st = m.stage("trend.csv", _csv([_tm(a)], TM), "ADMIN1")
+    r = m.run(st["stage_id"], st["mapping"], {"prefix": "ANK"}, "ADMIN1")
+    assert r["summary"]["observations"]["recorded"] == 1
+    assert {x["source"] for x in swobs.latest_by_source(a)} == {"TREND_REPORT"}
