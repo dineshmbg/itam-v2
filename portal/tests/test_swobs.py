@@ -157,3 +157,105 @@ def test_running_a_match_records_the_report_as_observations(box):
     r = m.run(st["stage_id"], st["mapping"], {"prefix": "ANK"}, "ADMIN1")
     assert r["summary"]["observations"]["recorded"] == 1
     assert {x["source"] for x in swobs.latest_by_source(a)} == {"TREND_REPORT"}
+
+
+# ---------------------------------------------------------------- check script (task 5)
+CHECK = """ANKCHECK=1
+COMPUTER=ankzz-pc1
+WIN_PRODUCT=Windows 10 Pro
+WIN_BUILD=26200
+WIN_UBR=9445
+WIN_DISPLAY=25H2
+WIN_INSTALLTYPE=Client
+TREND_NAME=Trend Micro Apex One Security Agent
+TREND_VER=14.0.12345
+BIGFIX_SVC=1
+BIGFIX_NAME=BigFix Client
+BIGFIX_VER=11.0.2.130
+ZSCALER_NAME=Zscaler
+ZSCALER_VER=4.3.0.1
+VPN_OTHER=
+SAP_VER=8.00 PL 5
+O365_ACCOUNT=68047@ongc.co.in
+OFFICE_VER=16.0.19029.20136
+LAST_USER=ONGC\68047
+DOMAIN=ongc.co.in
+EDGE_VER=141.0.3537.71
+SECUREBOOT=1
+RUN_AT_RAW=15-10-2026 20:11:09.55
+"""
+
+
+def test_parse_check_derives_the_facts():
+    c = swobs.parse_check(CHECK)
+    f = c["facts"]
+    assert c["computer"] == "ANKZZ-PC1"
+    assert (f["os_edition"], f["os_build"], f["os_feature_version"]) == ("Windows 11", "10.0.26200.9445", "25H2")       # build >= 22000 is Windows 11 whatever ProductName says
+    assert (f["trend_installed"], f["trend_version"], f["bigfix_installed"], f["bigfix_version"]) == (True, "14.0.12345", True, "11.0.2.130")
+    assert (f["vpn_name"], f["vpn_version"], f["vpn_other"], f["sap_gui_version"], f["o365_account"], f["last_user"], f["domain_joined"]) == ("Zscaler", "4.3.0.1", False, "8.00 PL 5", "68047@ongc.co.in", "ONGC\68047", True)
+
+
+def test_parse_check_server_other_vpn_and_nothing_found():
+    c = swobs.parse_check("ANKCHECK=1\nCOMPUTER=ANKSRV1\nWIN_PRODUCT=Windows Server 2019 Standard\nWIN_BUILD=17763\nWIN_UBR=1\nWIN_INSTALLTYPE=Server\nVPN_OTHER=FortiClient\n")
+    f = c["facts"]
+    assert f["os_edition"] == "Windows Server 2019" and f["trend_installed"] is False and f["bigfix_installed"] is False
+    assert f["vpn_other"] is True and f["vpn_name"] == "FortiClient (not Zscaler)" and "FortiClient" in f["remarks"]
+
+
+def test_parse_check_rejects_junk():
+    for bad in ("hello", "ANKCHECK=1\n", "ANKCHECK=1\nCOMPUTER=" + "A" * 80, "x" * 100000):
+        with pytest.raises(swobs.ObsError):
+            swobs.parse_check(bad)
+
+
+def test_ingest_check_records_a_script_observation_for_our_assets_only(box):
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PR1", "PRINTER")
+    r = swobs.ingest_check(CHECK, by="check script")
+    assert (r["matched"], r["recorded"]) == (True, 1)
+    s = {x["source"]: x for x in swobs.latest_by_source("ANKZZ-PC1")}["SCRIPT"]
+    assert s["trend_version"] == "14.0.12345" and s["recorded_by"] == "check script" and "PC clock" in s["remarks"]
+    assert swobs.ingest_check(CHECK.replace("ankzz-pc1", "ankzz-pr1"), by="x")["matched"] is False      # printer: out of scope
+    assert swobs.ingest_check(CHECK.replace("ankzz-pc1", "ZZZ-OTHER"), by="x")["matched"] is False
+
+
+def test_check_token_is_stable_rotatable_and_constant_time_checked(box):
+    t1 = swobs.check_token(create=True, by="ADMIN")
+    assert len(t1) >= 30 and swobs.check_token() == t1 and swobs.token_ok(t1) and not swobs.token_ok("nope") and not swobs.token_ok("")
+    t2 = swobs.check_token(create=True, by="ADMIN", rotate=True)
+    assert t2 != t1 and not swobs.token_ok(t1) and swobs.token_ok(t2)
+
+
+def test_script_text_has_the_address_and_token_and_windows_line_endings():
+    s = swobs.script_text("https://10.205.64.25", "TOKEN123", r"\srv\share\drop")
+    assert 'set "URL=https://10.205.64.25"' in s and "/api/software/check" in s and "TOKEN123" in s and r"\srv\share\drop" in s
+    assert s.count("\r\n") > 40 and "\n" not in s.replace("\r\n", "")
+    assert "powershell" not in s.lower().replace("no powershell", "")
+
+
+def test_check_endpoints(box, monkeypatch):
+    from starlette.testclient import TestClient
+    from conftest import HDR, fake_user
+    from portal.app.main import app
+    _asset(box, "ANKZZ-PC1")
+    tok = swobs.check_token(create=True, by="T")
+    c = TestClient(app)
+    assert c.post("/api/software/check", content=CHECK).status_code == 403
+    assert c.post("/api/software/check", content=CHECK, headers={"X-Check-Token": "wrong"}).status_code == 403
+    ok = c.post("/api/software/check", content=CHECK, headers={"X-Check-Token": tok})
+    assert ok.status_code == 200 and ok.json()["recorded"] == 1
+    assert c.post("/api/software/check", content=CHECK.replace("ankzz-pc1", "ANKNONE"), headers={"X-Check-Token": tok}).status_code == 422
+    assert c.post("/api/software/check", content=b"x" * 30000, headers={"X-Check-Token": tok}).status_code == 413
+    assert c.post("/api/software/check", content="junk", headers={"X-Check-Token": tok}).status_code == 400
+    from portal.app import routes_swobs
+    u = fake_user(monkeypatch, role="ADMIN", username="ADM")
+
+    async def me(request):                       # the upload route reads the user itself (raw body), so it needs the same stand-in
+        return u
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    up = c.post("/api/software/check-upload", content=CHECK, headers={"X-Requested-With": "itam-portal"})
+    assert up.status_code == 200 and up.json()["matched"] is True
+    dl = c.post("/api/software/script", json={}, headers=HDR)
+    assert dl.status_code == 200 and tok in dl.text and "attachment" in dl.headers["content-disposition"]
+    u = fake_user(monkeypatch, role="USER", username="U1")
+    assert c.post("/api/software/script", json={}, headers=HDR).status_code == 403
+    assert c.post("/api/software/check-upload", content=CHECK, headers={"X-Requested-With": "itam-portal"}).status_code == 403

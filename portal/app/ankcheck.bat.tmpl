@@ -1,0 +1,83 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+rem ANK software check. Reads this PC only: installs nothing, changes nothing, needs no administrator rights, no PowerShell.
+rem It sends the result to the ITAM portal; if the portal cannot be reached it saves the result as a text file instead.
+set "URL=__URL__"
+set "TOKEN=__TOKEN__"
+set "DROP=__DROP__"
+set "OUT=%TEMP%\ankcheck_%COMPUTERNAME%.txt"
+pushd "%~dp0" 2>nul
+
+echo ANK software check on %COMPUTERNAME% ...
+set "CV=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+call :rv "%CV%" ProductName WIN_PRODUCT
+call :rv "%CV%" CurrentBuildNumber WIN_BUILD
+call :rv "%CV%" UBR WIN_UBR
+call :rv "%CV%" DisplayVersion WIN_DISPLAY
+call :rv "%CV%" InstallationType WIN_INSTALLTYPE
+if /i "!WIN_UBR:~0,2!"=="0x" set /a WIN_UBR=!WIN_UBR!
+
+call :prog "Trend Micro" TREND
+call :prog "BigFix" BIGFIX
+call :prog "Zscaler" ZSCALER
+call :prog "SAP GUI" SAP
+sc query BESClient >nul 2>&1 && set "BIGFIX_SVC=1" || set "BIGFIX_SVC=0"
+
+set "VPN_OTHER="
+for %%P in ("GlobalProtect" "AnyConnect" "FortiClient" "Pulse Secure" "OpenVPN" "Check Point" "WireGuard" "NordVPN" "Cisco Secure Client") do (
+  call :prog %%P VPNX
+  if defined VPNX_NAME set "VPN_OTHER=!VPN_OTHER!!VPNX_NAME!; "
+)
+
+set "O365_ACCOUNT="
+for /f "tokens=2,*" %%a in ('reg query "HKCU\Software\Microsoft\Office\16.0\Common\Identity\Identities" /s /v EmailAddress 2^>nul ^| findstr /i "EmailAddress"') do if not defined O365_ACCOUNT set "O365_ACCOUNT=%%b"
+call :rv "HKLM\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" VersionToReport OFFICE_VER
+call :rv "HKLM\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" UpdateChannel OFFICE_CHANNEL
+call :rv "HKCU\Software\Microsoft\Edge\BLBeacon" version EDGE_VER
+call :rv "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" Domain DOMAIN
+call :rv "HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State" UEFISecureBootEnabled SECUREBOOT
+if /i "!SECUREBOOT!"=="0x1" (set "SECUREBOOT=1") else if defined SECUREBOOT set "SECUREBOOT=0"
+set "LAST_USER=%USERDOMAIN%\%USERNAME%"
+
+(
+  echo ANKCHECK=1
+  echo(COMPUTER=%COMPUTERNAME%
+  echo(RUN_AT_RAW=%DATE% %TIME%
+  for %%V in (WIN_PRODUCT WIN_BUILD WIN_UBR WIN_DISPLAY WIN_INSTALLTYPE TREND_NAME TREND_VER BIGFIX_SVC BIGFIX_NAME BIGFIX_VER ZSCALER_NAME ZSCALER_VER VPN_OTHER SAP_VER O365_ACCOUNT OFFICE_VER OFFICE_CHANNEL EDGE_VER DOMAIN SECUREBOOT LAST_USER) do echo(%%V=!%%V!
+) > "%OUT%"
+
+set "CODE=000"
+where curl.exe >nul 2>&1 && for /f %%c in ('curl.exe -s -k -m 25 -o nul -w "%%{http_code}" -H "X-Check-Token: %TOKEN%" --data-binary "@%OUT%" "%URL%/api/software/check" 2^>nul') do set "CODE=%%c"
+if "!CODE!"=="200" (
+  echo Done. The result was recorded in the ITAM portal.
+  del "%OUT%" >nul 2>&1
+  goto :end
+)
+if "!CODE!"=="422" (echo The portal does not know %COMPUTERNAME% as a desktop, workstation or server. Tell the IT helpdesk. & goto :end)
+echo Could not reach the portal ^(code !CODE!^). Saving the result as a file instead.
+if exist "%DROP%\" (copy /y "%OUT%" "%DROP%\" >nul 2>&1 && echo Saved to %DROP%\ankcheck_%COMPUTERNAME%.txt && goto :end)
+copy /y "%OUT%" "%USERPROFILE%\Documents\" >nul 2>&1 && echo Saved to %USERPROFILE%\Documents\ankcheck_%COMPUTERNAME%.txt - please send it to the IT helpdesk.
+:end
+popd 2>nul
+timeout /t 8 >nul
+exit /b 0
+
+:rv
+rem :rv "KEY" ValueName VARIABLE  -> VARIABLE = that registry value (blank if absent)
+set "%~3="
+for /f "tokens=2,*" %%a in ('reg query "%~1" /v %~2 2^>nul ^| findstr /i /c:"%~2"') do set "%~3=%%b"
+exit /b
+
+:prog
+rem :prog "text" NAME  -> NAME_NAME / NAME_VER of the first installed program whose name contains the text
+set "%~2_NAME="
+set "%~2_VER="
+for %%R in ("HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall") do (
+  for /f "delims=" %%K in ('reg query %%R /s /f "%~1" /d 2^>nul ^| findstr /b /i "HKEY_"') do (
+    if not defined %~2_NAME (
+      call :rv "%%K" DisplayName TMPN
+      if defined TMPN (echo(!TMPN!| findstr /i /c:"%~1" >nul && (set "%~2_NAME=!TMPN!" & call :rv "%%K" DisplayVersion %~2_VER))
+    )
+  )
+)
+exit /b

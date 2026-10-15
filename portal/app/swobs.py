@@ -186,3 +186,95 @@ def cross_check(rows, product):
                            else f"The report does not list this machine, but {SOURCE_LABELS[o['source']]} ({o['inspected_at']:%d %b %Y}) found {label} installed.")
             n += 1
     return n
+
+
+# ---------------------------------------------------------------- the check script (a .bat: reads the PC, installs nothing)
+import hmac      # noqa: E402
+import secrets   # noqa: E402
+from pathlib import Path   # noqa: E402
+
+MAX_CHECK_BYTES = 20_000
+_TEMPLATE = Path(__file__).with_name("ankcheck.bat.tmpl")
+DEFAULT_DROP = r"\10.205.64.203\ank-helpdesk\common-for-all\check-results"
+_SERVER_NAME = re.compile(r"Windows Server\s+(\d{4}(?:\s+R2)?)", re.I)
+
+
+def parse_check(text):
+    """The script's KEY=VALUE text -> {computer, facts}. Strict: it must start as one of ours, name a computer, and stay small."""
+    if len(text.encode("utf-8", "replace")) > MAX_CHECK_BYTES:
+        raise ObsError("That is not a check-script result (too large).")
+    kv = {}
+    for line in text.splitlines():
+        k, sep, v = line.partition("=")
+        if sep and re.fullmatch(r"[A-Z0-9_]{2,24}", k.strip()):
+            kv[k.strip()] = v.strip()[:200]
+    if kv.get("ANKCHECK") != "1":
+        raise ObsError("That is not a check-script result.")
+    computer = kv.get("COMPUTER", "").upper()
+    if not re.fullmatch(r"[A-Z0-9._-]{1,63}", computer):
+        raise ObsError("The result does not name a computer.")
+    g = kv.get
+    facts = {"trend_installed": bool(g("TREND_NAME")), "bigfix_installed": bool(g("BIGFIX_NAME")) or g("BIGFIX_SVC") == "1"}
+    for fld, key in (("trend_version", "TREND_VER"), ("bigfix_version", "BIGFIX_VER"), ("sap_gui_version", "SAP_VER"), ("o365_account", "O365_ACCOUNT"), ("o365_version", "OFFICE_VER"),
+                     ("office_channel", "OFFICE_CHANNEL"), ("last_user", "LAST_USER"), ("browser_version", "EDGE_VER")):
+        if g(key):
+            facts[fld] = g(key)
+    if g("TREND_NAME"):
+        facts["trend_status"] = g("TREND_NAME")
+    build = g("WIN_BUILD", "")
+    if build.isdigit():
+        server = g("WIN_INSTALLTYPE", "").lower() == "server" or "server" in g("WIN_PRODUCT", "").lower()
+        m = _SERVER_NAME.search(g("WIN_PRODUCT", ""))
+        facts["os_edition"] = (f"Windows Server {m[1]}" if m else "Windows Server") if server else ("Windows 11" if int(build) >= 22000 else "Windows 10")   # ProductName still says 10 on 11
+        facts["os_build"] = f"10.0.{build}" + (f".{g('WIN_UBR')}" if g("WIN_UBR", "").isdigit() else "")
+        if g("WIN_DISPLAY"):
+            facts["os_feature_version"] = g("WIN_DISPLAY")
+    other = g("VPN_OTHER", "").strip(" ;")
+    if g("ZSCALER_NAME"):
+        facts["vpn_name"], facts["vpn_version"] = "Zscaler", g("ZSCALER_VER") or None
+    else:
+        facts["vpn_name"] = f"{other.split(';')[0].strip()} (not Zscaler)" if other else "None found"
+    facts["vpn_other"] = bool(other)
+    if g("DOMAIN"):
+        facts["domain_joined"] = True
+    if g("SECUREBOOT") in ("0", "1"):
+        facts["tpm_secureboot"] = g("SECUREBOOT") == "1"
+    notes = ([f"Other VPN: {other}"] if other else []) + ([f"ran {g('RUN_AT_RAW')} (PC clock)"] if g("RUN_AT_RAW") else [])
+    if notes:
+        facts["remarks"] = "; ".join(notes)
+    return {"computer": computer, "facts": {k: v for k, v in facts.items() if v is not None}}
+
+
+def ingest_check(text, by):
+    """Record one check-script result against the matching desktop/workstation/server asset (name starts with ANK)."""
+    c = parse_check(text)
+    key = c["computer"].split(".")[0]
+    asset = db.one("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(ci_no) = %s", [SCOPE_CLASSES, key]) if key.startswith(CI_PREFIX) else None
+    if not asset:
+        return {"computer": c["computer"], "matched": False, "recorded": 0}
+    record(asset["asset_key"], "SCRIPT", c["facts"], by)
+    return {"computer": c["computer"], "matched": True, "recorded": 1}
+
+
+def check_token(create=False, by="system", rotate=False):
+    """The shared token baked into the script. Stored in portal_setting; it only lets a script add observations for our own machines."""
+    row = db.one("SELECT value FROM portal_setting WHERE key = 'sw_check_token'")
+    if row and not rotate:
+        return row["value"]
+    if not (create or rotate):
+        return None
+    tok = secrets.token_urlsafe(24)
+    with db.write() as con:
+        con.execute("INSERT INTO portal_setting (key, value, updated_by) VALUES ('sw_check_token', to_jsonb(%s::text), %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by", (tok, by))
+    return tok
+
+
+def token_ok(given):
+    real = check_token()
+    return bool(real) and bool(given) and hmac.compare_digest(str(real), str(given))
+
+
+def script_text(portal_url, token, drop=DEFAULT_DROP):
+    """The .bat, ready to put on the share: this portal's address and the token are filled in, Windows line endings."""
+    body = _TEMPLATE.read_text(encoding="utf-8").replace("__URL__", portal_url.rstrip("/")).replace("__TOKEN__", token).replace("__DROP__", drop)
+    return body.replace("\r\n", "\n").replace("\n", "\r\n")

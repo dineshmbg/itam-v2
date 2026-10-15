@@ -49,6 +49,7 @@ export function mountInventoryMatch(root) {
         h('button', { class: 'btn primary', type: 'button', onClick: doUpload }, icon('upload'), 'Read the file(s)'))),
       panel('2 · Check the columns and match', { cls: 'span-7' }, stepEl),
       h('div', { class: 'span-12 stack-v' }, out),
+      checkScriptPanel(),
       panel('Earlier analyses', { cls: 'span-12', flush: true }, history()));
     drawStep();
   }
@@ -184,3 +185,35 @@ export function mountInventoryMatch(root) {
   load();
   return { destroy() { dead = true; }, onLive: () => {} };
 }
+
+// The PC check script: a .bat that reads one PC (no agent, no PowerShell, no administrator rights) and sends the result to the portal, or saves a file to upload here.
+function checkScriptPanel() {
+  const rotate = h('input', { type: 'checkbox', id: 'sw-rotate' });
+  const drop = h('input', { type: 'text', id: 'sw-drop', value: '\\\\10.205.64.203\\ank-helpdesk\\common-for-all\\check-results', maxlength: 200 });
+  const picks = h('input', { type: 'file', id: 'sw-files', accept: '.txt', multiple: true });
+  const result = h('div', { class: 'stack-v', role: 'status' });
+  const getScript = async () => {
+    try { await download('/api/software/script', { rotate: rotate.checked, drop: drop.value }, 'ankcheck.bat'); rotate.checked = false; toast('Script downloaded. Put it on the share.'); } catch (e) { toast(e.message || 'Could not build the script.', 'bad'); }
+  };
+  const doUpload = async () => {
+    const files = [...picks.files];
+    if (!files.length) { toast('Choose the saved result file(s).', 'bad'); return; }
+    const lines = [];
+    for (const f of files) {
+      try {
+        const r = await upload('/api/software/check-upload', f);
+        lines.push(h('div', null, h('span', { class: 'badge ' + (r.matched ? 'ok' : 'warn') }, r.matched ? 'Recorded' : 'Not matched'), ' ', r.computer, r.matched ? '' : ' - not a desktop, workstation or server in the register'));
+      } catch (e) { lines.push(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', f.name, ' - ', e.message || 'unreadable')); }
+    }
+    result.replaceChildren(...lines);
+  };
+  return panel('Software check script (no agent needed)', { cls: 'span-12' }, h('div', { class: 'stack-v' },
+    h('p', { class: 'muted' }, 'A small .bat file that reads one PC (Windows build, Trend Micro, BigFix, Zscaler, other VPNs, SAP GUI, Microsoft 365 account) and sends the result here. It installs nothing and needs no administrator rights. Where the PC cannot reach the portal it saves a text file to the drop folder instead; upload those files below.'),
+    frow2('sw-drop', 'Drop folder for saved results', drop),
+    h('label', { class: 'opt', for: 'sw-rotate' }, rotate, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'Make a new token (copies already on the share stop working)')),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: getScript }, icon('download'), 'Download ankcheck.bat')),
+    frow2('sw-files', 'Saved result files (ankcheck_*.txt)', picks),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: doUpload }, icon('upload'), 'Upload results')),
+    result));
+}
+const frow2 = (id, label, el) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el);
