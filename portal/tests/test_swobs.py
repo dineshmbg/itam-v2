@@ -102,4 +102,4 @@ def test_names_not_starting_with_ank_are_discarded_not_reported(box):
     _asset(box, "ANKZZ-PC1")
     other = BIGFIX + b"AAAA-INTWS103,Desktop,10.0.0.9,Win11 10.0.26200.9445 (25H2),i7,\"Wed, 14 Oct 2026 21:16:35 +0000\"\n"
     s = swobs.ingest_report("b.csv", other, by="T")
-    assert (s["rows"], s["ignored_other_sites"], s["unmatched_names"]) == (4, 1, ["ANKNOPE-9"])
+    assert (s["rows"], s["ignored_other_sites"], s["unmatched_names"]) == (4, 1, ["ankzz-pc2.ongc.local", "ANKNOPE-9"])
