@@ -337,3 +337,37 @@ def test_manual_and_bulk_endpoints_and_permissions(box, monkeypatch):
     r[0], r[h.index("VPN")] = "ANKZZ-PC1", "Zscaler"
     up = c.post("/api/software/bulk", content=_wb([r]), headers={"X-Requested-With": "itam-portal"})
     assert up.status_code == 200 and up.json() == {"recorded": 1, "errors": []}
+
+
+def test_engineer_bulk_upload_is_limited_to_their_own_assets(box, monkeypatch):
+    from starlette.testclient import TestClient
+    from conftest import HDR, fake_user
+    from portal.app import routes_swobs
+    from portal.app.main import app
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PC2")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_ENG' WHERE asset_key = 'ANKZZ-PC1'")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_OTHER' WHERE asset_key = 'ANKZZ-PC2'")
+    h = swobs.template_headers()
+
+    def sheet(*cis):
+        rows = []
+        for ci in cis:
+            r = [""] * len(h)
+            r[0], r[h.index("VPN")] = ci, "Zscaler"
+            rows.append(r)
+        return _wb(rows)
+    c = TestClient(app)
+    u = fake_user(monkeypatch, role="USER", username="E1", engineer_key="ZZ_ENG")
+
+    async def me(request):
+        return u
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    H = {"X-Requested-With": "itam-portal"}
+    assert c.post("/api/software/template", json={}, headers=HDR).status_code == 200            # any signed-in user may fetch the template
+    ok = c.post("/api/software/bulk", content=sheet("ANKZZ-PC1"), headers=H)
+    assert ok.status_code == 200 and ok.json()["recorded"] == 1
+    bad = c.post("/api/software/bulk", content=sheet("ANKZZ-PC1", "ANKZZ-PC2"), headers=H).json()
+    assert bad["recorded"] == 0 and "not assigned to you" in bad["errors"][0] and "Row 3" in bad["errors"][0]
+    u = fake_user(monkeypatch, role="USER", username="NOBODY", engineer_key=None)
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    assert c.post("/api/software/bulk", content=sheet("ANKZZ-PC1"), headers=H).status_code == 403

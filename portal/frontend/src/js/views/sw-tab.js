@@ -2,7 +2,7 @@
 // the portal never decides between them. The inspection time is recorded by the server and shown here read-only.
 import { h, icon } from '../core/dom.js';
 import { label as fieldLabel, when } from '../core/format.js';
-import { send } from '../core/api.js';
+import { download, send, upload } from '../core/api.js';
 import { openModal } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
 
@@ -57,4 +57,24 @@ export function softwareTab(sw, add) {
   out.push(h('div', { class: 'dsec' }, h('h3', null, `Latest by source (${sw.latest.length})`), table(sw.latest)));
   if (sw.history.length > sw.latest.length) out.push(h('div', { class: 'dsec' }, h('h3', null, `All observations (${sw.history.length})`), table(sw.history)));
   return out;
+}
+
+/** Fill in many machines at once: download the Excel template, upload it filled. All or nothing; an engineer can only fill their own machines. */
+export function bulkBlock() {
+  const file = h('input', { type: 'file', id: 'sw-bulk', accept: '.xlsx' });
+  const out = h('div', { class: 'stack-v', role: 'status' });
+  const go = async () => {
+    if (!file.files[0]) { toast('Choose the filled template.', 'bad'); return; }
+    try {
+      const r = await upload('/api/software/bulk', file.files[0]);
+      out.replaceChildren(r.errors.length ? h('div', null, h('span', { class: 'badge bad' }, 'Nothing saved'), h('ul', null, r.errors.slice(0, 30).map((t) => h('li', null, t))))
+        : h('div', null, h('span', { class: 'badge ok' }, 'Saved'), ` ${r.recorded} machine(s) recorded.`));
+    } catch (e) { out.replaceChildren(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', e.message || 'unreadable')); }
+  };
+  return h('div', { class: 'stack-v' },
+    h('p', { class: 'muted' }, 'Fill in what you checked on many machines at once. One row per machine; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: () => download('/api/software/template', {}, 'Software_Observation_Upload_Template.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('download'), 'Download Excel template')),
+    h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template')),
+    out);
 }

@@ -70,10 +70,11 @@ async def template_download(request):
 
 @guarded
 async def bulk_upload(request):
-    """The filled Excel template as the raw request body (administrator or team lead). All or nothing."""
+    """The filled Excel template as the raw request body (administrator, team lead, or an engineer for their own machines). All or nothing."""
     user = await current_user(request)
-    if not user or user["state"] != "ok" or user.get("read_only") or not (auth.is_full_admin(user) or auth.is_lead(user)):
-        return error(403, "This needs an administrator.")
+    broad = bool(user) and (auth.is_full_admin(user) or auth.is_lead(user))
+    if not user or user["state"] != "ok" or user.get("read_only") or not (broad or user.get("engineer_key")):
+        return error(403, "Only an administrator, a team lead or an engineer can upload this.")
     if request.headers.get("x-requested-with") != "itam-portal":
         return error(403, "Rejected: not a portal request.")
     origin = request.headers.get("origin")
@@ -81,14 +82,14 @@ async def bulk_upload(request):
         return error(403, "Rejected: cross-site request.")
     if int(request.headers.get("content-length") or 0) > 5 * 1024 * 1024:
         return error(413, "The file is too large.")
-    out = await run_in_threadpool(swobs.ingest_workbook, await request.body(), user["username"])
+    out = await run_in_threadpool(swobs.ingest_workbook, await request.body(), user["username"], None if broad else user["engineer_key"])
     await run_in_threadpool(auth.log, user["username"], client_ip(request), "SW_BULK_UPLOAD", None, {"recorded": out["recorded"], "errors": len(out["errors"])})
     return json_response(out)
 
 
 routes = [
     Route("/api/software/manual", write(manual_post), methods=["POST"]),
-    Route("/api/software/template", write(template_download, admin="lead", mutates=False), methods=["POST"]),
+    Route("/api/software/template", write(template_download, mutates=False), methods=["POST"]),
     Route("/api/software/bulk", bulk_upload, methods=["POST"]),
     Route("/api/software/check", check_post, methods=["POST"]),
     Route("/api/software/check-upload", check_upload, methods=["POST"]),

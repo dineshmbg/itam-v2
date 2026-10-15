@@ -318,7 +318,7 @@ def _clean_facts(raw):
 
 
 def _in_scope_asset(key):
-    return db.one("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(asset_key) = upper(%s)", [SCOPE_CLASSES, str(key or "").strip()])
+    return db.one("SELECT asset_key, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(asset_key) = upper(%s)", [SCOPE_CLASSES, str(key or "").strip()])
 
 
 def record_manual(asset_key, raw, by):
@@ -357,8 +357,9 @@ def template_bytes():
     return b.getvalue()
 
 
-def ingest_workbook(data, by):
-    """Read a filled template. All or nothing: observations cannot be deleted, so one bad row means nothing is saved."""
+def ingest_workbook(data, by, engineer_key=None):
+    """Read a filled template. All or nothing: observations cannot be deleted, so one bad row means nothing is saved.
+    `engineer_key`: an engineer may only fill in the machines assigned to them (administrators and team leads pass None)."""
     import io
     from openpyxl import load_workbook
     if data[:2] != b"PK":
@@ -381,6 +382,8 @@ def ingest_workbook(data, by):
             asset = _in_scope_asset(ci)
             if not asset:
                 raise ObsError(f"{ci or '(blank)'} is not a desktop, workstation or server in the register.")
+            if engineer_key and asset["engineer_name"] != engineer_key:
+                raise ObsError(f"{ci} is not assigned to you.")
             todo.append((asset["asset_key"], _clean_facts({f: r[i] for i, f in cols.items() if i < len(r)})))
         except ObsError as e:
             errors.append(f"Row {n}: {e}")

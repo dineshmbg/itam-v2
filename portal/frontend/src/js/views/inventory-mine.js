@@ -5,6 +5,7 @@ import { h, icon } from '../core/dom.js';
 import { toast } from '../ui/toast.js';
 import { int, pct, titleCase, when } from '../core/format.js';
 import { errorBlock, kpiStrip, loading, pageHead, panel } from './common.js';
+import { bulkBlock } from './sw-tab.js';
 
 const SEV = { Critical: 'bad', 'Needs attention': 'warn', Good: 'ok', Information: 'info' };
 const PRIORITY = { High: 'bad', Medium: 'warn', Low: 'mute' };
@@ -77,7 +78,8 @@ export function mountInventoryMine(root) {
         h('div', { class: 'grid' },
           panel('What to do', { cls: 'span-12', flush: true }, h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Rating'), h('th', null, 'Finding'), h('th', null, 'Action'))),
             h('tbody', null, s.findings.map((f) => h('tr', null, h('td', null, h('span', { class: 'badge ' + (SEV[f.severity] || 'mute') }, f.severity)), h('td', { class: 'wrap' }, f.finding), h('td', { class: 'wrap' }, f.action))))))),
-          panel('My machines', { cls: 'span-12', flush: true, hint: 'only machines assigned to this engineer' }, bar, pane)));
+          panel('My machines', { cls: 'span-12', flush: true, hint: 'only machines assigned to this engineer' }, bar, pane),
+          panel('Software on my machines', { cls: 'span-12', hint: 'what you checked: Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365' }, bulkBlock())));
       pick(0);
     } catch (e) { if (!dead) body.replaceChildren(errorBlock(e, show)); }
   }
