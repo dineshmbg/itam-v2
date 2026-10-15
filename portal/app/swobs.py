@@ -2,6 +2,7 @@
 Sources never overwrite each other (conflicts are shown side by side for the engineer to judge). The inspection date is stamped by the database
 at insert - no caller can supply it - and a trigger refuses UPDATE and DELETE, so history cannot be rewritten."""
 import datetime as dt
+import re
 
 from . import db
 
@@ -56,3 +57,71 @@ def latest_by_source(asset_key):
     """The newest observation from each source, side by side; `stale` is STALE / VERY_STALE by the report's own date when it has one."""
     rows = db.query("SELECT DISTINCT ON (source) * FROM portal_sw_obs WHERE asset_key = %s ORDER BY source, obs_id DESC", [asset_key])
     return [{**r, "stale": _stale(r)} for r in rows]
+
+
+# ---------------------------------------------------------------- reports (BigFix, Trend Micro) -> observations
+SCOPE_CLASSES = ["DESKTOP", "WORKSTATION", "SERVER"]
+_BIGFIX_OS = re.compile(r"^\s*Win(?P<ed>\d+)\s+(?P<build>\d+\.\d+\.\d+\.\d+)(?:\s*\((?P<feat>[^)]+)\))?")
+
+
+def _edition(code):
+    return f"Windows {code}" if code in ("10", "11") else f"Windows Server {code}"
+
+
+def _bigfix(g):
+    m = _BIGFIX_OS.match(g("os"))
+    if not m:
+        return {}
+    return {"os_edition": _edition(m["ed"]), "os_build": m["build"], "os_feature_version": m["feat"]}
+
+
+def _trend(g):
+    build = re.search(r"Build\s+(\d+)", g("osver"))
+    return {"trend_installed": True, "trend_status": g("agent") or None, "connection": g("conn") or None, "last_user": g("user") or None,
+            "os_edition": g("os") or None, "os_build": build[1] if build else None, "trend_version": g("unified") or None}
+
+
+def ingest_report(filename, data, by):
+    """Read a BigFix or Trend Micro export (recognised from its columns, like the inventory match does) and record one observation for every row
+    whose computer name is one of our desktop/workstation/server assets. Rows that match nothing are counted and named, not stored. A row whose
+    (asset, source, report time) is already recorded is `unchanged`: re-importing a file adds nothing."""
+    from . import inventory_match as im
+    try:
+        headers, rows = im.read_file(filename, data)
+    except im.MatchError as e:
+        raise ObsError(str(e)) from e
+    prof = im.profile_file(headers, rows)
+    product = prof["product"]
+    if product not in ("bigfix", "trendmicro") or "name" not in prof["mapping"]:
+        raise ObsError("That file is not a recognised BigFix or Trend Micro export.")
+    have = {h.strip().lower(): i for i, h in enumerate(headers)}
+    idx = {f: headers.index(h) for f, h in prof["mapping"].items()}
+    idx.update({f: have[h.lower()] for f, h in im.PRODUCTS[product]["extra"].items() if h.lower() in have})
+    if "unified agent version" in have:
+        idx["unified"] = have["unified agent version"]
+    g_row = lambda r: (lambda f: ("" if f not in idx or isinstance(r[idx[f]], (dt.datetime, dt.date)) else str(r[idx[f]]).strip()))      # noqa: E731
+    source, build = ("BIGFIX_REPORT", _bigfix) if product == "bigfix" else ("TREND_REPORT", _trend)
+    ours = {im.key_of(a["ci_no"]): a["asset_key"] for a in db.query("SELECT asset_key, ci_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s)", [SCOPE_CLASSES])}
+    latest = {}
+    for r in rows:
+        key = im.key_of(r[idx["name"]])
+        when = im._seen(r[idx["seen"]], product) if "seen" in idx else None
+        if key and (key not in latest or (when or dt.datetime.min) >= (latest[key][1] or dt.datetime.min)):
+            latest[key] = (r, when)                      # a machine listed twice: the newest record wins
+    known = {(r["asset_key"], r["data_as_of"]) for r in db.query("SELECT asset_key, data_as_of FROM portal_sw_obs WHERE source = %s", [source])}
+    out = {"product": product, "rows": len(rows), "matched": 0, "unmatched": 0, "unmatched_names": [], "recorded": 0, "unchanged": 0}
+    for key, (r, when) in latest.items():
+        ak = ours.get(key)
+        if not ak:
+            out["unmatched"] += 1
+            out["unmatched_names"].append(str(r[idx["name"]]).strip())
+            continue
+        out["matched"] += 1
+        as_of = when.replace(tzinfo=dt.timezone.utc) if when else None
+        if (ak, as_of) in known:
+            out["unchanged"] += 1
+            continue
+        record(ak, source, {k: v for k, v in build(g_row(r)).items() if v is not None}, by, data_as_of=as_of)
+        out["recorded"] += 1
+    out["unmatched_names"] = out["unmatched_names"][:50]
+    return out
