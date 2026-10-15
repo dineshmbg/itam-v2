@@ -55,40 +55,40 @@ def _asset(con, key, cls="DESKTOP"):
 
 
 BIGFIX = ("Computer Name,Device Type,IP Address,OS,CPU,Last Report Time\n"
-          "ZZTEST-PC1,Desktop,10.0.0.1,Win11 10.0.26200.9445 (25H2),i7,\"Wed, 14 Oct 2026 21:16:35 +0000\"\n"
-          "zztest-pc2.ongc.local,Desktop,10.0.0.2,Win10 10.0.19045.6456 (22H2),i5,\"Thu, 15 Oct 2026 02:14:30 +0000\"\n"
-          "NOTOURS-9,Desktop,10.0.0.3,Win11 10.0.26200.1 (25H2),i5,\"Thu, 15 Oct 2026 02:14:30 +0000\"\n").encode()
+          "ANKZZ-PC1,Desktop,10.0.0.1,Win11 10.0.26200.9445 (25H2),i7,\"Wed, 14 Oct 2026 21:16:35 +0000\"\n"
+          "ankzz-pc2.ongc.local,Desktop,10.0.0.2,Win10 10.0.19045.6456 (22H2),i5,\"Thu, 15 Oct 2026 02:14:30 +0000\"\n"
+          "ANKNOPE-9,Desktop,10.0.0.3,Win11 10.0.26200.1 (25H2),i5,\"Thu, 15 Oct 2026 02:14:30 +0000\"\n").encode()
 TREND = ("Endpoint name,Object type,Protection Manager,Last agent status reported,Agent runtime protection status,Endpoint GUID,Agent connection status,XDR for Endpoints (EDR),Endpoint group,OS name,OS version,Last logged on user,Agent version status\n"
-         "ZZTEST-PC1,Endpoint,Standard,Last 24 hours (2026-10-06 10:39:40),Normal,g1,Communicating,Enabled,G,Windows 11,10.0 (Build 26200),ONGC\\68047,controlledLatestVersion\n"
-         "ZZTEST-SRV1,Endpoint,Standard,Last 24 hours (2026-10-06 10:39:40),Normal,g2,Not communicating,Enabled,G,Windows Server 2019,10.0 (Build 17763),ONGC\\141662,olderVersion\n").encode()
+         "ANKZZ-PC1,Endpoint,Standard,Last 24 hours (2026-10-06 10:39:40),Normal,g1,Communicating,Enabled,G,Windows 11,10.0 (Build 26200),ONGC\\68047,controlledLatestVersion\n"
+         "ANKZZ-SRV1,Endpoint,Standard,Last 24 hours (2026-10-06 10:39:40),Normal,g2,Not communicating,Enabled,G,Windows Server 2019,10.0 (Build 17763),ONGC\\141662,olderVersion\n").encode()
 
 
 def test_bigfix_ingest_matches_our_assets_and_stores_full_build(box):
-    _asset(box, "ZZTEST-PC1"), _asset(box, "ZZTEST-PC2")
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PC2")
     s = swobs.ingest_report("bigfix.csv", BIGFIX, by="TEST")
-    assert (s["product"], s["rows"], s["matched"], s["unmatched"], s["recorded"]) == ("bigfix", 3, 2, 1, 2) and s["unmatched_names"] == ["NOTOURS-9"]
-    a = {r["source"]: r for r in swobs.latest_by_source("ZZTEST-PC1")}["BIGFIX_REPORT"]
+    assert (s["product"], s["rows"], s["matched"], s["unmatched"], s["recorded"]) == ("bigfix", 3, 2, 1, 2) and s["unmatched_names"] == ["ANKNOPE-9"] and s["ignored_other_sites"] == 0
+    a = {r["source"]: r for r in swobs.latest_by_source("ANKZZ-PC1")}["BIGFIX_REPORT"]
     assert (a["os_edition"], a["os_build"], a["os_feature_version"]) == ("Windows 11", "10.0.26200.9445", "25H2")
     assert a["data_as_of"].astimezone(dt.timezone.utc).isoformat().startswith("2026-10-14T21:16:35")
-    assert {r["source"]: r for r in swobs.latest_by_source("ZZTEST-PC2")}["BIGFIX_REPORT"]["os_edition"] == "Windows 10"
-    assert not box.execute("SELECT 1 FROM portal_sw_obs WHERE asset_key = 'NOTOURS-9'").fetchone()
+    assert {r["source"]: r for r in swobs.latest_by_source("ANKZZ-PC2")}["BIGFIX_REPORT"]["os_edition"] == "Windows 10"
+    assert not box.execute("SELECT 1 FROM portal_sw_obs WHERE asset_key = 'ANKNOPE-9'").fetchone()
 
 
 def test_reimport_of_identical_report_adds_nothing_but_new_data_adds_rows(box):
-    _asset(box, "ZZTEST-PC1")
+    _asset(box, "ANKZZ-PC1")
     assert swobs.ingest_report("b.csv", BIGFIX, by="T")["recorded"] == 1
     again = swobs.ingest_report("b.csv", BIGFIX, by="T")
     assert (again["recorded"], again["unchanged"]) == (0, 1)
     newer = BIGFIX.replace(b"14 Oct 2026 21:16:35", b"15 Oct 2026 21:16:35")
     assert swobs.ingest_report("b.csv", newer, by="T")["recorded"] == 1
-    assert box.execute("SELECT count(*) FROM portal_sw_obs WHERE asset_key = 'ZZTEST-PC1'").fetchone()[0] == 2
+    assert box.execute("SELECT count(*) FROM portal_sw_obs WHERE asset_key = 'ANKZZ-PC1'").fetchone()[0] == 2
 
 
 def test_trend_ingest_keeps_status_user_and_server_scope(box):
-    _asset(box, "ZZTEST-PC1"), _asset(box, "ZZTEST-SRV1", "SERVER"), _asset(box, "ZZTEST-PR1", "PRINTER")
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-SRV1", "SERVER"), _asset(box, "ANKZZ-PR1", "PRINTER")
     s = swobs.ingest_report("trend.csv", TREND, by="T")
     assert (s["product"], s["matched"], s["recorded"]) == ("trendmicro", 2, 2)
-    t = {r["source"]: r for r in swobs.latest_by_source("ZZTEST-SRV1")}["TREND_REPORT"]
+    t = {r["source"]: r for r in swobs.latest_by_source("ANKZZ-SRV1")}["TREND_REPORT"]
     assert (t["trend_installed"], t["trend_status"], t["connection"], t["last_user"], t["os_build"]) == (True, "olderVersion", "Not communicating", "ONGC\\141662", "17763")
     assert t["os_edition"] == "Windows Server 2019"
 
@@ -96,3 +96,10 @@ def test_trend_ingest_keeps_status_user_and_server_scope(box):
 def test_unrecognised_file_is_refused(box):
     with pytest.raises(swobs.ObsError):
         swobs.ingest_report("x.csv", b"a,b\n1,2\n", by="T")
+
+
+def test_names_not_starting_with_ank_are_discarded_not_reported(box):
+    _asset(box, "ANKZZ-PC1")
+    other = BIGFIX + b"AAAA-INTWS103,Desktop,10.0.0.9,Win11 10.0.26200.9445 (25H2),i7,\"Wed, 14 Oct 2026 21:16:35 +0000\"\n"
+    s = swobs.ingest_report("b.csv", other, by="T")
+    assert (s["rows"], s["ignored_other_sites"], s["unmatched_names"]) == (4, 1, ["ANKNOPE-9"])

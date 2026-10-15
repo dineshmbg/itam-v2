@@ -61,6 +61,7 @@ def latest_by_source(asset_key):
 
 # ---------------------------------------------------------------- reports (BigFix, Trend Micro) -> observations
 SCOPE_CLASSES = ["DESKTOP", "WORKSTATION", "SERVER"]
+CI_PREFIX = "ANK"      # every CI of this site starts with ANK; anything else in a report belongs to another site and is discarded
 _BIGFIX_OS = re.compile(r"^\s*Win(?P<ed>\d+)\s+(?P<build>\d+\.\d+\.\d+\.\d+)(?:\s*\((?P<feat>[^)]+)\))?")
 
 
@@ -83,7 +84,7 @@ def _trend(g):
 
 def ingest_report(filename, data, by):
     """Read a BigFix or Trend Micro export (recognised from its columns, like the inventory match does) and record one observation for every row
-    whose computer name is one of our desktop/workstation/server assets. Rows that match nothing are counted and named, not stored. A row whose
+    whose computer name is one of our desktop/workstation/server assets; names not starting with ANK are discarded unseen. Rows that match nothing are counted and named, not stored. A row whose
     (asset, source, report time) is already recorded is `unchanged`: re-importing a file adds nothing."""
     from . import inventory_match as im
     try:
@@ -102,14 +103,17 @@ def ingest_report(filename, data, by):
     g_row = lambda r: (lambda f: ("" if f not in idx or isinstance(r[idx[f]], (dt.datetime, dt.date)) else str(r[idx[f]]).strip()))      # noqa: E731
     source, build = ("BIGFIX_REPORT", _bigfix) if product == "bigfix" else ("TREND_REPORT", _trend)
     ours = {im.key_of(a["ci_no"]): a["asset_key"] for a in db.query("SELECT asset_key, ci_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s)", [SCOPE_CLASSES])}
-    latest = {}
+    latest, ignored = {}, 0
     for r in rows:
         key = im.key_of(r[idx["name"]])
         when = im._seen(r[idx["seen"]], product) if "seen" in idx else None
+        if not key.startswith(CI_PREFIX):
+            ignored += 1                                 # another site's machine: not ours, not even reported as unmatched
+            continue
         if key and (key not in latest or (when or dt.datetime.min) >= (latest[key][1] or dt.datetime.min)):
             latest[key] = (r, when)                      # a machine listed twice: the newest record wins
     known = {(r["asset_key"], r["data_as_of"]) for r in db.query("SELECT asset_key, data_as_of FROM portal_sw_obs WHERE source = %s", [source])}
-    out = {"product": product, "rows": len(rows), "matched": 0, "unmatched": 0, "unmatched_names": [], "recorded": 0, "unchanged": 0}
+    out = {"product": product, "rows": len(rows), "matched": 0, "unmatched": 0, "unmatched_names": [], "recorded": 0, "unchanged": 0, "ignored_other_sites": 0}
     for key, (r, when) in latest.items():
         ak = ours.get(key)
         if not ak:
@@ -123,5 +127,6 @@ def ingest_report(filename, data, by):
             continue
         record(ak, source, {k: v for k, v in build(g_row(r)).items() if v is not None}, by, data_as_of=as_of)
         out["recorded"] += 1
+    out["ignored_other_sites"] = ignored
     out["unmatched_names"] = out["unmatched_names"][:50]
     return out
