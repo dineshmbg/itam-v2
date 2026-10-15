@@ -1,6 +1,6 @@
 # Plan: Software and OS observations per asset
 
-Status: **APPROVED 2026-10-15** by the user. Build one task at a time. (`tasks/plan.md` is the PM-module plan - this is a separate feature.)
+Status: **APPROVED 2026-10-15**; tasks 1-7 built (task 7 = docs + release, see portal/README.md "Software and OS observations"). (`tasks/plan.md` is the PM-module plan - this is a separate feature.)
 
 ## Goal
 Keep an append-only record of what software/OS an asset was *observed* to have (Windows edition+build, Trend Micro Vision One, BigFix, Zscaler VPN / any other VPN, SAP GUI version, O365 account+version, extras), from several sources, shown **only in the asset's record window**, and used by the Inventory match to cross-check reports.
