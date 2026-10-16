@@ -809,3 +809,7 @@ Pointing at an asset ID opens a short card instead of the long field table: a sm
 - Counts, the barcode (still on the printed labels), the status/user/engineer/location rows and the "Open" bar are no longer on the card; the name is already a link to the record.
 - `GET /api/card/asset/{key}` still returns the whole record (`row`, `extra`) because the new-call form reads it to auto-fill the user (CPF) and the engineer; the card itself renders only the new `small` block. `barcode_svg` is no longer in the response.
 - Code: `app/cards.py` (`_asset` builds `small`), `frontend/src/js/ui/hovercard.js` (`assetCard`), styles `.hcard.asset` / `.ac-*` in `app.css`; tests `tests/test_asset_card.py`. The call card is still the long one.
+
+### Hover cards and the browser's own tooltip (2026-10-16)
+
+A table cell repeats its text in a `title` attribute (for truncated text), and the browser's native tooltip drew over the hover card and hid the name or ID being shown. While a card is open or loading, `hovercard.js` now sets the nearest `title` aside (`hold`) and puts it back when the card closes or the pointer leaves (`release`), for every kind of card.

@@ -17,7 +17,18 @@ export function entity(kind, id, text, { mono = true, ...extra } = {}) {
 }
 
 const cache = new Map();
-let el = null, timer = null, hideTimer = null, owner = null;
+let el = null, timer = null, hideTimer = null, owner = null, held = null;
+
+// The browser draws its own tooltip from a `title` attribute (a table cell repeats its text there) and that tooltip would sit on top of the card,
+// hiding the very name or ID being shown. While the card is up, set the nearest title aside and put it back when the card goes away.
+function hold(t) {
+  release();
+  const e = t.closest('[title]');
+  if (e) { held = [e, e.getAttribute('title')]; e.removeAttribute('title'); }
+}
+function release() {
+  if (held) { held[0].setAttribute('title', held[1]); held = null; }
+}
 
 function fmt(key, v) {
   if (v == null || v === '') return h('span', { class: 'faint' }, '—');
@@ -105,7 +116,7 @@ async function show(target) {
   owner = target;
   let d = cache.get(key);
   if (!d || Date.now() - d.at > 60000) {
-    hide(true);
+    hide(true, true);
     el = h('div', { class: 'hcard loading', role: 'status' }, 'Loading…');
     document.body.append(el);
     place(target);
@@ -117,15 +128,15 @@ async function show(target) {
     }
   }
   if (owner !== target) return;
-  hide(true);
+  hide(true, true);
   el = build(d.data);
   document.body.append(el);
   place(target);
 }
 
-function hide(now) {
+function hide(now, keepTitle) {   // keepTitle: only swapping one card for another, the pointer is still on the link
   clearTimeout(timer); clearTimeout(hideTimer);
-  if (now) { el?.remove(); el = null; }
+  if (now) { el?.remove(); el = null; if (!keepTitle) release(); }
 }
 function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(() => { hide(true); owner = null; }, 220); }
 
@@ -136,6 +147,7 @@ export function initHoverCards() {
     const t = find(e);
     if (!t || t === owner && el) { if (t) clearTimeout(hideTimer); return; }
     clearTimeout(timer); clearTimeout(hideTimer);
+    hold(t);
     timer = setTimeout(() => show(t), 320);
   });
   document.addEventListener('pointerout', (e) => {
@@ -144,7 +156,7 @@ export function initHoverCards() {
     clearTimeout(timer);
     if (!(e.relatedTarget instanceof Element && e.relatedTarget.closest('.hcard'))) scheduleHide();
   });
-  document.addEventListener('focusin', (e) => { const t = find(e); if (t) show(t); });
+  document.addEventListener('focusin', (e) => { const t = find(e); if (t) { hold(t); show(t); } });
   document.addEventListener('focusout', (e) => { if (find(e)) scheduleHide(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && el) { hide(true); owner = null; } });
   document.addEventListener('scroll', (e) => { if (el && !(e.target.closest && e.target.closest('.hcard'))) { hide(true); owner = null; } }, true);
