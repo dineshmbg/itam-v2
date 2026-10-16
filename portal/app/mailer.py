@@ -306,7 +306,7 @@ def detect(rule_key, params, today=None):
         for r in db.query("""SELECT e.engineer_key, c.onboarding_pending_items FROM portal_engineer e JOIN cipl_employee c ON c.ecode = e.ecode
                              WHERE c.employment_status = 'ACTIVE' AND coalesce(c.designation, '') <> 'OFFICE BOY' AND c.onboarding_status IS NOT NULL
                                AND c.onboarding_status <> 'COMPLETE' AND coalesce(c.onboarding_pending_items, '') <> ''"""):
-            items = [{"item": re.sub(r"(Ongc|Id|Esic)", lambda m: m.group().upper(), i.strip().replace("_", " ").title())} for i in r["onboarding_pending_items"].split(",") if i.strip()]
+            items = [{"item": " ".join({"Ongc": "ONGC", "Id": "ID", "Esic": "ESIC"}.get(w, w) for w in i.strip().replace("_", " ").title().split())} for i in r["onboarding_pending_items"].split(",") if i.strip()]
             D[r["engineer_key"]] = dict(event_key=_iso_week(today), cc=cc, subject=f"Please complete your onboarding: {len(items)} item(s) pending",
                                         intro="Your joining formalities are not complete yet. Please finish the items below as soon as possible and tell your Team Leader / SI when each is done.",
                                         rows=items, columns=[("item", "Pending item")])
