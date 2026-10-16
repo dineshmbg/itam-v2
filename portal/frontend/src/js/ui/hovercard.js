@@ -1,4 +1,4 @@
-// Hover cards: pointing at (or focusing) an asset, SR ID, CPF number or ECODE anywhere in the portal opens a floating window with every available detail.
+// Hover cards: pointing at (or focusing) an asset, SR ID, CPF number or ECODE anywhere in the portal opens a floating card (assets and calls: every detail; a person: a short card).
 import { get } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { date, dec, int, label as fieldLabel, person } from '../core/format.js';
@@ -34,7 +34,25 @@ function barcodeBlock(svg) {
   return box;
 }
 
+/** The short card for a person: "100200 - Name", designation, then department (employee), mobile and gate pass (engineer) - a line with nothing to show is left out. */
+function smallCard(d) {
+  const x = d.small;
+  const line = (ico, ...body) => h('div', { class: 'sc-l' }, icon(ico), h('span', null, ...body));
+  const card = h('div', { class: 'hcard small', role: 'dialog', 'aria-label': `${d.kind === 'cpf' ? 'User' : 'Engineer'} details` },
+    h('div', { class: 'sc' },
+      h('div', { class: 'sc-t' }, x.id ? h('span', { class: 'id' }, x.id) : null, x.id ? h('span', null, '-') : null, h('span', null, person(x.name))),
+      x.designation ? h('div', { class: 'sc-d' }, x.designation) : null,
+      x.department ? line('user--multiple', x.department) : null,
+      x.mobile ? line('phone', x.mobile) : null,
+      x.gate_pass ? line('tag', 'Gate pass ', h('b', null, x.gate_pass)) : null,
+      x.note ? h('div', { class: 'sc-note' }, x.note) : null));
+  card.addEventListener('pointerenter', () => clearTimeout(hideTimer));
+  card.addEventListener('pointerleave', scheduleHide);
+  return card;
+}
+
 function build(d) {
+  if (d.small) return smallCard(d);
   const rows = Object.entries(d.row || {});
   const x = d.extra || {};
   const counts = Object.entries(x).filter(([, v]) => typeof v === 'number');
@@ -54,7 +72,7 @@ function build(d) {
 
 function place(target) {
   const r = target.getBoundingClientRect();
-  const w = Math.min(420, window.innerWidth - 16);
+  const w = Math.min(el.classList.contains('small') ? 300 : 420, window.innerWidth - 16);
   el.style.width = w + 'px';
   let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
   el.style.left = left + 'px';

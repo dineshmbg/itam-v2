@@ -395,35 +395,17 @@ def test_pm_rollover_confirm_is_case_insensitive_and_trimmed(box, monkeypatch):
 
 
 # ---------------------------------------------------------------- cards
-def test_hover_cards_show_personal_data_to_administrators_only(box, monkeypatch):
-    a = one(box, "SELECT asset_key, cpf_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND cpf_no IS NOT NULL LIMIT 1")
+def test_asset_and_call_hover_cards_work_for_every_role_and_unknown_ones_fail(box, monkeypatch):
+    a = one(box, "SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' LIMIT 1")
     c1 = one(box, "SELECT sr_id FROM svc_call WHERE is_current = 1 LIMIT 1")[0]
     for role in ("USER", "ADMIN"):
-        fake_user(monkeypatch, role, engineer_key="DINESH GADARIA" if role == "ADMIN" else None)
+        fake_user(monkeypatch, role)
         with TestClient(app) as c:
             asset = c.get(f"/api/card/asset/{a[0]}").json()
             assert asset["title"] == a[0] and asset["row"]["asset_key"] == a[0] and "calls" in asset["extra"]
             assert c.get(f"/api/card/call/{c1}").json()["row"]["sr_id"] == c1
-            emp = c.get(f"/api/card/cpf/{a[1]}").json()
-            assert ("mobile_no" in emp["row"]) == (role == "ADMIN") and ("date_of_birth" in emp["row"]) == (role == "ADMIN")
             assert c.get("/api/card/asset/NO-SUCH").status_code == 404 and c.get("/api/card/other/1").status_code == 400
-
-
-def test_engineer_hover_card_admin_full_self_own_other_hidden(box, monkeypatch):
-    """A non-admin never sees another engineer's floating-window details - only their own; an admin sees anyone's."""
-    fake_user(monkeypatch, "ADMIN")
-    with TestClient(app) as c:
-        eng = c.get("/api/card/engineer/DINESH GADARIA").json()
-        assert "mobile_no" in eng["row"] and eng["extra"]["checklist"] and eng["subtitle"].startswith("ECODE")
-        assert c.get("/api/card/ecode/" + eng["subtitle"].split()[1]).json()["id"] == "DINESH GADARIA"
-    fake_user(monkeypatch, "USER", engineer_key="DINESH GADARIA")
-    with TestClient(app) as c:
-        mine = c.get("/api/card/engineer/DINESH GADARIA")
-        assert mine.status_code == 200 and "mobile_no" in mine.json()["row"]
-    fake_user(monkeypatch, "USER", engineer_key="SOMEONE ELSE ENTIRELY")
-    with TestClient(app) as c:
-        other = c.get("/api/card/engineer/DINESH GADARIA")
-        assert other.status_code == 404
+            assert c.get("/api/card/cpf/NOT-A-NUMBER").status_code == 404 and c.get("/api/card/engineer/NO SUCH ENGINEER").status_code == 404
 
 
 def test_registers_hide_personal_data_and_people_registers_work(box, monkeypatch):

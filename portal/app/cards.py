@@ -1,6 +1,9 @@
-"""Hover cards: every available detail of an asset, a call, an HR-master employee (CPF) or a CIPL engineer (ECODE).
+"""Hover cards: every available detail of an asset or a call, and a SMALL card for an HR-master employee (CPF) or a CIPL engineer (ECODE).
 
-Personal data (mobile number, personal e-mail, date of birth) is included for administrators only.
+Asset and call cards hide personal columns from non-administrators (PERSONAL below). The employee and engineer cards are deliberately
+small and the same for everyone signed in (decided 2026-10-16): name, designation, mobile number and, for an employee, the department
+recorded on their assets; for an engineer, the gate pass number. Nothing else about a person - no date of birth, personal e-mail, bank
+or statutory numbers, no e-mail address at all - is ever put on these two cards.
 """
 from starlette.concurrency import run_in_threadpool
 from starlette.routing import Route
@@ -45,28 +48,26 @@ def _employee(ident, admin):
         cpf = int(ident)
     except ValueError:
         return None
-    row = db.one("SELECT * FROM employee WHERE cpf_no = %s", [cpf])
+    row = db.one("SELECT cpf_no, employee_name, designation, mobile_no FROM employee WHERE cpf_no = %s", [cpf])
     if not row:
         return None
-    x = db.one("""SELECT (SELECT count(*) FROM asset WHERE cpf_no = %(c)s AND is_current = 1 AND record_level = 'ASSET') AS assets,
-                         (SELECT count(*) FROM svc_call WHERE cpf_no = %(c)s AND is_current = 1) AS calls""", {"c": cpf})
-    return {"kind": "cpf", "id": str(cpf), "title": row["employee_name"], "subtitle": f"CPF {cpf} · {row['designation'] or ''}", "row": _clean(row, admin), "extra": x,
-            "link": {"path": "registers/assets", "q": str(cpf)}}
+    # The HR record has no readable department (only a code-like org unit), so use the one written on the person's assets: the most common value.
+    dept = db.one("""SELECT user_department FROM asset WHERE cpf_no = %s AND is_current = 1 AND record_level = 'ASSET' AND user_department IS NOT NULL
+                     GROUP BY user_department ORDER BY count(*) DESC, user_department LIMIT 1""", [cpf])
+    return {"kind": "cpf", "id": str(cpf), "title": row["employee_name"],
+            "small": {"id": str(cpf), "name": row["employee_name"], "designation": row["designation"], "department": dept["user_department"] if dept else None,
+                      "mobile": row["mobile_no"]}}
 
 
-def _engineer(ident, admin, viewer_key=None):
-    e = db.one("""SELECT e.engineer_key, e.display_name, e.ecode, e.source FROM portal_engineer e WHERE e.engineer_key = %s OR e.ecode = %s""", [ident.upper(), ident.upper()])
+def _engineer(ident, admin=False):
+    e = db.one("SELECT engineer_key, display_name, ecode, source FROM portal_engineer WHERE engineer_key = %s OR ecode = %s", [ident.upper(), ident.upper()])
     if not e:
         return None
-    show_personal = admin or e["engineer_key"] == viewer_key    # a non-admin sees full personal data only on their own card
-    r = db.one("SELECT * FROM cipl_employee WHERE ecode = %s", [e["ecode"]]) if e["ecode"] else None
-    x = db.one("""SELECT (SELECT count(*) FROM asset WHERE engineer_name = %(k)s AND is_current = 1 AND record_level = 'ASSET') AS assets,
-                         (SELECT count(*) FROM svc_call WHERE engineer = %(k)s AND is_current = 1 AND call_status = 'OPEN') AS open_calls,
-                         (SELECT count(*) FROM svc_call WHERE engineer = %(k)s AND is_current = 1) AS calls""", {"k": e["engineer_key"]})
-    chk = db.query("SELECT item, status, item_value FROM cipl_onboarding WHERE ecode = %s ORDER BY item", [e["ecode"]]) if e["ecode"] else []
-    return {"kind": "engineer", "id": e["engineer_key"], "title": e["display_name"], "subtitle": f"ECODE {e['ecode']}" if e["ecode"] else "NOT ON THE CIPL ROSTER",
-            "row": _clean(r, show_personal) if r else {}, "extra": {**x, "checklist": chk, "source": e["source"]},
-            "link": {"path": "dashboard/engineers", "eng": e["engineer_key"]}}
+    r = db.one("SELECT designation, mobile_no, ongc_gatepass_no FROM cipl_employee WHERE ecode = %s", [e["ecode"]]) if e["ecode"] else None
+    small = {"id": e["ecode"], "name": e["display_name"], "designation": r and r["designation"], "mobile": r and r["mobile_no"], "gate_pass": r and r["ongc_gatepass_no"]}
+    if not r:
+        small["note"] = "Not on the CIPL roster, no contact details held."
+    return {"kind": "engineer", "id": e["engineer_key"], "title": e["display_name"], "small": small}
 
 
 KINDS = {"asset": _asset, "call": _call, "cpf": _employee, "ecode": _engineer, "engineer": _engineer}
@@ -77,16 +78,10 @@ async def card(request):
     fn = KINDS.get(kind)
     if not fn:
         return json_response({"error": "unknown card"}, 400)
-    user = request.state.user
-    admin = user["role"] == "ADMIN"
-    if kind in ("ecode", "engineer"):
-        data = await run_in_threadpool(_engineer, ident, admin, user.get("engineer_key"))
-    else:
-        data = await run_in_threadpool(fn, ident, admin)
+    admin = request.state.user["role"] == "ADMIN"
+    data = await run_in_threadpool(fn, ident, admin)
     if data is None:
         return json_response({"error": "not found"}, 404)
-    if kind in ("ecode", "engineer") and not admin and data["id"] != user.get("engineer_key"):
-        return json_response({"error": "not found"}, 404)   # a non-admin only sees their own hover card, never another engineer's
     return json_response(data)
 
 

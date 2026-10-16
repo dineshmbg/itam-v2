@@ -90,7 +90,7 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Report builder | yes, every dataset, unscoped | yes, but scoped the same as the matching register/dashboard | yes, everything (read-only) |
 | Data integrity | yes | **no access at all** (2026-09-23) | yes, everything (read-only) |
 | Assets register, hover cards | yes | yes, own scope only - unless individually granted `asset_access` READ/FULL, see below (2026-09-30) | yes, everything (read-only) |
-| Engineers register, hover cards | yes, any engineer | yes, list of everyone, but a hover card/floating window only for themselves | yes, everything (read-only) |
+| Engineers register, hover cards | yes, any engineer | yes, list of everyone and any engineer's short card (from 2026-10-16; before that only their own) | yes, everything (read-only) |
 | Employees register | yes | yes, own scope only | yes, everything (read-only) |
 | Calls, Inward, Outward, OEM RMA registers | yes | **no access by default** - unless individually granted read-only or full access, see below (2026-09-22, extended 2026-09-23) | yes, everything (read-only) |
 | Engineers dashboard, Change log, Cycles and snapshots | yes | **no access at all** (2026-09-22) | yes, everything (read-only) |
@@ -103,7 +103,8 @@ Logs: `service\logs\portal.log` (rotated to `portal.log.old` once it passes 10 M
 | Record PM, PM worklist | yes | yes, own assets only | no |
 | Past quarters (closed PM quarters) | yes, whole fleet | yes, only assets that were on their own engineer key when the snapshot was taken | yes, everything (read-only) |
 | Replace asset / Redeploy asset | yes (real administrators only - not extended access) | no | no |
-| Personal data on hover cards (mobile, personal e-mail, date of birth) | yes | only their own | no |
+| Mobile number on the short person cards (user, engineer) | yes | yes (from 2026-10-16) | yes |
+| Date of birth, personal e-mail, bank / statutory numbers | never on a card | never | never |
 | Data import, backup and restore, PM roll-over, roster events | yes | no | no |
 | Users, security policy, e-mail set-up, activity log | yes | no, except a **Team Leader/SI** User: Users and security (other plain Users only, no security policy / roster sync) and Activity log - see "Team Leader/SI tools" | no |
 | Create a portal account | yes, manually (Add user) or via roster sync (2026-09-30 - Add user restored) | never | never |
@@ -791,3 +792,12 @@ In the Assets register the separate **Type** list is gone. Ticking a **Class** o
 - **How it is wired:** a facet can say `under="asset_class"` (`datasets.facet`); `meta` passes it to the client; `facet_counts` adds `kids` (that class's types with counts, counted with the class and type filters ignored so ticking a type never shrinks the other classes) to every class item. The flat `asset_type` counts are still returned. Client: `ui/facets.js` (`nestedEl`, `chipsEl`, `without`), styles in `components.css`; tests `tests/test_facet_nesting.py`.
 - Only the Assets register nests Type under Class.
 - **Indented bar (2026-10-16, later):** in every register and list that uses the shared filter bar, each section's options sit one level in under a guide line (`.f-tree`), the same look as a class's types, which sit one level deeper. The line turns blue while that section is filtering (`.picked`; a section still at its default, like Record = Assets, stays grey - `register.js` passes the defaults to `createFacets`). Layout only, no change to how anything filters. (The class is not called `live`: that is the header's "Live" status pill.)
+
+## Short hover cards for a person (2026-10-16)
+
+Pointing at a user name (CPF) or an engineer (ECODE) now opens a small card instead of the long details window. Asset and call cards are unchanged.
+
+- **User card:** `CPF - Name`, designation, department, mobile. **Engineer card:** `ECODE - Name`, designation, mobile, gate pass no. A line with nothing to show is left out. An engineer who is not on the CIPL roster gets just the name and a one-line note. **No e-mail address is shown on either card** (the HR data has none for employees; an e-mail list may be loaded later, the cards would then need a line added).
+- **Department** is the one written on the person's assets (the most common value; 27 readable names such as Infocom Services). The HR record only has a code-like org unit, so an employee who holds no asset (about 148 of 1,631) has no department line.
+- **Who sees what changed:** the cards are the same for administrators and ordinary users, and **any signed-in user can open any engineer's card** and see mobile numbers (employees and engineers). Previously mobile numbers were administrator-only and an engineer could open only their own card. Date of birth, personal e-mail, bank and statutory numbers are never on these cards (`cards.py` selects the fields explicitly; `tests/test_person_cards.py` checks that nothing else leaks).
+- Code: `app/cards.py` (`_employee`, `_engineer` return a `small` object), `frontend/src/js/ui/hovercard.js` (`smallCard`), styles `.hcard.small` / `.sc-*` in `app.css`. The two older notes above about admin-only mobile numbers and engineers seeing only their own card are superseded by this section.
