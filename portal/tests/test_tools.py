@@ -496,3 +496,10 @@ def test_user_not_in_hr_rule_groups_by_engineer_and_copies_admins(box):
     box.execute("UPDATE asset SET user_hr_status = 'NOT_IN_HR_MASTER' WHERE asset_key = (SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL LIMIT 1)")
     d = mailer.detect("USER_NOT_IN_HR", {})
     assert d and all(ev["rows"] and "cc" in ev and "not in HR master" in ev["subject"] for ev in d.values())
+
+
+def test_onboarding_pending_rule_mondays_only_and_skips_complete(box):
+    monday = dt.date(2026, 9, 21)
+    d = mailer.detect("ONBOARDING_PENDING", {}, today=monday)
+    assert d and all(ev["rows"] and "onboarding" in ev["subject"] for ev in d.values())
+    assert mailer.detect("ONBOARDING_PENDING", {}, today=dt.date(2026, 9, 22)) == {}

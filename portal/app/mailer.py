@@ -40,6 +40,8 @@ RULES = {
     "CALL_OVERDUE": ("Overdue open calls", "Weekly digest of an engineer's open calls older than the limit.", {"older_than_days": 7}),
     "USER_NOT_IN_HR": ("Asset user not in HR master", "An engineer is told which of their assets are assigned to a CPF missing from the HR master, to correct the user details. "
                        "Team Leader / Site In-charge (administrators) are copied. Re-sent only when the set of affected assets changes.", {}),
+    "ONBOARDING_PENDING": ("Onboarding pending", "Every Monday, an engineer whose joining formalities are not complete gets the list of pending items and is asked to finish them as soon as possible. "
+                           "Team Leader / Site In-charge (administrators) are copied.", {}),
     "PART_RECEIVED": ("Spare part received", "A part arrived for an engineer's call.", {"lookback_days": 3}),
 }
 
@@ -297,6 +299,17 @@ def detect(rule_key, params, today=None):
                                 "and update the asset details in the portal (Assets > open the asset > edit User / CPF).",
                           rows=items, columns=[("asset_key", "CI No"), ("asset_class", "Class"), ("model", "Make / Model"), ("serial_no", "Serial No"), ("hostname", "Hostname"),
                                                ("location_code", "Location"), ("room", "Room"), ("ongc_asset_id", "ONGC Asset ID"), ("cpf_no", "CPF"), ("user_name", "User on record")])
+    elif rule_key == "ONBOARDING_PENDING":
+        if today.weekday() != 0:
+            return D
+        cc = [r["email"] for r in db.query("SELECT DISTINCT email FROM portal_user WHERE role = 'ADMIN' AND active AND email IS NOT NULL")]
+        for r in db.query("""SELECT e.engineer_key, c.onboarding_pending_items FROM portal_engineer e JOIN cipl_employee c ON c.ecode = e.ecode
+                             WHERE c.employment_status = 'ACTIVE' AND coalesce(c.designation, '') <> 'OFFICE BOY' AND c.onboarding_status IS NOT NULL
+                               AND c.onboarding_status <> 'COMPLETE' AND coalesce(c.onboarding_pending_items, '') <> ''"""):
+            items = [{"item": re.sub(r"(Ongc|Id|Esic)", lambda m: m.group().upper(), i.strip().replace("_", " ").title())} for i in r["onboarding_pending_items"].split(",") if i.strip()]
+            D[r["engineer_key"]] = dict(event_key=_iso_week(today), cc=cc, subject=f"Please complete your onboarding: {len(items)} item(s) pending",
+                                        intro="Your joining formalities are not complete yet. Please finish the items below as soon as possible and tell your Team Leader / SI when each is done.",
+                                        rows=items, columns=[("item", "Pending item")])
     elif rule_key == "PART_RECEIVED":
         rows = db.query("""SELECT i.inward_id, i.received_date, i.sr_id, i.part_description, c.engineer FROM spare_inward i JOIN svc_call c ON c.sr_id = i.sr_id AND c.is_current = 1
                            WHERE i.is_current = 1 AND i.received_date >= %s AND c.engineer IS NOT NULL AND c.call_status = 'OPEN' ORDER BY i.received_date""", [_lookback(params)])
