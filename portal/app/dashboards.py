@@ -20,7 +20,7 @@ def assets(eng=None):
                count(*) FILTER (WHERE cover_status='ACTIVE') AS cover_active,
                count(*) FILTER (WHERE pm_status='PENDING') AS pm_pending,
                count(*) FILTER (WHERE pm_status IN ('DONE','DONE_OUTSIDE_QUARTER')) AS pm_done,
-               count(*) FILTER (WHERE record_level='ASSET' AND user_hr_status NOT IN ('ACTIVE')) AS users_inactive,
+               count(*) FILTER (WHERE record_level='ASSET' AND user_hr_status = 'NOT_IN_HR_MASTER') AS users_inactive,
                count(*) FILTER (WHERE dq_flags IS NOT NULL) AS dq_rows,
                max(snapshot_date) AS as_of, max(pm_quarter) AS pm_quarter
         FROM {A}""", p)
