@@ -18,7 +18,7 @@ export function optionLabel(key, v, labels = {}) {
   return labelOf(v, key);
 }
 
-export function createFacets({ facets, onChange }) {
+export function createFacets({ facets, onChange, defaults = {} }) {
   let filters = {};
   let counts = {};
   const open = new Map(JSON.parse(localStorage.getItem('itam.facets.open') || '[]'));
@@ -111,14 +111,17 @@ export function createFacets({ facets, onChange }) {
     const sel = filters[f.key] || [];
     const items = counts[f.key] || [];
     const isOpen = open.has(f.key) ? open.get(f.key) : true;
-    const body = h('div', { class: 'f-b' });
+    // Options sit one level in under a guide line (the same look as a class's types); the line turns blue while the section is filtering.
+    const picked = sel.length > 0 && sel.join('|') !== (defaults[f.key] || []).join('|');
+    const list = h('div', { class: 'f-tree' + (picked ? ' picked' : '') });
+    const body = h('div', { class: 'f-b' }, list);
     if (f.kind === 'radio') {
       const allSel = sel.length === 0;
       const allInput = h('input', { type: 'radio', name: 'r-' + f.key, id: `fo-${f.key}-all`, 'data-f': f.key, 'data-v': '' });
       allInput.checked = allSel;
       allInput.addEventListener('change', () => toggle(f, '', false));
       const total = items.reduce((n, i) => n + i.n, 0);
-      body.append(h('label', { class: 'opt', for: `fo-${f.key}-all` }, allInput, icon('radio-button', 'glyph off'), icon('radio-button--checked', 'glyph on'), h('span', { class: 'name' }, 'All'), h('span', { class: 'n' }, int(total))));
+      list.append(h('label', { class: 'opt', for: `fo-${f.key}-all` }, allInput, icon('radio-button', 'glyph off'), icon('radio-button--checked', 'glyph on'), h('span', { class: 'name' }, 'All'), h('span', { class: 'n' }, int(total))));
     }
     const q = (finds.get(f.key) || '').toLowerCase();
     let shown = items.filter((i) => !q || optionLabel(f.key, i.v, f.labels).toLowerCase().includes(q));
@@ -129,14 +132,14 @@ export function createFacets({ facets, onChange }) {
       const input = h('input', { type: 'search', placeholder: `Find in ${f.label.toLowerCase()}`, 'aria-label': `Find in ${f.label}`, 'data-find': f.key });
       input.value = finds.get(f.key) || '';
       input.addEventListener('input', () => { finds.set(f.key, input.value); redraw(f.key, input); });
-      body.append(h('div', { class: 'f-find' }, input));
+      list.append(h('div', { class: 'f-find' }, input));
     }
     const kf = kidFacet(f);
-    shown.forEach((i) => body.append(kf ? nestedEl(f, kf, i) : optionEl(f, i, sel.includes(i.v))));
+    shown.forEach((i) => list.append(kf ? nestedEl(f, kf, i) : optionEl(f, i, sel.includes(i.v))));
     if (!q && items.length > limit && shown.length < items.length) {
-      body.append(h('button', { class: 'link-btn', type: 'button', style: { margin: '4px 8px' }, onClick: () => { more.add(f.key); redraw(f.key); } }, `Show all ${items.length}`));
+      list.append(h('button', { class: 'link-btn', type: 'button', style: { margin: '4px 8px' }, onClick: () => { more.add(f.key); redraw(f.key); } }, `Show all ${items.length}`));
     } else if (more.has(f.key) && items.length > limit) {
-      body.append(h('button', { class: 'link-btn', type: 'button', style: { margin: '4px 8px' }, onClick: () => { more.delete(f.key); redraw(f.key); } }, 'Show fewer'));
+      list.append(h('button', { class: 'link-btn', type: 'button', style: { margin: '4px 8px' }, onClick: () => { more.delete(f.key); redraw(f.key); } }, 'Show fewer'));
     }
     const head = h('button', { class: 'f-h', type: 'button', 'aria-expanded': String(isOpen), onClick: () => { open.set(f.key, !(open.has(f.key) ? open.get(f.key) : true)); persist(); redraw(f.key); } },
       h('span', null, f.label, sel.length && f.kind !== 'radio' ? h('span', { class: 'faint', style: { fontWeight: 400 } }, ` · ${sel.length}`) : null), icon('chevron--down', 'sm'));

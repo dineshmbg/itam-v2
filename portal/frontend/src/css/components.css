@@ -137,6 +137,8 @@ button.f-chev { cursor: pointer; }
 button.f-chev:hover { background: var(--c-surface-3); }
 button.f-chev .ico { transition: transform 120ms var(--ease); }
 button.f-chev[aria-expanded="false"] .ico { transform: rotate(-90deg); }
+.f-tree { margin: 0 0 3px 13px; padding-left: 8px; border-left: 2px solid var(--c-border); }
+.f-tree.picked { border-left-color: var(--c-accent); }
 .f-kids { margin: 0 0 4px 21px; padding-left: 10px; border-left: 2px solid var(--c-border); }
 .f-kids .opt { min-height: 22px; }
 .f-kids .name { font-size: 11.5px; }
