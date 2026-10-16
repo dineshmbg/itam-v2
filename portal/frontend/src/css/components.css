@@ -129,6 +129,19 @@ a.kpi:hover .kpi-l { color: var(--c-accent); }
 .opt .n { color: var(--c-text-3); font-size: 10px; font-variant-numeric: tabular-nums; }
 .opt[data-zero="true"] { opacity: 0.55; }
 .opt .state-ico { flex: none; }
+/* a class with its types nested underneath (Class > Type in the asset filter bar) */
+.opt-row { display: flex; align-items: center; }
+.opt-row > .opt { flex: 1; min-width: 0; }
+.f-chev { flex: none; width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--c-text-2); }
+button.f-chev { cursor: pointer; }
+button.f-chev:hover { background: var(--c-surface-3); }
+button.f-chev .ico { transition: transform 120ms var(--ease); }
+button.f-chev[aria-expanded="false"] .ico { transform: rotate(-90deg); }
+.f-kids { margin: 0 0 4px 21px; padding-left: 10px; border-left: 2px solid var(--c-border); }
+.f-kids .opt { min-height: 22px; }
+.f-kids .name { font-size: 11.5px; }
+.opt .hint { flex: none; color: var(--c-text-3); font-size: 10px; white-space: nowrap; }
+.facets > .chips { background: var(--c-surface); }
 
 /* ---------- column layout dialog ---------- */
 .col-list { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto; }

@@ -53,24 +53,44 @@ def where(ds, q, filters, skip=None, base=None):
         for tok in re.findall(r"\S+", q.lower())[:6]:
             parts.append(f"{hay} LIKE %s")
             params.append("%" + tok.translate(_LIKE_ESC) + "%")
+    skips = {skip} if isinstance(skip, str) else set(skip or ())
+    kid_of = {f["under"]: f for f in ds["facets"] if f.get("under")}      # parent key -> the facet nested under it
+    skips |= {kid_of[k]["key"] for k in skips if k in kid_of}              # ignoring a parent (to count it) ignores its nested facet too
     for f in ds["facets"]:
         vals = filters.get(f["key"])
-        if not vals or f["key"] == skip:
+        if not vals or f["key"] in skips:
             continue
+        if f.get("under") and filters.get(f["under"]) and f["under"] not in skips:
+            continue                                                       # applied together with its parent below
         expr = f["expr"]
         if f["kind"] == "flags":
             parts.append("(" + " OR ".join(f"{expr} LIKE %s" for _ in vals) + ")")
             params.extend("%" + v.translate(_LIKE_ESC) + "%" for v in vals)
             continue
-        real = [v for v in vals if v != BLANK]
-        conds = []
-        if real:
-            conds.append(f"({expr}) = ANY(%s)")
-            params.append(real)
-        if BLANK in vals:
-            conds.append(f"({expr}) IS NULL")
-        parts.append("(" + " OR ".join(conds) + ")")
+        sql, p = _in(expr, vals)
+        kid = kid_of.get(f["key"])
+        kvals = filters.get(kid["key"]) if kid and kid["key"] not in skips else None
+        if kvals:
+            # A class with ticked types keeps only those types; a class with none ticked stays whole.
+            ks, kp = _in(kid["expr"], kvals)
+            ckey = f"coalesce(({expr})::text, '{BLANK}')"
+            sql = f"({sql} AND ({ks} OR {ckey} NOT IN (SELECT {ckey} FROM {ds['table']} WHERE {base_sql} AND {ks})))"
+            p = p + kp + base_params + kp
+        parts.append(sql)
+        params.extend(p)
     return " AND ".join(parts), params
+
+
+def _in(expr, vals):
+    """`expr` is one of `vals` (BLANK means NULL): (sql, params)."""
+    real = [v for v in vals if v != BLANK]
+    conds, params = [], []
+    if real:
+        conds.append(f"({expr}) = ANY(%s)")
+        params.append(real)
+    if BLANK in vals:
+        conds.append(f"({expr}) IS NULL")
+    return "(" + " OR ".join(conds) + ")", params
 
 
 def _search_cols(ds):
@@ -173,6 +193,17 @@ def facet_counts(ds, q, filters, base=None):
             if v not in have:
                 items.append({"v": v, "n": 0})
         res[f["key"]] = items[: f["limit"] + 5]
+    for f in ds["facets"]:
+        kid = next((k for k in ds["facets"] if k.get("under") == f["key"]), None)
+        if not kid:
+            continue
+        w, p = where(ds, q, filters, skip=f["key"], base=base)
+        rows = db.query(f"SELECT ({f['expr']})::text AS v, ({kid['expr']})::text AS k, count(*) AS n FROM {ds['table']} WHERE {w} AND ({kid['expr']}) IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC", p)
+        kids = {}
+        for r in rows:
+            kids.setdefault(r["v"] if r["v"] is not None else BLANK, []).append({"v": r["k"], "n": r["n"]})
+        for item in res[f["key"]]:
+            item["kids"] = kids.get(item["v"], [])
     return res
 
 
@@ -182,7 +213,7 @@ def meta():
         out[name] = {
             "label": ds["label"], "sort": list(ds["sort"]), "defaults": ds.get("defaults", {}), "detail": ds.get("detail"), "group": ds.get("group"),
             "columns": [{k: c[k] for k in ("key", "label", "kind", "align", "ref")} for c in ds["columns"]],
-            "facets": [{k: f[k] for k in ("key", "label", "kind", "limit", "labels")} for f in ds["facets"]],
+            "facets": [{k: f[k] for k in ("key", "label", "kind", "limit", "labels", "under")} for f in ds["facets"]],
         }
     return out
 

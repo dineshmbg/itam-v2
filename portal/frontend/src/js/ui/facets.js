@@ -24,16 +24,35 @@ export function createFacets({ facets, onChange }) {
   const open = new Map(JSON.parse(localStorage.getItem('itam.facets.open') || '[]'));
   const finds = new Map();
   const more = new Set();
+  const collapsed = new Set();   // classes whose types the user folded away (the filter itself is unchanged)
 
   const el = h('aside', { class: 'facets', 'aria-label': 'Filters' });
 
   const persist = () => { try { localStorage.setItem('itam.facets.open', JSON.stringify([...open])); } catch (_) { /* ignore */ } };
   const selectedCount = () => Object.values(filters).reduce((n, v) => n + v.length, 0);
 
+  // A nested facet (a Type under its Class) is listed beneath its parent instead of getting a section of its own.
+  const kidFacet = (f) => facets.find((k) => k.under === f.key);
+  const kidsOf = (f, v) => (counts[f.key] || []).find((i) => i.v === v)?.kids || [];
+  const parentOf = (kf, v) => (counts[kf.under] || []).find((i) => (i.kids || []).some((k) => k.v === v));
+
+  // `filters` without one value; removing a class also drops the types picked under it.
+  function without(cur, key, v) {
+    const f = facets.find((x) => x.key === key), kf = f && kidFacet(f);
+    const next = { ...cur, [key]: (cur[key] || []).filter((x) => x !== v) };
+    if (kf) next[kf.key] = (cur[kf.key] || []).filter((t) => !kidsOf(f, v).some((k) => k.v === t));
+    return next;
+  }
+
   function toggle(f, v, checked) {
     const cur = new Set(filters[f.key] || []);
     if (f.kind === 'radio') { filters = { ...filters, [f.key]: checked ? [v] : [] }; }
-    else { checked ? cur.add(v) : cur.delete(v); filters = { ...filters, [f.key]: [...cur] }; }
+    else if (!checked) { filters = without(filters, f.key, v); }
+    else {
+      cur.add(v); filters = { ...filters, [f.key]: [...cur] };
+      const par = f.under && parentOf(f, v);   // a picked type switches its class on, so the two can never disagree
+      if (par && !(filters[f.under] || []).includes(par.v)) filters = { ...filters, [f.under]: [...(filters[f.under] || []), par.v] };
+    }
     onChange(filters);
   }
 
@@ -50,6 +69,42 @@ export function createFacets({ facets, onChange }) {
       input,
       icon(isRadio ? 'radio-button' : 'checkbox', 'glyph off'), icon(isRadio ? 'radio-button--checked' : 'checkbox--checked--filled', 'glyph on'),
       state, h('span', { class: 'name', title: label }, label), h('span', { class: 'n' }, int(item.n)));
+  }
+
+  // One class row. Ticking it opens its types underneath (indented); none ticked there means every type of the class.
+  function nestedEl(f, kf, item) {
+    const kids = item.kids || [];
+    const pickedKids = kids.filter((k) => (filters[kf.key] || []).includes(k.v));
+    const on = (filters[f.key] || []).includes(item.v) || pickedKids.length > 0;
+    const expandable = kids.length > 1;              // a class with a single type has nothing to choose between
+    const isOpen = on && expandable && !collapsed.has(item.v);
+    const row = optionEl(f, item, on);
+    if (on && expandable && pickedKids.length) row.querySelector('.n').before(h('span', { class: 'hint' }, `${pickedKids.length} of ${kids.length} types`));
+    const chev = expandable && on
+      ? h('button', { class: 'f-chev', type: 'button', 'aria-expanded': String(isOpen), 'aria-label': `Show types of ${optionLabel(f.key, item.v, f.labels)}`,
+        onClick: () => { collapsed.has(item.v) ? collapsed.delete(item.v) : collapsed.add(item.v); redraw(f.key); } }, icon('chevron--down', 'sm'))
+      : h('span', { class: 'f-chev' });
+    const out = h('div', { class: 'f-nest' }, h('div', { class: 'opt-row' }, chev, row));
+    if (isOpen) out.append(h('div', { class: 'f-kids', role: 'group', 'aria-label': `${optionLabel(f.key, item.v, f.labels)} types` },
+      ...kids.map((k) => optionEl(kf, k, pickedKids.includes(k)))));
+    return out;
+  }
+
+  // Applied classes and types as removable chips at the top of the bar ("Desktop > All in one").
+  function chipsEl() {
+    const chips = [];
+    facets.forEach((f) => {
+      const kf = kidFacet(f);
+      if (!kf) return;
+      (counts[f.key] || []).forEach((item) => {
+        const picked = (item.kids || []).filter((k) => (filters[kf.key] || []).includes(k.v));
+        const name = optionLabel(f.key, item.v, f.labels);
+        const chip = (label, remove, aria) => h('span', { class: 'chip' }, label, h('button', { type: 'button', 'aria-label': `Remove ${aria}`, onClick: remove }, icon('close', 'sm')));
+        if (picked.length) picked.forEach((k) => chips.push(chip(`${name} › ${optionLabel(kf.key, k.v, kf.labels)}`, () => toggle(kf, k.v, false), `${name}, ${optionLabel(kf.key, k.v, kf.labels)}`)));
+        else if ((filters[f.key] || []).includes(item.v)) chips.push(chip(name, () => toggle(f, item.v, false), name));
+      });
+    });
+    return chips.length ? h('div', { class: 'chips', 'aria-label': 'Applied class and type filters' }, ...chips) : null;
   }
 
   function facetEl(f) {
@@ -76,7 +131,8 @@ export function createFacets({ facets, onChange }) {
       input.addEventListener('input', () => { finds.set(f.key, input.value); redraw(f.key, input); });
       body.append(h('div', { class: 'f-find' }, input));
     }
-    shown.forEach((i) => body.append(optionEl(f, i, sel.includes(i.v))));
+    const kf = kidFacet(f);
+    shown.forEach((i) => body.append(kf ? nestedEl(f, kf, i) : optionEl(f, i, sel.includes(i.v))));
     if (!q && items.length > limit && shown.length < items.length) {
       body.append(h('button', { class: 'link-btn', type: 'button', style: { margin: '4px 8px' }, onClick: () => { more.add(f.key); redraw(f.key); } }, `Show all ${items.length}`));
     } else if (more.has(f.key) && items.length > limit) {
@@ -103,7 +159,7 @@ export function createFacets({ facets, onChange }) {
     const n = selectedCount();
     const head = h('div', { class: 'facets-h' }, h('h2', null, 'Narrow down results', n ? h('span', { class: 'count' }, `${n} filter${n === 1 ? '' : 's'} applied`) : null),
       h('button', { class: 'link-btn', type: 'button', disabled: n ? null : true, style: { opacity: n ? 1 : 0.4 }, onClick: () => { filters = Object.fromEntries(facets.map((x) => [x.key, x.kind === 'radio' ? [] : []])); onChange(filters, true); } }, 'Clear all'));
-    el.replaceChildren(head, ...facets.map(facetEl));
+    el.replaceChildren(head, ...[chipsEl(), ...facets.filter((f) => !f.under).map(facetEl)].filter(Boolean));
     if (restore) {
       const t = restore.find
         ? el.querySelector(`input[data-find="${restore.find}"]`)
@@ -117,5 +173,6 @@ export function createFacets({ facets, onChange }) {
     setFilters(f) { filters = f; draw(); },
     setCounts(c) { counts = c; draw(); },
     update(c, f) { counts = c; filters = f; draw(); },
+    without,   // for the page's own filter chips: dropping a class also drops the types picked under it
   };
 }

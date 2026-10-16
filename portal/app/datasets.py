@@ -30,8 +30,9 @@ def col(key, label, kind="text", expr=None, sort=None, align=None, ref=None, ref
     return {"key": key, "label": label, "kind": kind, "expr": expr or key, "sort": sort or expr or key, "align": align, "ref": ref, "ref_id": ref_id}
 
 
-def facet(key, label, expr=None, kind="single", limit=30, order="count", labels=None, blank=True):
-    return {"key": key, "label": label, "expr": expr or key, "kind": kind, "limit": limit, "order": order, "labels": labels or {}, "blank": blank}
+def facet(key, label, expr=None, kind="single", limit=30, order="count", labels=None, blank=True, under=None):
+    """under: key of a parent facet this one is nested beneath (a Type is listed under its Class; a type narrows only its own class)."""
+    return {"key": key, "label": label, "expr": expr or key, "kind": kind, "limit": limit, "order": order, "labels": labels or {}, "blank": blank, "under": under}
 
 
 _MONTH = lambda c: f"to_char({c}, 'YYYY-MM')"  # noqa: E731
@@ -79,7 +80,7 @@ DATASETS = {
         ],
         "facets": [
             facet("record_level", "Record", kind="radio", labels={"ASSET": "Assets", "COMPONENT": "Components"}),
-            facet("asset_class", "Class"), facet("asset_type", "Type"), facet("asset_status", "Status"),
+            facet("asset_class", "Class"), facet("asset_type", "Type", under="asset_class"), facet("asset_status", "Status"),
             facet("cover_status", "Cover"), facet("pm_status", "PM this quarter"),
             facet("verified", "Physical check", expr="CASE WHEN (SELECT max(v.verified_on) FROM asset_verification v WHERE v.asset_key = asset.asset_key) IS NULL THEN 'NEVER' WHEN (SELECT max(v.verified_on) FROM asset_verification v WHERE v.asset_key = asset.asset_key) < current_date - 365 THEN 'OVER_A_YEAR' ELSE 'WITHIN_A_YEAR' END",
                   labels={"NEVER": "Never checked", "OVER_A_YEAR": "Last checked over a year ago", "WITHIN_A_YEAR": "Checked in the last year"}, blank=False),

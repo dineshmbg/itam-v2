@@ -85,7 +85,7 @@ export function mountRegister(root, name, opts = {}) {
       (filters[f.key] || []).forEach((v) => {
         if (def.includes(v)) return;
         chips.push(h('span', { class: 'chip' }, h('b', null, f.label + ':'), optionLabel(f.key, v, f.labels),
-          h('button', { type: 'button', 'aria-label': `Remove filter ${f.label} ${optionLabel(f.key, v, f.labels)}`, onClick: () => { filters = { ...filters, [f.key]: filters[f.key].filter((x) => x !== v) }; applyFilters(); } }, icon('close', 'sm'))));
+          h('button', { type: 'button', 'aria-label': `Remove filter ${f.label} ${optionLabel(f.key, v, f.labels)}`, onClick: () => { filters = facets.without(filters, f.key, v); applyFilters(); } }, icon('close', 'sm'))));
       });
       if (def.length && !(filters[f.key] || []).length) chips.push(h('span', { class: 'chip' }, h('b', null, f.label + ':'), 'All', h('button', { type: 'button', 'aria-label': `Restore default for ${f.label}`, onClick: () => { filters = { ...filters, [f.key]: [...def] }; applyFilters(); } }, icon('restart', 'sm'))));
     });
