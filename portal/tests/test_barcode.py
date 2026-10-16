@@ -40,11 +40,11 @@ def test_labels_pdf_handles_an_empty_register():
 
 
 # ---------------------------------------------------------------- hover card
-def test_asset_hover_card_carries_a_barcode_of_its_own_ci(sandbox):
+def test_asset_hover_card_is_the_short_card_and_no_longer_carries_a_barcode(sandbox):
     key = an_asset(sandbox)
     data = cards._asset(key, admin=True)
-    assert data["barcode_svg"] and data["barcode_svg"].startswith("<?xml")
-    assert data["barcode_svg"] == export.asset_barcode_svg(key)
+    assert "barcode_svg" not in data and data["small"]["key"] == key        # the barcode lives on the printed labels, not on the hover card
+    assert data["row"]["asset_key"] == key                                  # the new-call form still reads the full record from here
 
 
 def test_other_hover_card_kinds_do_not_carry_a_barcode(sandbox):

@@ -1,4 +1,4 @@
-// Hover cards: pointing at (or focusing) an asset, SR ID, CPF number or ECODE anywhere in the portal opens a floating card (assets and calls: every detail; a person: a short card).
+// Hover cards: pointing at (or focusing) an asset, SR ID, CPF number or ECODE anywhere in the portal opens a floating card (a call: every detail; an asset or a person: a short card).
 import { get } from '../core/api.js';
 import { h, icon } from '../core/dom.js';
 import { date, dec, int, label as fieldLabel, person } from '../core/format.js';
@@ -51,7 +51,24 @@ function smallCard(d) {
   return card;
 }
 
+const GLYPH = { LAPTOP: 'laptop', DESKTOP: 'devices', WORKSTATION: 'devices', PRINTER: 'printer', SWITCH: 'network--3', ROUTER: 'network--3', MEDIA_CONVERTER: 'network--3', SERVER: 'server--dns', UPS: 'battery--full', SCANNER: 'scan' };
+
+/** The short card for an asset: ID, "type - make - model", then identity (hostname, serial, OS) and hardware (processor, RAM, storage) - empty rows and empty groups are left out. */
+function assetCard(d) {
+  const x = d.small;
+  const groups = [[['Hostname', x.hostname, true], ['Serial no.', x.serial, true], ['OS', x.os]], [['Processor', x.processor], ['RAM', x.ram], ['Storage', x.storage]]]
+    .map((g) => g.filter((r) => r[1])).filter((g) => g.length);
+  const card = h('div', { class: 'hcard asset', role: 'dialog', 'aria-label': 'Asset details' },
+    h('div', { class: 'ac-h' }, h('span', { class: 'ac-glyph' }, icon(GLYPH[x.cls] || 'devices')),
+      h('div', null, h('div', { class: 'ac-id' }, x.key), x.what ? h('div', { class: 'ac-what' }, x.what) : null)),
+    groups.length ? h('div', { class: 'ac-b' }, groups.map((g) => h('dl', { class: 'ac-g' }, g.flatMap(([k, v, mono]) => [h('dt', null, k), h('dd', { class: mono ? 'm' : '' }, v)])))) : null);
+  card.addEventListener('pointerenter', () => clearTimeout(hideTimer));
+  card.addEventListener('pointerleave', scheduleHide);
+  return card;
+}
+
 function build(d) {
+  if (d.small && d.kind === 'asset') return assetCard(d);
   if (d.small) return smallCard(d);
   const rows = Object.entries(d.row || {});
   const x = d.extra || {};
@@ -72,7 +89,7 @@ function build(d) {
 
 function place(target) {
   const r = target.getBoundingClientRect();
-  const w = Math.min(el.classList.contains('small') ? 300 : 420, window.innerWidth - 16);
+  const w = Math.min(el.classList.contains('asset') ? 330 : el.classList.contains('small') ? 300 : 420, window.innerWidth - 16);
   el.style.width = w + 'px';
   let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
   el.style.left = left + 'px';

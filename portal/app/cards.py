@@ -1,6 +1,7 @@
-"""Hover cards: every available detail of an asset or a call, and a SMALL card for an HR-master employee (CPF) or a CIPL engineer (ECODE).
+"""Hover cards: a SMALL card for an asset, an HR-master employee (CPF) or a CIPL engineer (ECODE), and the full details of a call.
 
-Asset and call cards hide personal columns from non-administrators (PERSONAL below). The employee and engineer cards are deliberately
+The asset payload still carries the whole record (`row`, `extra`) because the new-call form reads it to auto-fill the user and engineer; the
+hover card itself shows only `small`. Asset and call payloads hide personal columns from non-administrators (PERSONAL below). The employee and engineer cards are deliberately
 small and the same for everyone signed in (decided 2026-10-16): name, designation, mobile number and, for an employee, the department
 recorded on their assets; for an engineer, the gate pass number. Nothing else about a person - no date of birth, personal e-mail, bank
 or statutory numbers, no e-mail address at all - is ever put on these two cards.
@@ -10,7 +11,6 @@ from starlette.routing import Route
 
 from . import db
 from .datasets import HIDDEN_DETAIL, NEVER_EXPOSE
-from .export import asset_barcode_svg
 from .web import json_response, read
 
 PERSONAL = NEVER_EXPOSE          # same set queries.py's _clean() protects - kept as one alias so cards.py's own history/comments still read naturally
@@ -29,9 +29,12 @@ def _asset(ident, admin):
                          (SELECT count(*) FROM svc_call WHERE asset_key = %(k)s AND is_current = 1 AND call_status = 'OPEN') AS open_calls,
                          (SELECT count(*) FROM oem_rma WHERE asset_key = %(k)s AND is_current = 1) AS rma,
                          (SELECT count(*) FROM asset WHERE parent_asset_key = %(k)s AND is_current = 1) AS components""", {"k": ident})
+    # The portal fills a missing hostname with the asset ID, so a hostname equal to the ID would only repeat the card's heading: leave it out.
+    host = row["hostname"] if row["hostname"] and row["hostname"] != ident else None
+    small = {"key": ident, "cls": row["asset_class"], "what": " - ".join(filter(None, [row["asset_type"], row["make"], row["model"]])), "hostname": host,
+             "serial": row["serial_no"], "os": row["os"], "processor": row["processor"], "ram": row["ram"], "storage": row["storage"]}
     return {"kind": "asset", "id": ident, "title": ident, "subtitle": " · ".join(filter(None, [row["asset_class"], row["make"], row["model"]])),
-            "archived": row["is_current"] == 0, "row": _clean(row, admin), "extra": x, "link": {"path": "registers/assets", "open": ident},
-            "barcode_svg": asset_barcode_svg(ident)}
+            "archived": row["is_current"] == 0, "row": _clean(row, admin), "extra": x, "link": {"path": "registers/assets", "open": ident}, "small": small}
 
 
 def _call(ident, admin):

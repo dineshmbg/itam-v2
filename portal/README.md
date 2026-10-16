@@ -509,7 +509,7 @@ server) and checksum, backs the database up, loads the image, restarts the porta
 
 - **Barcode stickers**: *Print barcode labels* on the assets register downloads a PDF sticker sheet (Code128, one per asset matching the
   current search/filters, 45×22mm, 4-across) for the Asset (CI) number - built server-side with `reportlab` (`app/export.py`), no new
-  dependency. The asset hover card also shows the same barcode (rendered as SVG, same code path) for every asset, always on.
+  dependency. The asset hover card used to show the same barcode too; since 2026-10-16 it is the short card (see the last section) and the barcode stays on the printed labels.
 - **Activity log now records the client's hostname alongside its IP** (`app/netid.py`): addresses on this LAN are DHCP-assigned, so the IP
   alone does not reliably identify a machine after the fact. Resolved via NetBIOS name service (works for any Windows PC with no DNS setup
   needed) falling back to reverse DNS, both bounded to a few hundred milliseconds and cached; a lookup failure never costs the audit row
@@ -801,3 +801,11 @@ Pointing at a user name (CPF) or an engineer (ECODE) now opens a small card inst
 - **Department** is the one written on the person's assets (the most common value; 27 readable names such as Infocom Services). The HR record only has a code-like org unit, so an employee who holds no asset (about 148 of 1,631) has no department line.
 - **Who sees what changed:** the cards are the same for administrators and ordinary users, and **any signed-in user can open any engineer's card** and see mobile numbers (employees and engineers). Previously mobile numbers were administrator-only and an engineer could open only their own card. Date of birth, personal e-mail, bank and statutory numbers are never on these cards (`cards.py` selects the fields explicitly; `tests/test_person_cards.py` checks that nothing else leaks).
 - Code: `app/cards.py` (`_employee`, `_engineer` return a `small` object), `frontend/src/js/ui/hovercard.js` (`smallCard`), styles `.hcard.small` / `.sc-*` in `app.css`. The two older notes above about admin-only mobile numbers and engineers seeing only their own card are superseded by this section.
+
+## Short hover card for an asset (2026-10-16)
+
+Pointing at an asset ID opens a short card instead of the long field table: a small icon for the kind of asset, the **asset ID**, then **type - make - model**; then identity (**hostname, serial no., OS**), a thin line, then hardware (**processor, RAM, storage**). A row with no value is left out, and so is a group with no rows, so a printer or switch card is only a few lines (laptops show the OS only: no laptop has processor, RAM or storage recorded). **A hostname equal to the asset ID is left out** (the portal fills a missing hostname with the ID, so 3,498 of 3,765 would only repeat the heading); a real hostname such as a switch's name is shown. Hostname and serial no. use the monospaced face.
+
+- Counts, the barcode (still on the printed labels), the status/user/engineer/location rows and the "Open" bar are no longer on the card; the name is already a link to the record.
+- `GET /api/card/asset/{key}` still returns the whole record (`row`, `extra`) because the new-call form reads it to auto-fill the user (CPF) and the engineer; the card itself renders only the new `small` block. `barcode_svg` is no longer in the response.
+- Code: `app/cards.py` (`_asset` builds `small`), `frontend/src/js/ui/hovercard.js` (`assetCard`), styles `.hcard.asset` / `.ac-*` in `app.css`; tests `tests/test_asset_card.py`. The call card is still the long one.
