@@ -26,13 +26,14 @@ def overview():
         FROM portal_engineer e
         LEFT JOIN cipl_employee r ON r.ecode = e.ecode
         LEFT JOIN a ON a.k = e.engineer_key LEFT JOIN c ON c.k = e.engineer_key LEFT JOIN pm ON pm.k = e.engineer_key
+        WHERE coalesce(r.designation, '') <> 'OFFICE BOY'
         ORDER BY coalesce(c.calls_total,0) + coalesce(a.assets,0) DESC, e.display_name""")
     for r in rows:
         tracked = r["pm_done"] + r["pm_pending"]
         r["pm_pct"] = round(100.0 * r["pm_done"] / tracked, 1) if tracked else None
         r["on_roster"] = r["ecode"] is not None
-    onboarding = db.query("SELECT coalesce(onboarding_status,'-') AS label, count(*) AS n FROM cipl_employee WHERE employment_status='ACTIVE' GROUP BY 1 ORDER BY 2 DESC")
-    roster = db.one("SELECT count(*) FILTER (WHERE employment_status='ACTIVE') AS active, max(snapshot_date) AS as_of FROM cipl_employee")
+    onboarding = db.query("SELECT coalesce(onboarding_status,'-') AS label, count(*) AS n FROM cipl_employee WHERE employment_status='ACTIVE' AND coalesce(designation,'') <> 'OFFICE BOY' GROUP BY 1 ORDER BY 2 DESC")
+    roster = db.one("SELECT count(*) FILTER (WHERE employment_status='ACTIVE' AND coalesce(designation,'') <> 'OFFICE BOY') AS active, max(snapshot_date) AS as_of FROM cipl_employee")
     kpi = {
         "engineers": roster["active"],
         "with_workload": sum(1 for r in rows if r["assets"] or r["calls_total"]),
