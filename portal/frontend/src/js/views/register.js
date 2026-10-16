@@ -118,7 +118,7 @@ export function mountRegister(root, name, opts = {}) {
     if (dead) return { rows: [], total: 0 };
     if (first) {
       countEl.replaceChildren(h('strong', null, int(res.total)), ` ${res.total === 1 ? 'record' : 'records'}`);
-      if (res.facets) facets.update(res.facets, filters);
+      if (res.facets) facets.update(res.facets, filters, res.total);
       res.groups = groupHeadings(res);
     }
     return res;

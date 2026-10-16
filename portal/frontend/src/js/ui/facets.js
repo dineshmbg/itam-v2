@@ -21,6 +21,7 @@ export function optionLabel(key, v, labels = {}) {
 export function createFacets({ facets, onChange, defaults = {} }) {
   let filters = {};
   let counts = {};
+  let total;   // how many results there are (undefined until the first answer, and for lists whose counts do not follow the filters: then nothing is hidden)
   const open = new Map(JSON.parse(localStorage.getItem('itam.facets.open') || '[]'));
   const finds = new Map();
   const more = new Set();
@@ -107,6 +108,21 @@ export function createFacets({ facets, onChange, defaults = {} }) {
     return chips.length ? h('div', { class: 'chips', 'aria-label': 'Applied class and type filters' }, ...chips) : null;
   }
 
+  // A section that cannot narrow the results is tucked away: none of its values has some of the results (0 < count < total), nothing in it is ticked,
+  // and there is at least one result. Its single shared value is told in a note at the bottom instead ("Same for all 14 results").
+  const ticked = (f) => (filters[f.key] || []).length > 0 || (kidFacet(f) ? (filters[kidFacet(f).key] || []).length > 0 : false);
+  const narrows = (list) => (list || []).some((i) => i.n > 0 && i.n < total);
+  const canNarrow = (f) => { const items = counts[f.key] || []; return narrows(items) || (kidFacet(f) ? items.some((i) => narrows(i.kids)) : false); };
+  const isHidden = (f) => total > 0 && !f.under && !ticked(f) && !canNarrow(f);
+
+  function sameEl(gone) {
+    const chips = gone.map((f) => {
+      const vals = (counts[f.key] || []).filter((i) => i.n === total).map((i) => optionLabel(f.key, i.v, f.labels));
+      return vals.length ? h('span', { class: 'f-chip' }, f.label, h('i', null, ' · '), vals.join(', ')) : null;
+    }).filter(Boolean);
+    return chips.length ? h('div', { class: 'f-same' }, h('b', null, `Same for all ${int(total)} ${total === 1 ? 'result' : 'results'}`), h('br'), ...chips) : null;
+  }
+
   function facetEl(f) {
     const sel = filters[f.key] || [];
     const items = counts[f.key] || [];
@@ -162,7 +178,8 @@ export function createFacets({ facets, onChange, defaults = {} }) {
     const n = selectedCount();
     const head = h('div', { class: 'facets-h' }, h('h2', null, 'Narrow down results', n ? h('span', { class: 'count' }, `${n} filter${n === 1 ? '' : 's'} applied`) : null),
       h('button', { class: 'link-btn', type: 'button', disabled: n ? null : true, style: { opacity: n ? 1 : 0.4 }, onClick: () => { filters = Object.fromEntries(facets.map((x) => [x.key, x.kind === 'radio' ? [] : []])); onChange(filters, true); } }, 'Clear all'));
-    el.replaceChildren(head, ...[chipsEl(), ...facets.filter((f) => !f.under).map(facetEl)].filter(Boolean));
+    const top = facets.filter((f) => !f.under), gone = top.filter(isHidden);
+    el.replaceChildren(head, ...[chipsEl(), ...top.filter((f) => !gone.includes(f)).map(facetEl), sameEl(gone)].filter(Boolean));
     if (restore) {
       const t = restore.find
         ? el.querySelector(`input[data-find="${restore.find}"]`)
@@ -175,7 +192,7 @@ export function createFacets({ facets, onChange, defaults = {} }) {
     el,
     setFilters(f) { filters = f; draw(); },
     setCounts(c) { counts = c; draw(); },
-    update(c, f) { counts = c; filters = f; draw(); },
+    update(c, f, t) { counts = c; filters = f; total = t; draw(); },   // t: the result count; leave it out for a list whose counts ignore the filters
     without,   // for the page's own filter chips: dropping a class also drops the types picked under it
   };
 }

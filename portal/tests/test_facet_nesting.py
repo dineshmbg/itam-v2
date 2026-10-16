@@ -66,3 +66,21 @@ def test_meta_tells_the_client_which_facet_is_nested():
     facets = {f["key"]: f for f in queries.meta()["assets"]["facets"]}
     assert facets["asset_type"]["under"] == "asset_class" and facets["asset_class"]["under"] is None
     assert all(f["under"] is None for name, ds in queries.meta().items() if name != "assets" for f in ds["facets"])
+
+
+def test_facet_counts_agree_with_the_result_total_which_the_hide_rule_relies_on(box):
+    """The filter bar hides a section when none of its values has some-but-not-all of the results, comparing each count with the result total.
+    That is only right if, for a section with nothing ticked in it, no count exceeds the total and (single-valued, blanks counted) the counts add up to it."""
+    seed(box)
+    from portal.app import db
+    for filters in ({"record_level": ["ASSET"]}, {"record_level": ["ASSET"], "asset_class": ["ZZN-A"]}, {"record_level": ["ASSET"], "asset_class": ["ZZN-A"], "asset_type": ["ZZN-A1"]}):
+        w, p = queries.where(DS, "ZZN-", filters)
+        total = db.one(f"SELECT count(*) AS n FROM asset WHERE {w}", p)["n"]
+        assert total > 0
+        res = queries.facet_counts(DS, "ZZN-", filters)
+        for f in DS["facets"]:
+            if f["key"] in filters or f.get("under") or f["kind"] == "flags" or not f["blank"]:
+                continue                                                  # a section with its own selection is never hidden; flags are multi-valued
+            items = res[f["key"]]
+            assert all(i["n"] <= total for i in items), (f["key"], items, total)
+            assert sum(i["n"] for i in items) == total, (f["key"], items, total)

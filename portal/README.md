@@ -813,3 +813,12 @@ Pointing at an asset ID opens a short card instead of the long field table: a sm
 ### Hover cards and the browser's own tooltip (2026-10-16)
 
 A table cell repeats its text in a `title` attribute (for truncated text), and the browser's native tooltip drew over the hover card and hid the name or ID being shown. While a card is open or loading, `hovercard.js` now sets the nearest `title` aside (`hold`) and puts it back when the card closes or the pointer leaves (`release`), for every kind of card.
+
+## Filter bar: sections that cannot narrow anything are hidden (2026-10-16)
+
+In every register (not the Audit/Activity lists - their counts ignore the filters, so the rule would misfire there) a section of the filter bar is **hidden when none of its values could narrow the results**: no value has "some but not all" of them (0 < count < result total), nothing in the section is ticked, and there is at least one result. Example: an engineer whose own 14 desktops are all HP, all Windows, all "Never checked" and all PM "Completed" sees only Record, Class and Status. The bar ends with a note, **"Same for all 14 results"**, listing each hidden section with its one shared value (`PM this quarter . Completed`), so nothing is lost.
+
+- **Never hidden:** a section with something ticked (you must be able to untick it) - so Record (defaulted to Assets) and Class with its types stay; and nothing is hidden while there are 0 results or before the first answer arrives. Sections come back by themselves as soon as a value could narrow again (untick Type: 38 results, PM and Make return).
+- **Engineer needs no special rule:** a user who sees only their own assets has exactly one engineer, so that section goes by itself; an administrator (or a user with wider asset access) sees several, so it stays.
+- **Why it is safe:** it compares each count with the result total, which is only right if a facet's counts agree with the total. They do (each facet counts with every other filter applied; `tests/test_facet_nesting.py` checks that no count exceeds the total and, for single-valued sections, that the counts add up to it).
+- Code: `frontend/src/js/ui/facets.js` (`isHidden`, `canNarrow`, `sameEl`; `update(counts, filters, total)`), `register.js` passes `res.total`; styles `.f-same` / `.f-chip` in `components.css`. `list-page.js` does not pass a total, so those lists are unchanged.
