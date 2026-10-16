@@ -124,7 +124,7 @@ def test_export_and_share_endpoints(box, monkeypatch):
     fake_user(monkeypatch, "USER")
     before = one(box, "SELECT count(*) FROM portal_activity WHERE action IN ('EXPORT_REPORT','EXPORT_DASHBOARD','SHARE_EMAIL')")[0]
     sent = []
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html_body=None, attachments=(), cfg=None: sent.append((to, subject, [a[0] for a in attachments])))
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html_body=None, attachments=(), cfg=None, cc=(): sent.append((to, subject, [a[0] for a in attachments])))
     with TestClient(app) as c:
         r = c.post("/api/reports/export", json={"definition": {"dataset": "assets", "columns": ["asset_key"]}, "format": "pdf"}, headers=HDR)
         assert r.status_code == 200 and r.content[:5] == b"%PDF-" and "attachment" in r.headers["content-disposition"] and ".pdf" in r.headers["content-disposition"]
@@ -234,7 +234,7 @@ def test_notification_rules_detect_and_send_once(box, monkeypatch):
     mailer.save_rule("CALL_OVERDUE", True, "lead@example.com", {"older_than_days": 1}, "T")
     mailer.save_rule("PM_KICKOFF", True, "", {}, "T")
     sent = []
-    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html_body=None, attachments=(), cfg=None: sent.append((to, subject)))
+    monkeypatch.setattr(mailer, "send", lambda to, subject, text, html_body=None, attachments=(), cfg=None, cc=(): sent.append((to, subject)))
     monday = dt.date(2026, 9, 21)
     monkeypatch.setattr(mailer.dt, "date", type("D", (dt.date,), {"today": classmethod(lambda cls: monday)}))
     d = mailer.detect("CALL_OVERDUE", {"older_than_days": 1}, today=monday)
@@ -490,3 +490,9 @@ def test_past_quarters_api_scoping_and_export(box, monkeypatch):
         assert r.status_code == 200 and "Completed" in r.text and "ENG-B" not in r.text and "DONE_OUTSIDE" not in r.text
         r = c.post("/api/pm/history/export", json={"quarter": label, "format": "xlsx"}, headers=HDR)
         assert r.status_code == 200 and zipfile.is_zipfile(io.BytesIO(r.content))
+
+
+def test_user_not_in_hr_rule_groups_by_engineer_and_copies_admins(box):
+    box.execute("UPDATE asset SET user_hr_status = 'NOT_IN_HR_MASTER' WHERE asset_key = (SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL LIMIT 1)")
+    d = mailer.detect("USER_NOT_IN_HR", {})
+    assert d and all(ev["rows"] and "cc" in ev and "not in HR master" in ev["subject"] for ev in d.values())

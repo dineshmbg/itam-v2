@@ -38,6 +38,8 @@ RULES = {
     "AMC_EXPIRING": ("Cover expiring soon", "Weekly digest of assigned assets whose cover ends within the next days.", {"within_days": 60}),
     "CALL_ASSIGNED": ("Call assigned", "A new service call is logged against an engineer.", {"lookback_days": 3}),
     "CALL_OVERDUE": ("Overdue open calls", "Weekly digest of an engineer's open calls older than the limit.", {"older_than_days": 7}),
+    "USER_NOT_IN_HR": ("Asset user not in HR master", "An engineer is told which of their assets are assigned to a CPF missing from the HR master, to correct the user details. "
+                       "Team Leader / Site In-charge (administrators) are copied. Re-sent only when the set of affected assets changes.", {}),
     "PART_RECEIVED": ("Spare part received", "A part arrived for an engineer's call.", {"lookback_days": 3}),
 }
 
@@ -91,8 +93,9 @@ def save_smtp(cfg, password, editor):
 
 
 # ---------------------------------------------------------------- sending
-def send(to, subject, text, html_body=None, attachments=(), cfg=None):
+def send(to, subject, text, html_body=None, attachments=(), cfg=None, cc=()):
     cfg = cfg or get_smtp()
+    cc = [a for a in cc if a and a not in (to if isinstance(to, (list, tuple)) else [to])]
     to = [a.strip() for a in (to if isinstance(to, (list, tuple)) else [to]) if a and a.strip()]
     if not to:
         raise MailError("There is no recipient e-mail address.")
@@ -102,6 +105,8 @@ def send(to, subject, text, html_body=None, attachments=(), cfg=None):
     msg["Subject"] = subject
     msg["From"] = f"{cfg['from_name']} <{cfg['from_addr']}>" if cfg["from_name"] else cfg["from_addr"]
     msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     if cfg["reply_to"]:
         msg["Reply-To"] = cfg["reply_to"]
     msg.set_content(text)
@@ -120,7 +125,7 @@ def send(to, subject, text, html_body=None, attachments=(), cfg=None):
                 srv.starttls(context=ssl.create_default_context())
             if cfg["user"]:
                 srv.login(cfg["user"], _read_secret() or "")
-            srv.send_message(msg)
+            srv.send_message(msg, to_addrs=to + cc)
     except (smtplib.SMTPException, OSError) as e:
         raise MailError(f"The mail server refused or could not be reached: {e}") from e
 
@@ -280,6 +285,18 @@ def detect(rule_key, params, today=None):
         for eng, items in _group(rows, "engineer").items():
             D[eng] = dict(event_key=_iso_week(today), subject=f"{len(items)} open call(s) older than {params.get('older_than_days', 7)} days", intro="Please update or close these calls.",
                           rows=items, columns=[("sr_id", "SR ID"), ("cipl_call_date", "Logged"), ("ageing_days", "Age (d)"), ("asset_key", "Asset"), ("problem_description", "Problem")])
+    elif rule_key == "USER_NOT_IN_HR":
+        rows = db.query("""SELECT asset_key, asset_class, trim(coalesce(make,'') || ' ' || coalesce(model,'')) AS model, serial_no, hostname, location_code, room, ongc_asset_id,
+                                  cpf_no, user_name, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL
+                                  AND user_hr_status = 'NOT_IN_HR_MASTER' ORDER BY cpf_no, asset_key""")
+        cc = [r["email"] for r in db.query("SELECT DISTINCT email FROM portal_user WHERE role = 'ADMIN' AND active AND email IS NOT NULL")]
+        for eng, items in _group(rows, "engineer_name").items():
+            who = "; ".join(sorted({f"CPF {i['cpf_no']} ({i['user_name'] or 'name not recorded'})" for i in items}))
+            D[eng] = dict(event_key="|".join(i["asset_key"] for i in items)[:300], cc=cc, subject=f"Action needed: {len(items)} asset(s) assigned to a user not in HR master",
+                          intro=f"These assets are assigned to {who}, which is not in the current HR master (retired, transferred or a wrong CPF). Please confirm with the user's section "
+                                "and update the asset details in the portal (Assets > open the asset > edit User / CPF).",
+                          rows=items, columns=[("asset_key", "CI No"), ("asset_class", "Class"), ("model", "Make / Model"), ("serial_no", "Serial No"), ("hostname", "Hostname"),
+                                               ("location_code", "Location"), ("room", "Room"), ("ongc_asset_id", "ONGC Asset ID"), ("cpf_no", "CPF"), ("user_name", "User on record")])
     elif rule_key == "PART_RECEIVED":
         rows = db.query("""SELECT i.inward_id, i.received_date, i.sr_id, i.part_description, c.engineer FROM spare_inward i JOIN svc_call c ON c.sr_id = i.sr_id AND c.is_current = 1
                            WHERE i.is_current = 1 AND i.received_date >= %s AND c.engineer IS NOT NULL AND c.call_status = 'OPEN' ORDER BY i.received_date""", [_lookback(params)])
@@ -315,7 +332,7 @@ def run_rules(dry_run=False, only=None):
                 body, text = page(ev["subject"], ev["intro"], ev["rows"], ev["columns"], footer=f"Automatic message from the ITAM Portal ({r['label']}).{(' ' + cfg['portal_url']) if cfg['portal_url'] else ''}")
                 status, err = "SENT", None
                 try:
-                    send(addr, ev["subject"], text, body, cfg=cfg)
+                    send(addr, ev["subject"], text, body, cfg=cfg, cc=ev.get("cc", ()) if addr == to else ())
                 except MailError as e:
                     status, err = "FAILED", str(e)[:300]
                 with db.write() as con:
