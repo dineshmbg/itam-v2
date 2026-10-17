@@ -4,7 +4,7 @@ import re
 from starlette.concurrency import run_in_threadpool
 from starlette.routing import Route
 
-from . import auth, db
+from . import auth, db, domain
 from .web import client_ip, current_user, error, guarded, json_response, public_write, read, write
 
 
@@ -31,9 +31,16 @@ async def me(request):
 async def login(request):
     b = request.state.body
     ip = client_ip(request)
-    token = await run_in_threadpool(auth.login, str(b.get("username") or ""), str(b.get("password") or ""), ip, request.headers.get("user-agent"))
+    username = str(b.get("username") or "")
+    how = domain.login if await run_in_threadpool(domain.route_for, username) == "domain" else auth.login      # decided here, not by the browser
+    token = await run_in_threadpool(how, username, str(b.get("password") or ""), ip, request.headers.get("user-agent"))
     user = await run_in_threadpool(auth.session_user, token)
     return _set_cookie(request, json_response(_me(user)), token)
+
+
+async def start(request):
+    """Which password does this user name use? Only changes the label on the sign-in page; /api/auth/login decides again on its own."""
+    return json_response({"method": await run_in_threadpool(domain.route_for, str(request.state.body.get("username") or ""))})
 
 
 async def forgot_password(request):
@@ -199,6 +206,7 @@ async def activity_list(request):
 routes = [
     Route("/api/auth/me", guarded(me)),
     Route("/api/auth/login", public_write(login), methods=["POST"]),
+    Route("/api/auth/start", public_write(start), methods=["POST"]),
     Route("/api/auth/forgot", public_write(forgot_password), methods=["POST"]),
     Route("/api/auth/totp", public_write(second_factor), methods=["POST"]),
     Route("/api/auth/logout", public_write(logout), methods=["POST"]),

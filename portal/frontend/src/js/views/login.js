@@ -26,9 +26,11 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
   const code = h('input', { id: 'lg-code', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '20', 'aria-describedby': 'lg-err', placeholder: '123456' });
   const err = h('div', { class: 'ferr', id: 'lg-err', role: 'alert', hidden: true });
   const go = h('button', { class: 'btn primary block', type: 'submit' }, 'Sign in');
+  const passLabel = h('label', { class: 'flabel', for: 'lg-pass' }, 'Password');
+  const passHint = h('div', { class: 'muted small', hidden: true }, 'Use your Windows (domain) password. It is checked by the domain and never stored here.');
   const step1 = h('div', null,
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'lg-user' }, 'User name'), user),
-    h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'lg-pass' }, 'Password'), h('div', { class: 'pwbox' }, pass, eye)));
+    h('div', { class: 'frow' }, passLabel, h('div', { class: 'pwbox' }, pass, eye), passHint));
   const forgotBtn = h('button', { class: 'btn primary block', type: 'button', hidden: true }, icon('reset'), 'Forgot password');
   const forgotUser = h('input', { id: 'fp-user', type: 'text', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false' });
   const forgotMsg = h('div', { class: 'login-note', role: 'status', hidden: true });
@@ -48,7 +50,13 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
     step1, step2, err, go, forgotBtn, forgotPane,
     h('div', { class: 'login-foot' }, 'Authorised users only. Activity is recorded.'));
   root.append(h('div', { class: 'login-page' }, form));
-  let stage = 1;
+  let stage = 1, method = 'local';
+  // Which password does this user name use? Only the label changes; the server decides again at sign-in.
+  user.addEventListener('change', async () => {
+    const name = user.value.trim();
+    try { method = name ? (await send('/api/auth/start', { username: name })).method : 'local'; } catch (_) { method = 'local'; }
+    passLabel.textContent = method === 'domain' ? 'Domain password' : 'Password'; passHint.hidden = method !== 'domain';
+  });
   const showForgotButton = () => { const on = stage === 1 && readFails() >= FAIL_LIMIT; go.hidden = on; forgotBtn.hidden = !on; };
   const openForgot = () => {
     step1.hidden = true; go.hidden = true; forgotBtn.hidden = true; err.hidden = true; forgotPane.hidden = false;
@@ -88,7 +96,7 @@ export function mountLogin(root, { message, startAt2fa = false } = {}) {
       }
     } catch (ex) {
       err.textContent = ex.message; err.hidden = false; form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
-      if (stage === 1 && ex.code === 'bad_credentials') writeFails(readFails() + 1);
+      if (stage === 1 && method === 'local' && ex.code === 'bad_credentials') writeFails(readFails() + 1);
       if (stage === 1 && ex.code === 'locked') writeFails(FAIL_LIMIT);
       showForgotButton();
       if (stage === 2 && ex.code === 'expired') { stage = 1; step1.hidden = false; step2.hidden = true; go.textContent = 'Sign in'; pass.value = ''; }

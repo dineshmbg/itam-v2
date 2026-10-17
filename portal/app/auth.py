@@ -60,6 +60,8 @@ DDL = [
     "ALTER TABLE portal_user DROP CONSTRAINT IF EXISTS portal_user_asset_access_check",
     "ALTER TABLE portal_user ADD CONSTRAINT portal_user_asset_access_check CHECK (asset_access IN ('NONE','READ','FULL'))",
     "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS role_locked BOOLEAN NOT NULL DEFAULT FALSE",
+    # auth_source (2026-10-17): 'domain' accounts are signed in by the Active Directory (app/domain.py); they hold no usable password here.
+    "ALTER TABLE portal_user ADD COLUMN IF NOT EXISTS auth_source TEXT NOT NULL DEFAULT 'local'",
     # Forgotten password (2026-10-05): a temporary password e-mailed to the account is stored here, NOT in password_hash, so the old password
     # keeps working until the temporary one is actually used (a stranger typing someone's user name cannot lock them out). With no usable
     # e-mail the request waits in portal_reset_request for an administrator.
@@ -282,7 +284,7 @@ def public_user(u):
             "last_login_at": u["last_login_at"].isoformat() if u["last_login_at"] else None, "created_at": u["created_at"].isoformat(), "engineer_key": u["engineer_key"],
             "read_only": bool(u.get("read_only")), "call_parts_access": u.get("call_parts_access") or "NONE",
             "extended_access": bool(u.get("extended_access")), "asset_access": u.get("asset_access") or "NONE", "role_locked": bool(u.get("role_locked")),
-            "lead_tools": bool(u.get("lead_tools")), "starting_pw_expired": _starting_pw_expired(u, settings())}
+            "lead_tools": bool(u.get("lead_tools")), "auth_source": u.get("auth_source") or "local", "starting_pw_expired": _starting_pw_expired(u, settings())}
 
 
 def create_user(username, display_name, email, role, editor, engineer_key=None, password=None):
@@ -526,7 +528,7 @@ def request_password_reset(username, ip):
         _forgot[ip or ""] = [*q, now]
     uname = re.sub(r"\s+", "", (username or "")).upper()
     u = db.one("SELECT * FROM portal_user WHERE username = %s", [uname]) if uname else None
-    if not u or not u["active"] or u["read_only"]:
+    if not u or not u["active"] or u["read_only"] or u["auth_source"] == "domain":
         log("(UNKNOWN USER)" if not u else uname, ip, "PASSWORD_RESET_REQUESTED", detail={"result": "ignored"}, ok=False)
         return "ignored"
     if u["reset_requested_at"] and (_now() - u["reset_requested_at"]).total_seconds() < RESET_COOLDOWN_MIN * 60:
@@ -643,7 +645,7 @@ def login(username, password, ip, user_agent):
     expired = None
     with db.write() as con:
         u = _row(con, "SELECT * FROM portal_user WHERE username = %s FOR UPDATE", (uname,))
-        if not u or not u["active"]:
+        if not u or not u["active"] or u["auth_source"] == "domain":
             verify_password(password or "", _DUMMY)
             failure = ("(UNKNOWN USER)" if not u else uname, 0, False)      # never write down what was typed for an unknown name: it may be a password
         elif _temp_password_ok(u, password):
@@ -674,6 +676,12 @@ def login(username, password, ip, user_agent):
     with db.write() as con:                            # the right password was typed: an unused e-mailed one is no longer needed, and a waiting request is moot
         con.execute("UPDATE portal_user SET reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s AND reset_hash IS NOT NULL AND NOT must_change", (u["user_id"],))
         _close_reset_requests(con, u["user_id"], "(signed in)")
+    return open_session(u, ip, user_agent)
+
+
+def open_session(u, ip, user_agent, via=None):
+    """Create the session for a user whose credentials were just proved (by the portal password or by the domain). -> token."""
+    s = settings()
     token = secrets.token_urlsafe(32)
     stage = "PENDING_2FA" if u["totp_enabled"] else "ACTIVE"
     life = dt.timedelta(minutes=5) if stage == "PENDING_2FA" else dt.timedelta(hours=s["session_max_hours"])
@@ -684,7 +692,7 @@ def login(username, password, ip, user_agent):
             con.execute("UPDATE portal_user SET failed_attempts = 0, locked_until = NULL, last_login_at = now() WHERE user_id = %s", (u["user_id"],))
         con.execute("DELETE FROM portal_session WHERE expires_at < now() OR last_active_at < now() - make_interval(mins => %s)", (s["idle_timeout_min"],))
     if stage == "ACTIVE":
-        log(u["username"], ip, "LOGIN", detail={"role": u["role"]})
+        log(u["username"], ip, "LOGIN", detail={"role": u["role"], **({"via": via} if via else {})})
     return token
 
 
