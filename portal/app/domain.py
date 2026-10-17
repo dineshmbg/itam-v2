@@ -188,3 +188,19 @@ def save_config(values, editor):
             con.execute("INSERT INTO portal_setting (key, value, updated_by) VALUES (%s,%s::jsonb,%s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by",
                         (k, json.dumps(v), editor))
     return clean
+
+
+def sweep_left(editor="scheduler"):
+    """Domain accounts whose person is no longer an ACTIVE employee in the HR master: deactivated and signed out (never deleted - their
+    history stays). The sign-in itself already refuses them; this ends a session that was open when they left. -> [username]"""
+    with db.write() as con:
+        rows = con.execute("""UPDATE portal_user u SET active = FALSE
+                              WHERE u.auth_source = 'domain' AND u.active
+                                AND NOT EXISTS (SELECT 1 FROM employee e WHERE e.cpf_no::text = u.username AND e.record_status = 'ACTIVE')
+                              RETURNING u.user_id, u.username""").fetchall()
+        for r in rows:
+            con.execute("DELETE FROM portal_session WHERE user_id = %s", (r[0] if not isinstance(r, dict) else r["user_id"],))
+    names = [r[1] if not isinstance(r, dict) else r["username"] for r in rows]
+    for n in names:
+        auth.log(editor, None, "USER_DEACTIVATED", n, {"reason": "no longer an active employee in the HR master"})
+    return names

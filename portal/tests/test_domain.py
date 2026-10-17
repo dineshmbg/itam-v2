@@ -155,3 +155,25 @@ def test_probe_reports_ntlm_ok_when_controller_rejects_made_up_account(ldap):
     _Conn.script = {ldap.NTLM: "invalidCredentials", ldap.SIMPLE: "unwillingToPerform"}
     out = domain.LdapDirectory("dc", 389, "ONGC").probe()
     assert out["ntlm"] == "ok" and out["simple"].startswith("refused")
+
+
+def test_sweep_deactivates_domain_users_who_left_and_ends_their_session(world):
+    call("/api/auth/login", {"username": "900001", "password": "Dom#pass1"})
+    assert db.one("SELECT count(*) AS n FROM portal_session s JOIN portal_user u USING (user_id) WHERE u.username='900001'")["n"] == 1
+    assert domain.sweep_left() == []                                     # still an active employee
+    world.execute("UPDATE employee SET record_status = 'RETIRED' WHERE cpf_no = 900001")
+    assert domain.sweep_left() == ["900001"]
+    assert not db.one("SELECT active FROM portal_user WHERE username='900001'")["active"]
+    assert db.one("SELECT count(*) AS n FROM portal_session s JOIN portal_user u USING (user_id) WHERE u.username='900001'")["n"] == 0
+    assert call("/api/auth/login", {"username": "900001", "password": "Dom#pass1"}).status_code == 403
+
+
+def test_domain_account_has_no_password_to_reset_and_cannot_become_admin(world):
+    call("/api/auth/login", {"username": "900001", "password": "Dom#pass1"})
+    uid = db.one("SELECT user_id FROM portal_user WHERE username='900001'")["user_id"]
+    with pytest.raises(auth.AuthError) as e:
+        auth.reset_password(uid, "admin")
+    assert e.value.status == 409
+    with pytest.raises(auth.AuthError) as e:
+        auth.update_user(uid, {"role": "ADMIN"}, "admin")
+    assert e.value.status == 409

@@ -9,7 +9,7 @@ import os
 import threading
 import time
 
-from . import auth, backup, db, mailer, pm, pmwo
+from . import domain, auth, backup, db, mailer, pm, pmwo
 
 log = logging.getLogger("itam.scheduler")
 DEFAULT_BACKUP = {"enabled": True, "time": "02:00", "keep": 14}
@@ -98,6 +98,7 @@ def tick(now=None):
         def do_clean():
             with db.write() as con:
                 con.execute("DELETE FROM portal_session WHERE expires_at < now() OR last_active_at < now() - interval '2 days'")
+            domain.sweep_left()
         job("cleanup", do_clean)
         st["last_cleanup"] = now.strftime("%Y-%m-%d %H"); changed = True
     if changed:

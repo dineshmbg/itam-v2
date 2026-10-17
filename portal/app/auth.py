@@ -416,6 +416,8 @@ def update_user(user_id, changes, editor, lock_role=False):
         if "role" in changes:
             if changes["role"] not in ROLES:
                 raise AuthError("Choose a group: ADMIN or USER.", 400, fields={"role": "invalid"})
+            if changes["role"] == "ADMIN" and u["auth_source"] == "domain":
+                raise AuthError("A domain sign-in account cannot be an administrator: administrators sign in with a portal password and two-factor.", 409)
             if u["role"] == "ADMIN" and changes["role"] != "ADMIN" and _admin_count(con) <= 1:
                 raise AuthError("Cannot remove the last administrator.", 409)
             sets.append("role = %s"); vals.append(changes["role"])
@@ -467,6 +469,8 @@ def reset_password(user_id, editor, email=False):
         u = _row(con, "SELECT * FROM portal_user WHERE user_id = %s FOR UPDATE", (user_id,))
         if not u:
             raise AuthError("User not found.", 404)
+        if u["auth_source"] == "domain":
+            raise AuthError("This person signs in with their domain password; there is no portal password to reset.", 409)
         con.execute("UPDATE portal_user SET password_hash = %s, must_change = TRUE, password_changed_at = now(), failed_attempts = 0, locked_until = NULL, reset_hash = NULL, reset_expires_at = NULL WHERE user_id = %s", (hash_password(temp), user_id))
         con.execute("DELETE FROM portal_session WHERE user_id = %s", (user_id,))
         _close_reset_requests(con, user_id, editor)
