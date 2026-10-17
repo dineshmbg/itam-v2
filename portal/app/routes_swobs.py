@@ -26,10 +26,11 @@ async def check_post(request):
 
 @guarded
 async def check_upload(request):
-    """A saved result file (the script's fallback), uploaded by an administrator or team lead."""
+    """A saved result file (the script's fallback), uploaded by an administrator or team lead (any PC) or by an engineer (their own PCs)."""
     user = await current_user(request)
-    if not user or user["state"] != "ok" or not (auth.is_full_admin(user) or auth.is_lead(user)):
-        return error(403, "This needs an administrator.")
+    broad = bool(user) and (auth.is_full_admin(user) or auth.is_lead(user))
+    if not user or user["state"] != "ok" or user.get("read_only") or not (broad or user.get("engineer_key")):
+        return error(403, "Only an administrator, a team lead or an engineer can upload this.")
     if request.headers.get("x-requested-with") != "itam-portal":
         return error(403, "Rejected: not a portal request.")
     origin = request.headers.get("origin")
@@ -37,7 +38,7 @@ async def check_upload(request):
         return error(403, "Rejected: cross-site request.")
     if int(request.headers.get("content-length") or 0) > swobs.MAX_CHECK_BYTES:
         return error(413, "That is not a check-script result (too large).")
-    out = await run_in_threadpool(swobs.ingest_check, (await request.body()).decode("utf-8", "replace"), user["username"])
+    out = await run_in_threadpool(swobs.ingest_check, (await request.body()).decode("utf-8", "replace"), user["username"], None if broad else user["engineer_key"])
     await run_in_threadpool(auth.log, user["username"], client_ip(request), "SW_CHECK_UPLOAD", out["computer"], {"matched": out["matched"]})
     return json_response(out)
 

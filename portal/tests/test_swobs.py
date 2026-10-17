@@ -516,3 +516,28 @@ def test_software_report_endpoint_and_permissions(box, monkeypatch):
 def test_control_characters_from_a_pc_are_stripped():
     c = swobs.parse_check(CHECK.replace("EDGE_VER=141.0.3537.71", "EDGE_VER=141.0" + chr(8) + ".35" + chr(0) + "37"))
     assert c["facts"]["browser_version"] == "141.0.3537"
+
+
+def test_engineer_uploads_result_files_for_their_own_pcs_only(box, monkeypatch):
+    from starlette.testclient import TestClient
+    from conftest import fake_user
+    from portal.app import routes_swobs
+    from portal.app.main import app
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PC2")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_ENG' WHERE asset_key = 'ANKZZ-PC1'")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_OTHER' WHERE asset_key = 'ANKZZ-PC2'")
+    u = fake_user(monkeypatch, role="USER", username="E1", engineer_key="ZZ_ENG")
+
+    async def me(request):
+        return u
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    H, c = {"X-Requested-With": "itam-portal"}, TestClient(app)
+    ok = c.post("/api/software/check-upload", content=CHECK, headers=H)
+    assert ok.status_code == 200 and ok.json()["matched"] is True and ok.json()["recorded"] == 1
+    other = c.post("/api/software/check-upload", content=CHECK.replace("ankzz-pc1", "ankzz-pc2"), headers=H).json()
+    assert other["matched"] is False and "not assigned to you" in other["reason"]
+    assert not box.execute("SELECT 1 FROM portal_sw_obs WHERE asset_key = 'ANKZZ-PC2'").fetchone()
+    assert "Not a desktop" in swobs.ingest_check(CHECK.replace("ankzz-pc1", "ZZZ-OTHER"), by="x", engineer_key="ZZ_ENG")["reason"]
+    u = fake_user(monkeypatch, role="USER", username="NOBODY", engineer_key=None)
+    monkeypatch.setattr(routes_swobs, "current_user", me)
+    assert c.post("/api/software/check-upload", content=CHECK, headers=H).status_code == 403

@@ -339,15 +339,17 @@ def parse_check(text):
     return {"computer": computer, "facts": {k: v for k, v in facts.items() if v is not None}, "updates": updates, "apps": parse_software(sec.get("SOFTWARE", ""))}
 
 
-def ingest_check(text, by):
-    """Record one check-script result against the matching desktop/workstation/server asset (name starts with ANK): the observation, every Windows
+def ingest_check(text, by, engineer_key=None):
+    """Record one check-script result against the matching desktop/workstation/server asset (name starts with ANK; with `engineer_key`, only one assigned to that engineer): the observation, every Windows
     update event not seen before on that machine, and the installed-software list (stored again only when it changed since the last run)."""
     import hashlib
     c = parse_check(text)
     key = c["computer"].split(".")[0]
-    asset = db.one("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(ci_no) = %s", [SCOPE_CLASSES, key]) if key.startswith(CI_PREFIX) else None
+    asset = db.one("SELECT asset_key, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(ci_no) = %s", [SCOPE_CLASSES, key]) if key.startswith(CI_PREFIX) else None
     if not asset:
-        return {"computer": c["computer"], "matched": False, "recorded": 0}
+        return {"computer": c["computer"], "matched": False, "recorded": 0, "reason": "Not a desktop, workstation or server in the register."}
+    if engineer_key and asset["engineer_name"] != engineer_key:           # an engineer may only upload the PCs assigned to them
+        return {"computer": c["computer"], "matched": False, "recorded": 0, "reason": "This PC is not assigned to you."}
     ak, apps = asset["asset_key"], c["apps"]
     internal, store_apps = {}, False
     if apps:

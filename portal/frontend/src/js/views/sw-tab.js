@@ -83,11 +83,30 @@ export function bulkBlock() {
         : h('div', null, h('span', { class: 'badge ok' }, 'Saved'), ` ${r.recorded} machine(s) recorded.`));
     } catch (e) { out.replaceChildren(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', e.message || 'unreadable')); }
   };
+  const picks = h('input', { type: 'file', id: 'sw-files', accept: '.txt', multiple: true });
+  const saved = h('div', { class: 'stack-v', role: 'status' });
+  const goSaved = async () => {
+    const files = [...picks.files];
+    if (!files.length) { toast('Choose the saved result file(s).', 'bad'); return; }
+    const lines = [];
+    for (const f of files) {
+      try {
+        const r = await upload('/api/software/check-upload', f);
+        lines.push(h('div', null, h('span', { class: 'badge ' + (r.matched ? 'ok' : 'warn') }, r.matched ? 'Recorded' : 'Not recorded'), ' ', r.computer, r.matched ? '' : ' - ' + (r.reason || 'not matched')));
+      } catch (e) { lines.push(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', f.name, ' - ', e.message || 'unreadable')); }
+    }
+    saved.replaceChildren(...lines);
+  };
   return h('div', { class: 'stack-v' },
     h('p', { class: 'muted' }, 'Fill in what you checked on many machines at once. One row per machine; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', title: 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list', onClick: () => download('/api/software/report', {}, 'Software_Report.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('document--export'), 'Download software report (Excel)')),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: () => download('/api/software/template', {}, 'Software_Observation_Upload_Template.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('download'), 'Download Excel template')),
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template')),
-    out);
+    out,
+    h('h4', null, 'Upload saved check-script results'),
+    h('p', { class: 'muted' }, 'When a PC could not reach the portal, ankcheck.bat saved a file named ankcheck_<PC name>.txt (in the drop folder, or in that user Documents folder). Upload those files here; an engineer can upload the PCs assigned to them.'),
+    h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-files' }, 'Saved result files (ankcheck_*.txt)'), picks),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: goSaved }, icon('upload'), 'Upload results')),
+    saved);
 }
