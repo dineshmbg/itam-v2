@@ -110,7 +110,7 @@ def test_asset_record_carries_software_panel_only_for_in_scope_classes(box):
     from portal.app import queries
     _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PR1", "PRINTER")
     swobs.record("ANKZZ-PC1", "BIGFIX_REPORT", {"os_edition": "Windows 10", "os_build": "10.0.19045.6456"}, by="T")
-    swobs.record("ANKZZ-PC1", "TREND_REPORT", {"os_edition": "Windows 11", "os_build": "19045", "last_user": "ONGC\68047"}, by="T")
+    swobs.record("ANKZZ-PC1", "TREND_REPORT", {"os_edition": "Windows 11", "os_build": "19045", "last_user": "ONGC\\68047"}, by="T")
     swobs.record("ANKZZ-PR1", "MANUAL", {"remarks": "x"}, by="T")
     sw = queries.detail("assets", "ANKZZ-PC1", user={"role": "ADMIN"})["related"]["software"]
     assert {r["source"] for r in sw["latest"]} == {"BIGFIX_REPORT", "TREND_REPORT"} and len(sw["history"]) == 2
@@ -178,7 +178,7 @@ VPN_OTHER=
 SAP_VER=8.00 PL 5
 O365_ACCOUNT=68047@ongc.co.in
 OFFICE_VER=16.0.19029.20136
-LAST_USER=ONGC\68047
+LAST_USER=ONGC\\68047
 DOMAIN=ongc.co.in
 EDGE_VER=141.0.3537.71
 SECUREBOOT=1
@@ -192,7 +192,7 @@ def test_parse_check_derives_the_facts():
     assert c["computer"] == "ANKZZ-PC1"
     assert (f["os_edition"], f["os_build"], f["os_feature_version"]) == ("Windows 11", "10.0.26200.9445", "25H2")       # build >= 22000 is Windows 11 whatever ProductName says
     assert (f["trend_installed"], f["trend_version"], f["bigfix_installed"], f["bigfix_version"]) == (True, "14.0.12345", True, "11.0.2.130")
-    assert (f["vpn_name"], f["vpn_version"], f["vpn_other"], f["sap_gui_version"], f["o365_account"], f["last_user"], f["domain_joined"]) == ("Zscaler", "4.3.0.1", False, "8.00 PL 5", "68047@ongc.co.in", "ONGC\68047", True)
+    assert (f["vpn_name"], f["vpn_version"], f["vpn_other"], f["sap_gui_version"], f["o365_account"], f["last_user"], f["domain_joined"]) == ("Zscaler", "4.3.0.1", False, "8.00 PL 5", "68047@ongc.co.in", "ONGC\\68047", True)
 
 
 def test_parse_check_server_other_vpn_and_nothing_found():
@@ -457,3 +457,62 @@ def test_panel_shows_latest_software_and_updates(box):
     assert [a["name"] for a in p["apps"]] == ["BigFix Client", "SAP GUI for Windows 8.00", "Vowen 0.5.9"]                    # found through the pointer of the latest run
     assert [u["kb"] for u in p["updates"]] == ["KB2267602", "KB5066835"]
     assert swobs.panel("ANKZZ-PC1", "PRINTER") is None
+
+
+# ---------------------------------------------------------------- Chrome / Firefox versions and the software report
+def test_parse_check_reads_chrome_and_firefox_and_falls_back_for_edge():
+    f = swobs.parse_check(CHECK + "CHROME_VER=155.0.8059.84\nFIREFOX_VER=150.0.1\n")["facts"]
+    assert (f["chrome_version"], f["firefox_version"], f["browser_version"]) == ("155.0.8059.84", "150.0.1", "141.0.3537.71")
+    g = swobs.parse_check(CHECK.replace("CHROME_VER", "X").replace("EDGE_VER=141.0.3537.71\n", ""))["facts"]
+    assert "chrome_version" not in g and "firefox_version" not in g and "browser_version" not in g
+
+
+def _report_fixture(box):
+    _asset(box, "ANKZZ-PC1"), _asset(box, "ANKZZ-PC2"), _asset(box, "ANKZZ-PC3"), _asset(box, "ANKZZ-PR1", "PRINTER")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_ENG', user_name = 'A USER' WHERE asset_key IN ('ANKZZ-PC1', 'ANKZZ-PC2')")
+    box.execute("UPDATE asset SET engineer_name = 'ZZ_OTHER' WHERE asset_key = 'ANKZZ-PC3'")
+    swobs.ingest_check(CHECK2.replace("COMPUTER=ankzz-pc1", "COMPUTER=ANKZZ-PC1") + "", by="check script")
+    swobs.ingest_check(CHECK2.replace("ankzz-pc1", "ankzz-pc3").replace("Vowen 0.5.9", "Vowen 0.6.0"), by="check script")
+    swobs.record("ANKZZ-PC2", "MANUAL", {"trend_installed": True, "chrome_version": "154.0.1"}, by="ENG")
+
+
+def test_software_report_has_machines_installed_software_and_a_version_summary(box):
+    _report_fixture(box)
+    t = {x["title"]: x for x in swobs.report_tables()}
+    assert set(t) == {"Machines", "Installed software", "Software and versions"}
+    machines = [r for r in t["Machines"]["rows"] if r["ci"].startswith("ANKZZ-")]
+    by = {(r["ci"], r["source"]): r for r in machines}
+    assert ("ANKZZ-PC1", "Check script") in by and ("ANKZZ-PC2", "Entered by hand") in by and ("ANKZZ-PC3", "Check script") in by
+    assert by[("ANKZZ-PC1", "Check script")]["trend_installed"] == "Yes" and by[("ANKZZ-PC2", "Entered by hand")]["chrome_version"] == "154.0.1"
+    assert "ANKZZ-PR1" not in {r["ci"] for r in machines}                                                          # a printer is out of scope
+    soft = [r for r in t["Installed software"]["rows"] if r["ci"].startswith("ANKZZ-")]
+    assert {(r["ci"], r["program"], r["version"]) for r in soft} >= {("ANKZZ-PC1", "BigFix Client", "11.0.6.137"), ("ANKZZ-PC3", "Vowen 0.6.0", "0.5.9")}
+    vow = [r for r in t["Software and versions"]["rows"] if r["program"].startswith("Vowen")]
+    assert {(r["program"], r["machines"]) for r in vow} >= {("Vowen 0.5.9", 1), ("Vowen 0.6.0", 1)}
+    mine = {x["title"]: x for x in swobs.report_tables("ZZ_ENG")}
+    assert {r["ci"] for r in mine["Machines"]["rows"]} == {"ANKZZ-PC1", "ANKZZ-PC2"}                              # an engineer sees their own machines only
+    assert {r["ci"] for r in mine["Installed software"]["rows"]} == {"ANKZZ-PC1"}
+
+
+def test_software_report_endpoint_and_permissions(box, monkeypatch):
+    import io
+    from openpyxl import load_workbook
+    from starlette.testclient import TestClient
+    from conftest import HDR, fake_user
+    from portal.app.main import app
+    _report_fixture(box)
+    c = TestClient(app)
+    fake_user(monkeypatch, role="ADMIN", username="ADM")
+    r = c.post("/api/software/report", json={}, headers=HDR)
+    assert r.status_code == 200 and "Software_Report_" in r.headers["content-disposition"]
+    names = load_workbook(io.BytesIO(r.content)).sheetnames
+    assert {"MACHINES", "INSTALLED SOFTWARE", "SOFTWARE AND VERSIONS"} <= set(names)
+    fake_user(monkeypatch, role="USER", username="E1", engineer_key="ZZ_ENG")
+    assert c.post("/api/software/report", json={}, headers=HDR).status_code == 200
+    fake_user(monkeypatch, role="USER", username="NOBODY", engineer_key=None)
+    assert c.post("/api/software/report", json={}, headers=HDR).status_code == 403
+
+
+def test_control_characters_from_a_pc_are_stripped():
+    c = swobs.parse_check(CHECK.replace("EDGE_VER=141.0.3537.71", "EDGE_VER=141.0" + chr(8) + ".35" + chr(0) + "37"))
+    assert c["facts"]["browser_version"] == "141.0.3537"

@@ -1,6 +1,8 @@
 """Routes for the software check (see swobs.py): the script posts its result with a token (no session - it runs on an ordinary PC), a person can
 upload saved result files, and an administrator downloads the script with the portal address and token filled in."""
 
+import datetime as dt
+
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
@@ -87,7 +89,20 @@ async def bulk_upload(request):
     return json_response(out)
 
 
+async def report_download(request):
+    """The software report (Excel). An administrator or team lead gets every machine; an engineer gets the machines assigned to them."""
+    u = request.state.user
+    broad = auth.is_full_admin(u) or auth.is_lead(u)
+    if not (broad or u.get("engineer_key")):
+        return error(403, "Only an administrator, a team lead or an engineer can download this.")
+    data = await run_in_threadpool(swobs.report_bytes, None if broad else u["engineer_key"], u["username"])
+    await run_in_threadpool(auth.log, u["username"], client_ip(request), "SW_REPORT_DOWNLOAD", None, {"scope": "all" if broad else u["engineer_key"]})
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="Software_Report_{dt.date.today():%Y%m%d}.xlsx"', "Cache-Control": "no-store"})
+
+
 routes = [
+    Route("/api/software/report", write(report_download, mutates=False), methods=["POST"]),
     Route("/api/software/manual", write(manual_post), methods=["POST"]),
     Route("/api/software/template", write(template_download, mutates=False), methods=["POST"]),
     Route("/api/software/bulk", bulk_upload, methods=["POST"]),

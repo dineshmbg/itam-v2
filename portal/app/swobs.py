@@ -13,7 +13,7 @@ FIELDS = ("os_edition", "os_build", "os_feature_version", "trend_installed", "tr
           "bitlocker", "tpm_secureboot", "office_channel", "domain_joined", "last_boot", "browser_version", "local_admins", "remarks",
           # added with the richer check script: service states, how each product was found, the Office sign-in's origin, last Windows / Defender updates
           "os_product_raw", "trend_services", "trend_candidate", "vpn_service_state", "vpn_candidate", "bigfix_service_state", "o365_status", "o365_account_source",
-          "os_update_title", "os_update_at", "defender_signature", "defender_signature_at")
+          "os_update_title", "os_update_at", "defender_signature", "defender_signature_at", "chrome_version", "firefox_version")
 BOOLS = {"trend_installed", "bigfix_installed", "vpn_other", "bitlocker", "tpm_secureboot", "domain_joined"}
 INTERNAL = {"apps_count": "INTEGER", "apps_hash": "TEXT", "apps_obs_id": "BIGINT"}      # set by the check-script intake only, never by a person
 
@@ -224,6 +224,9 @@ DEFAULT_DROP = "\\\\10.205.64.203\\ank-helpdesk\\common-for-all\\check-results"
 _SERVER_NAME = re.compile(r"Windows Server\s+(\d{4}(?:\s+R2)?)", re.I)
 
 
+_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")      # what a PC sends is not trusted: control characters would break the Excel report
+
+
 _SECTION = re.compile(r"^\[(UPDATES|SOFTWARE)\]\s*$", re.M)
 _SVC_WORD = {"1": "stopped", "2": "starting", "3": "stopping", "4": "running", "5": "continuing", "6": "pausing", "7": "paused"}
 _DEFENDER = re.compile(r"Security Intelligence|Defender", re.I)
@@ -279,7 +282,7 @@ def parse_check(text):
     for line in head.splitlines():
         k, sep, v = line.partition("=")
         if sep and re.fullmatch(r"[A-Z0-9_]{2,24}", k.strip()):
-            kv[k.strip()] = v.strip()[:200]
+            kv[k.strip()] = _CTRL.sub("", v).strip()[:200]
     if kv.get("ANKCHECK") != "1":
         raise ObsError("That is not a check-script result.")
     computer = kv.get("COMPUTER", "").upper()
@@ -288,7 +291,7 @@ def parse_check(text):
     g = kv.get
     facts = {"trend_installed": bool(g("TREND_NAME")), "bigfix_installed": bool(g("BIGFIX_NAME")) or g("BIGFIX_SVC") == "1" or g("BIGFIX_SERVICE_STATE", "") != ""}
     for fld, key in (("trend_version", "TREND_VER"), ("bigfix_version", "BIGFIX_VER"), ("sap_gui_version", "SAP_VER"), ("o365_account", "O365_ACCOUNT"), ("o365_version", "OFFICE_VER"),
-                     ("office_channel", "OFFICE_CHANNEL"), ("last_user", "LAST_USER"), ("browser_version", "EDGE_VER"), ("os_product_raw", "WIN_PRODUCT_RAW"),
+                     ("office_channel", "OFFICE_CHANNEL"), ("last_user", "LAST_USER"), ("browser_version", "EDGE_VER"), ("chrome_version", "CHROME_VER"), ("firefox_version", "FIREFOX_VER"), ("os_product_raw", "WIN_PRODUCT_RAW"),
                      ("o365_status", "O365_STATUS"), ("o365_account_source", "O365_ACCOUNT_SOURCE")):
         if g(key):
             facts[fld] = g(key)
@@ -392,7 +395,7 @@ TEMPLATE_COLUMNS = [("Windows edition", "os_edition"), ("Windows build", "os_bui
                     ("Trend Micro version", "trend_version"), ("BigFix installed (Yes/No)", "bigfix_installed"), ("BigFix version", "bigfix_version"), ("VPN", "vpn_name"), ("VPN version", "vpn_version"),
                     ("Other VPN present (Yes/No)", "vpn_other"), ("SAP GUI version", "sap_gui_version"), ("Microsoft 365 account", "o365_account"), ("Office version", "o365_version"),
                     ("Office update channel", "office_channel"), ("Last logged-on user", "last_user"), ("BitLocker on (Yes/No)", "bitlocker"), ("TPM / Secure Boot on (Yes/No)", "tpm_secureboot"),
-                    ("Domain joined (Yes/No)", "domain_joined"), ("Last boot", "last_boot"), ("Browser version", "browser_version"), ("Local administrators", "local_admins"), ("Remarks", "remarks")]
+                    ("Domain joined (Yes/No)", "domain_joined"), ("Last boot", "last_boot"), ("Edge version", "browser_version"), ("Chrome version", "chrome_version"), ("Firefox version", "firefox_version"), ("Local administrators", "local_admins"), ("Remarks", "remarks")]
 _YES, _NO = {"yes", "y", "true", "1"}, {"no", "n", "false", "0"}
 
 
@@ -498,3 +501,65 @@ def ingest_workbook(data, by, engineer_key=None):
     for key, facts in todo:
         record(key, "MANUAL", facts, by)
     return {"recorded": len(todo), "errors": []}
+
+
+# ---------------------------------------------------------------- the software report (Excel): which software and version is on which CI
+_SRC = {"BIGFIX_REPORT": "BigFix report", "TREND_REPORT": "Trend Micro report", "SCRIPT": "Check script", "MANUAL": "Entered by hand"}
+_MACHINE_COLS = [("ci", "Asset (CI)"), ("class", "Class"), ("engineer", "Engineer"), ("user", "User"), ("source", "Source"), ("inspected", "Inspected"), ("data_as_of", "Data as of"),
+                 ("os_edition", "Windows"), ("os_build", "Windows build"), ("os_feature_version", "Feature version"), ("trend_installed", "Trend Micro installed"), ("trend_version", "Trend Micro version"),
+                 ("trend_status", "Trend Micro status / name"), ("bigfix_installed", "BigFix installed"), ("bigfix_version", "BigFix version"), ("vpn_name", "VPN"), ("vpn_version", "VPN version"),
+                 ("sap_gui_version", "SAP GUI version"), ("o365_account", "Microsoft 365 account"), ("o365_version", "Office version"), ("browser_version", "Edge version"),
+                 ("chrome_version", "Chrome version"), ("firefox_version", "Firefox version"), ("last_user", "Last logged-on user"), ("os_update_title", "Last Windows update"),
+                 ("os_update_at", "Last Windows update on"), ("defender_signature", "Defender signature"), ("remarks", "Remarks")]
+
+
+def _cell(v):
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    if isinstance(v, dt.datetime):
+        return v.strftime("%Y-%m-%d %H:%M")
+    return _CTRL.sub("", v) if isinstance(v, str) else v
+
+
+def report_tables(engineer_key=None):
+    """Three tables for an Excel report: the newest observation of every source per machine (machines never checked still get a row), the installed-software
+    list of each machine's latest script run, and a fleet view of program + version with how many machines have it. `engineer_key` limits it to one engineer's machines."""
+    where, args = ("AND engineer_name = %s", [engineer_key]) if engineer_key else ("", [])
+    assets = db.query(f"SELECT asset_key, ci_no, asset_class, engineer_name, user_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) {where} ORDER BY ci_no", [SCOPE_CLASSES, *args])
+    keys = [a["asset_key"] for a in assets]
+    obs = db.query("SELECT DISTINCT ON (asset_key, source) * FROM portal_sw_obs WHERE asset_key = ANY(%s) ORDER BY asset_key, source, obs_id DESC", [keys])
+    by_asset = {}
+    for o in obs:
+        by_asset.setdefault(o["asset_key"], []).append(o)
+    machines = []
+    for a in assets:
+        base = {"ci": a["ci_no"], "class": a["asset_class"], "engineer": a["engineer_name"] or "", "user": a["user_name"] or ""}
+        rows = by_asset.get(a["asset_key"]) or [{"source": None}]
+        for o in sorted(rows, key=lambda x: SOURCES.index(x["source"]) if x["source"] else 9):
+            r = {**base, **{k: _cell(o.get(k)) for k, _ in _MACHINE_COLS[7:]}}
+            r["source"] = _SRC.get(o["source"], "Not checked")
+            r["inspected"], r["data_as_of"] = _cell(o.get("inspected_at")) or "", _cell(o.get("data_as_of")) or ""
+            machines.append(r)
+    ci_of = {a["asset_key"]: a["ci_no"] for a in assets}
+    apps = db.query("""WITH last AS (SELECT DISTINCT ON (asset_key) asset_key, inspected_at, COALESCE(apps_obs_id, obs_id) AS holder FROM portal_sw_obs
+                                     WHERE apps_hash IS NOT NULL AND asset_key = ANY(%s) ORDER BY asset_key, obs_id DESC)
+                       SELECT l.asset_key, l.inspected_at, a.name, a.version, a.publisher, a.hive FROM last l JOIN portal_sw_obs_app a ON a.obs_id = l.holder
+                       ORDER BY l.asset_key, lower(a.name), a.hive""", [keys])
+    soft = [{"ci": ci_of[x["asset_key"]], "program": x["name"], "version": x["version"] or "", "publisher": x["publisher"] or "", "where": x["hive"], "checked": _cell(x["inspected_at"])} for x in apps]
+    fleet = {}
+    for r in soft:
+        fleet.setdefault((r["program"], r["version"], r["publisher"]), set()).add(r["ci"])
+    summary = [{"program": p, "version": v, "publisher": pub, "machines": len(c)} for (p, v, pub), c in sorted(fleet.items(), key=lambda kv: (kv[0][0].lower(), kv[0][1]))]
+    return [{"title": "Machines", "columns": _MACHINE_COLS, "rows": machines},
+            {"title": "Installed software", "columns": [("ci", "Asset (CI)"), ("program", "Program"), ("version", "Version"), ("publisher", "Publisher"), ("where", "Where registered"), ("checked", "Checked")], "rows": soft},
+            {"title": "Software and versions", "columns": [("program", "Program"), ("version", "Version"), ("publisher", "Publisher"), ("machines", "Machines")], "rows": summary}]
+
+
+def report_bytes(engineer_key, by):
+    from . import export
+    t = report_tables(engineer_key)
+    n_checked = len({r["ci"] for r in t[0]["rows"] if r["source"] != "Not checked"})
+    n_all = len({r["ci"] for r in t[0]["rows"]})
+    meta = "Latest observation per source for each desktop, workstation and server" + (f" assigned to {engineer_key}" if engineer_key else "") + ". Installed software comes from each machine's latest check-script run."
+    return export.xlsx_bytes(t, "Software and versions by Asset (CI)", [("Machines in scope", n_all), ("Machines with at least one observation", n_checked), ("Machines never checked", n_all - n_checked),
+                                                                  ("Installed-software rows", len(t[1]["rows"]))], meta, generated_by=by)

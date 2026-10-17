@@ -10,7 +10,7 @@ const SOURCES = { BIGFIX_REPORT: 'BigFix report', TREND_REPORT: 'Trend Micro rep
 const FIELDS = ['os_edition', 'os_build', 'os_feature_version', 'trend_installed', 'trend_version', 'trend_status', 'bigfix_installed', 'bigfix_version', 'vpn_name', 'vpn_version', 'vpn_other',
   'sap_gui_version', 'o365_account', 'o365_version', 'last_user', 'connection', 'bitlocker', 'tpm_secureboot', 'office_channel', 'domain_joined', 'last_boot', 'browser_version', 'local_admins',
   'os_product_raw', 'trend_services', 'trend_candidate', 'vpn_service_state', 'vpn_candidate', 'bigfix_service_state', 'o365_status', 'o365_account_source', 'os_update_title', 'os_update_at',
-  'defender_signature', 'defender_signature_at', 'remarks'];
+  'defender_signature', 'defender_signature_at', 'chrome_version', 'firefox_version', 'remarks'];
 
 const cell = (v) => (v === true ? 'Yes' : v === false ? 'No' : v == null || v === '' ? h('span', { class: 'faint' }, '—') : String(v));
 
@@ -30,7 +30,7 @@ const YN = ['trend_installed', 'bigfix_installed', 'vpn_other', 'bitlocker', 'tp
 const FORM = [['os_edition', 'Windows edition'], ['os_build', 'Windows build'], ['os_feature_version', 'Feature version (e.g. 25H2)'], ['trend_installed', 'Trend Micro installed'], ['trend_version', 'Trend Micro version'],
   ['bigfix_installed', 'BigFix installed'], ['bigfix_version', 'BigFix version'], ['vpn_name', 'VPN (Zscaler or other)'], ['vpn_version', 'VPN version'], ['sap_gui_version', 'SAP GUI version'],
   ['o365_account', 'Microsoft 365 account'], ['o365_version', 'Office version'], ['last_user', 'Last logged-on user'], ['bitlocker', 'BitLocker on'], ['tpm_secureboot', 'TPM / Secure Boot on'],
-  ['domain_joined', 'Domain joined'], ['remarks', 'Remarks']];
+  ['domain_joined', 'Domain joined'], ['browser_version', 'Edge version'], ['chrome_version', 'Chrome version'], ['firefox_version', 'Firefox version'], ['remarks', 'Remarks']];
 
 /** Type in what you saw on this machine. Saved as an observation "Entered by hand"; the date is recorded by the server. */
 export function addObservationDialog(key, done) {
@@ -85,6 +85,7 @@ export function bulkBlock() {
   };
   return h('div', { class: 'stack-v' },
     h('p', { class: 'muted' }, 'Fill in what you checked on many machines at once. One row per machine; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', title: 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list', onClick: () => download('/api/software/report', {}, 'Software_Report.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('document--export'), 'Download software report (Excel)')),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: () => download('/api/software/template', {}, 'Software_Observation_Upload_Template.xlsx').catch((e) => toast(e.message, 'bad')) }, icon('download'), 'Download Excel template')),
     h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template')),
