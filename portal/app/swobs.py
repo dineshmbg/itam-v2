@@ -10,19 +10,35 @@ SOURCES = ("BIGFIX_REPORT", "TREND_REPORT", "SCRIPT", "MANUAL")
 STALE_DAYS, VERY_STALE_DAYS = 30, 90
 FIELDS = ("os_edition", "os_build", "os_feature_version", "trend_installed", "trend_version", "trend_status", "bigfix_installed", "bigfix_version",
           "vpn_name", "vpn_version", "vpn_other", "sap_gui_version", "o365_account", "o365_version", "last_user", "connection",
-          "bitlocker", "tpm_secureboot", "office_channel", "domain_joined", "last_boot", "browser_version", "local_admins", "remarks")
+          "bitlocker", "tpm_secureboot", "office_channel", "domain_joined", "last_boot", "browser_version", "local_admins", "remarks",
+          # added with the richer check script: service states, how each product was found, the Office sign-in's origin, last Windows / Defender updates
+          "os_product_raw", "trend_services", "trend_candidate", "vpn_service_state", "vpn_candidate", "bigfix_service_state", "o365_status", "o365_account_source",
+          "os_update_title", "os_update_at", "defender_signature", "defender_signature_at")
 BOOLS = {"trend_installed", "bigfix_installed", "vpn_other", "bitlocker", "tpm_secureboot", "domain_joined"}
+INTERNAL = {"apps_count": "INTEGER", "apps_hash": "TEXT", "apps_obs_id": "BIGINT"}      # set by the check-script intake only, never by a person
 
 DDL = [
     f"""CREATE TABLE IF NOT EXISTS portal_sw_obs (
           obs_id BIGSERIAL PRIMARY KEY, asset_key TEXT NOT NULL, source TEXT NOT NULL,
           inspected_at TIMESTAMPTZ NOT NULL DEFAULT now(), data_as_of TIMESTAMPTZ, recorded_by TEXT NOT NULL,
           {', '.join(f + (' BOOLEAN' if f in BOOLS else ' TEXT') for f in FIELDS)})""",
+    *[f"ALTER TABLE portal_sw_obs ADD COLUMN IF NOT EXISTS {f} {'BOOLEAN' if f in BOOLS else 'TEXT'}" for f in FIELDS],       # an existing table gains the newer columns
+    *[f"ALTER TABLE portal_sw_obs ADD COLUMN IF NOT EXISTS {c} {t}" for c, t in INTERNAL.items()],
     "CREATE INDEX IF NOT EXISTS ix_sw_obs_asset ON portal_sw_obs (asset_key, source, inspected_at DESC)",
+    # the installed-software list a script run saw (one row per program), and every Windows update event seen on a machine (never repeated)
+    """CREATE TABLE IF NOT EXISTS portal_sw_obs_app (
+          app_id BIGSERIAL PRIMARY KEY, obs_id BIGINT NOT NULL REFERENCES portal_sw_obs (obs_id), name TEXT NOT NULL, version TEXT, publisher TEXT, hive TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS ix_sw_obs_app_obs ON portal_sw_obs_app (obs_id)",
+    """CREATE TABLE IF NOT EXISTS portal_sw_update (
+          asset_key TEXT NOT NULL, installed_at TIMESTAMPTZ NOT NULL, title TEXT NOT NULL, kb TEXT, first_obs_id BIGINT, PRIMARY KEY (asset_key, installed_at, title))""",
     """CREATE OR REPLACE FUNCTION portal_sw_obs_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
        BEGIN RAISE EXCEPTION 'portal_sw_obs is append-only'; END $$""",
     "DROP TRIGGER IF EXISTS portal_sw_obs_no_change ON portal_sw_obs",
     "CREATE TRIGGER portal_sw_obs_no_change BEFORE UPDATE OR DELETE ON portal_sw_obs FOR EACH ROW EXECUTE FUNCTION portal_sw_obs_append_only()",
+    "DROP TRIGGER IF EXISTS portal_sw_obs_app_no_change ON portal_sw_obs_app",
+    "CREATE TRIGGER portal_sw_obs_app_no_change BEFORE UPDATE OR DELETE ON portal_sw_obs_app FOR EACH ROW EXECUTE FUNCTION portal_sw_obs_append_only()",
+    "DROP TRIGGER IF EXISTS portal_sw_update_no_change ON portal_sw_update",
+    "CREATE TRIGGER portal_sw_update_no_change BEFORE UPDATE OR DELETE ON portal_sw_update FOR EACH ROW EXECUTE FUNCTION portal_sw_obs_append_only()",
 ]
 
 
@@ -34,17 +50,23 @@ class ObsError(Exception):
         self.status = status
 
 
-def record(asset_key, source, facts, by, data_as_of=None):
-    """Add one observation and return its id. `inspected_at` is deliberately not a parameter: the database stamps it."""
+def record(asset_key, source, facts, by, data_as_of=None, internal=None, con=None):
+    """Add one observation and return its id. `inspected_at` is deliberately not a parameter: the database stamps it.
+    `internal` (apps_*) is for the check-script intake only; `con` lets that intake write the observation and its children in one transaction."""
     if source not in SOURCES:
         raise ObsError(f"Unknown source {source!r}.")
     bad = sorted(set(facts) - set(FIELDS))
     if bad:
         raise ObsError(f"Unknown field(s): {', '.join(bad)}.")
+    facts = {**facts, **(internal or {})}
     cols = list(facts)
-    with db.write() as con:
-        row = con.execute(f"INSERT INTO portal_sw_obs (asset_key, source, recorded_by, data_as_of{''.join(', ' + c for c in cols)}) VALUES (%s,%s,%s,%s{', %s' * len(cols)}) RETURNING obs_id",
-                          [asset_key, source, by, data_as_of] + [facts[c] for c in cols]).fetchone()
+    sql = f"INSERT INTO portal_sw_obs (asset_key, source, recorded_by, data_as_of{''.join(', ' + c for c in cols)}) VALUES (%s,%s,%s,%s{', %s' * len(cols)}) RETURNING obs_id"
+    args = [asset_key, source, by, data_as_of] + [facts[c] for c in cols]
+    if con is not None:
+        row = con.execute(sql, args).fetchone()
+    else:
+        with db.write() as c:
+            row = c.execute(sql, args).fetchone()
     return row[0] if not isinstance(row, dict) else row["obs_id"]
 
 
@@ -154,7 +176,10 @@ def panel(asset_key, asset_class):
         if len(set(seen.values())) > 1:
             conflicts.append({"field": label, "values": seen})
     history = db.query("SELECT * FROM portal_sw_obs WHERE asset_key = %s ORDER BY obs_id DESC LIMIT 100", [asset_key])
-    return {"latest": latest, "conflicts": conflicts, "history": history}
+    last = db.one("SELECT COALESCE(apps_obs_id, obs_id) AS holder FROM portal_sw_obs WHERE asset_key = %s AND apps_hash IS NOT NULL ORDER BY obs_id DESC LIMIT 1", [asset_key])
+    apps = db.query("SELECT name, version, publisher, hive FROM portal_sw_obs_app WHERE obs_id = %s ORDER BY lower(name), hive", [last["holder"]]) if last else []
+    updates = db.query("SELECT installed_at, title, kb FROM portal_sw_update WHERE asset_key = %s ORDER BY installed_at DESC LIMIT 30", [asset_key])
+    return {"latest": latest, "conflicts": conflicts, "history": history, "apps": apps, "updates": updates}
 
 
 # ---------------------------------------------------------------- inventory match: report versus what was seen on the machine
@@ -193,18 +218,65 @@ import hmac      # noqa: E402
 import secrets   # noqa: E402
 from pathlib import Path   # noqa: E402
 
-MAX_CHECK_BYTES = 20_000
+MAX_CHECK_BYTES = 400_000      # the key lines are tiny; the room is for the update events and the installed-software list that follow them
 _TEMPLATE = Path(__file__).with_name("ankcheck.bat.tmpl")
-DEFAULT_DROP = r"\10.205.64.203\ank-helpdesk\common-for-all\check-results"
+DEFAULT_DROP = "\\\\10.205.64.203\\ank-helpdesk\\common-for-all\\check-results"
 _SERVER_NAME = re.compile(r"Windows Server\s+(\d{4}(?:\s+R2)?)", re.I)
 
 
+_SECTION = re.compile(r"^\[(UPDATES|SOFTWARE)\]\s*$", re.M)
+_SVC_WORD = {"1": "stopped", "2": "starting", "3": "stopping", "4": "running", "5": "continuing", "6": "pausing", "7": "paused"}
+_DEFENDER = re.compile(r"Security Intelligence|Defender", re.I)
+_OS_UPDATE = re.compile(r"Cumulative Update for Windows|Feature update to Windows|Security Update for Windows|Update for Windows \d", re.I)      # not .NET, MSRT or Defender
+
+
+def _sections(text):
+    """The script's output is KEY=VALUE lines, then optional [UPDATES] (wevtutil text) and [SOFTWARE] (reg query lines) sections."""
+    parts = _SECTION.split(text.replace("\x00", ""))
+    return parts[0], dict(zip(parts[1::2], parts[2::2]))
+
+
+def parse_updates(text):
+    """wevtutil /f:text events (ID 19, 'Installation Successful') -> [{at, title, kb}], newest first as given. Anything not recognisable is skipped."""
+    out = []
+    for block in re.split(r"^Event\[\d+\]\s*$", text, flags=re.M):
+        d = re.search(r"^\s*Date:\s*(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)", block, re.M)
+        t = re.search(r"following update:\s*(.+)", block)
+        if not (d and t):
+            continue
+        title = re.sub(r"\s+", " ", t[1]).strip()[:300]
+        kb = re.search(r"KB\d{5,8}", title)
+        out.append({"at": dt.datetime.fromisoformat(d[1]).replace(tzinfo=dt.timezone.utc), "title": title, "kb": kb[0] if kb else None})
+    return out
+
+
+def parse_software(text):
+    """`reg query ... /s | findstr` lines -> sorted unique [(name, version, publisher, hive)]. A key without a DisplayName is not a program."""
+    apps, cur, hive = set(), None, ""
+
+    def close():
+        if cur and cur.get("n"):
+            apps.add((cur["n"][:200], (cur.get("v") or None) and cur["v"][:80], (cur.get("p") or None) and cur["p"][:200], cur["h"]))
+    for line in text.splitlines():
+        if line.startswith("HKEY_"):
+            close()
+            hive = "HKCU" if line.startswith("HKEY_CURRENT_USER") else "HKLM (32-bit)" if "WOW6432Node" in line.split("\\Uninstall")[0] else "HKLM"
+            cur = {"h": hive}
+            continue
+        m = re.match(r"^\s*(DisplayName|DisplayVersion|Publisher)\s+REG_\w+\s+(.*)$", line)
+        if m and cur is not None:
+            cur[{"DisplayName": "n", "DisplayVersion": "v", "Publisher": "p"}[m[1]]] = m[2].strip()
+    close()
+    return sorted(apps, key=lambda a: (a[0].lower(), a[3], a[1] or "", a[2] or ""))[:2000]
+
+
 def parse_check(text):
-    """The script's KEY=VALUE text -> {computer, facts}. Strict: it must start as one of ours, name a computer, and stay small."""
+    """The script's text -> {computer, facts, updates, apps}. Strict: it must start as one of ours, name a computer, and stay small."""
     if len(text.encode("utf-8", "replace")) > MAX_CHECK_BYTES:
         raise ObsError("That is not a check-script result (too large).")
+    head, sec = _sections(text)
     kv = {}
-    for line in text.splitlines():
+    for line in head.splitlines():
         k, sep, v = line.partition("=")
         if sep and re.fullmatch(r"[A-Z0-9_]{2,24}", k.strip()):
             kv[k.strip()] = v.strip()[:200]
@@ -214,13 +286,24 @@ def parse_check(text):
     if not re.fullmatch(r"[A-Z0-9._-]{1,63}", computer):
         raise ObsError("The result does not name a computer.")
     g = kv.get
-    facts = {"trend_installed": bool(g("TREND_NAME")), "bigfix_installed": bool(g("BIGFIX_NAME")) or g("BIGFIX_SVC") == "1"}
+    facts = {"trend_installed": bool(g("TREND_NAME")), "bigfix_installed": bool(g("BIGFIX_NAME")) or g("BIGFIX_SVC") == "1" or g("BIGFIX_SERVICE_STATE", "") != ""}
     for fld, key in (("trend_version", "TREND_VER"), ("bigfix_version", "BIGFIX_VER"), ("sap_gui_version", "SAP_VER"), ("o365_account", "O365_ACCOUNT"), ("o365_version", "OFFICE_VER"),
-                     ("office_channel", "OFFICE_CHANNEL"), ("last_user", "LAST_USER"), ("browser_version", "EDGE_VER")):
+                     ("office_channel", "OFFICE_CHANNEL"), ("last_user", "LAST_USER"), ("browser_version", "EDGE_VER"), ("os_product_raw", "WIN_PRODUCT_RAW"),
+                     ("o365_status", "O365_STATUS"), ("o365_account_source", "O365_ACCOUNT_SOURCE")):
         if g(key):
             facts[fld] = g(key)
     if g("TREND_NAME"):
         facts["trend_status"] = g("TREND_NAME")
+    svc = [f"{n} {_SVC_WORD[g(k)]}" for n, k in (("TmListen", "TREND_LISTENER_STATE"), ("ntrtscan", "TREND_SCAN_STATE")) if g(k) in _SVC_WORD]
+    if svc:
+        facts["trend_services"] = "; ".join(svc)
+    if g("ZSCALER_SERVICE_STATE") in _SVC_WORD:
+        facts["vpn_service_state"] = "ZSAService " + _SVC_WORD[g("ZSCALER_SERVICE_STATE")]
+    if g("BIGFIX_SERVICE_STATE") in _SVC_WORD:
+        facts["bigfix_service_state"] = "BESClient " + _SVC_WORD[g("BIGFIX_SERVICE_STATE")]
+    for fld, name, ver in (("trend_candidate", "TREND_CANDIDATE_NAME", "TREND_CANDIDATE_VER"), ("vpn_candidate", "ZSCALER_CANDIDATE_NAME", "ZSCALER_CANDIDATE_VER")):
+        if g(name):
+            facts[fld] = f"{g(name)} {g(ver, '')}".strip()
     build = g("WIN_BUILD", "")
     if build.isdigit():
         server = g("WIN_INSTALLTYPE", "").lower() == "server" or "server" in g("WIN_PRODUCT", "").lower()
@@ -239,21 +322,44 @@ def parse_check(text):
         facts["domain_joined"] = True
     if g("SECUREBOOT") in ("0", "1"):
         facts["tpm_secureboot"] = g("SECUREBOOT") == "1"
+    updates = parse_updates(sec.get("UPDATES", ""))
+    os_up = next((u for u in updates if _OS_UPDATE.search(u["title"]) and not _DEFENDER.search(u["title"])), None)
+    sig = next((u for u in updates if _DEFENDER.search(u["title"])), None)
+    if os_up:
+        facts["os_update_title"], facts["os_update_at"] = os_up["title"], os_up["at"].strftime("%Y-%m-%d %H:%M")
+    if sig:
+        v = re.search(r"Version\s+([\d.]+)", sig["title"])
+        facts["defender_signature"], facts["defender_signature_at"] = (v[1] if v else sig["title"]), sig["at"].strftime("%Y-%m-%d %H:%M")
     notes = ([f"Other VPN: {other}"] if other else []) + ([f"ran {g('RUN_AT_RAW')} (PC clock)"] if g("RUN_AT_RAW") else [])
     if notes:
         facts["remarks"] = "; ".join(notes)
-    return {"computer": computer, "facts": {k: v for k, v in facts.items() if v is not None}}
+    return {"computer": computer, "facts": {k: v for k, v in facts.items() if v is not None}, "updates": updates, "apps": parse_software(sec.get("SOFTWARE", ""))}
 
 
 def ingest_check(text, by):
-    """Record one check-script result against the matching desktop/workstation/server asset (name starts with ANK)."""
+    """Record one check-script result against the matching desktop/workstation/server asset (name starts with ANK): the observation, every Windows
+    update event not seen before on that machine, and the installed-software list (stored again only when it changed since the last run)."""
+    import hashlib
     c = parse_check(text)
     key = c["computer"].split(".")[0]
     asset = db.one("SELECT asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = ANY(%s) AND upper(ci_no) = %s", [SCOPE_CLASSES, key]) if key.startswith(CI_PREFIX) else None
     if not asset:
         return {"computer": c["computer"], "matched": False, "recorded": 0}
-    record(asset["asset_key"], "SCRIPT", c["facts"], by)
-    return {"computer": c["computer"], "matched": True, "recorded": 1}
+    ak, apps = asset["asset_key"], c["apps"]
+    internal, store_apps = {}, False
+    if apps:
+        h = hashlib.sha256(repr(apps).encode()).hexdigest()
+        prev = db.one("SELECT obs_id, apps_hash, apps_obs_id FROM portal_sw_obs WHERE asset_key = %s AND apps_hash IS NOT NULL ORDER BY obs_id DESC LIMIT 1", [ak])
+        same = bool(prev) and prev["apps_hash"] == h
+        internal = {"apps_count": len(apps), "apps_hash": h, "apps_obs_id": (prev["apps_obs_id"] or prev["obs_id"]) if same else None}
+        store_apps = not same
+    with db.write() as con:
+        oid = record(ak, "SCRIPT", c["facts"], by, internal=internal, con=con)
+        for u in c["updates"]:
+            con.execute("INSERT INTO portal_sw_update (asset_key, installed_at, title, kb, first_obs_id) VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (ak, u["at"], u["title"], u["kb"], oid))
+        if store_apps:
+            con.cursor().executemany("INSERT INTO portal_sw_obs_app (obs_id, name, version, publisher, hive) VALUES (%s,%s,%s,%s,%s)", [(oid, *a) for a in apps])
+    return {"computer": c["computer"], "matched": True, "recorded": 1, "updates_seen": len(c["updates"]), "software": len(apps)}
 
 
 def check_token(create=False, by="system", rotate=False):

@@ -244,7 +244,7 @@ def test_check_endpoints(box, monkeypatch):
     ok = c.post("/api/software/check", content=CHECK, headers={"X-Check-Token": tok})
     assert ok.status_code == 200 and ok.json()["recorded"] == 1
     assert c.post("/api/software/check", content=CHECK.replace("ankzz-pc1", "ANKNONE"), headers={"X-Check-Token": tok}).status_code == 422
-    assert c.post("/api/software/check", content=b"x" * 30000, headers={"X-Check-Token": tok}).status_code == 413
+    assert c.post("/api/software/check", content=b"x" * 500000, headers={"X-Check-Token": tok}).status_code == 413
     assert c.post("/api/software/check", content="junk", headers={"X-Check-Token": tok}).status_code == 400
     from portal.app import routes_swobs
     u = fake_user(monkeypatch, role="ADMIN", username="ADM")
@@ -371,3 +371,89 @@ def test_engineer_bulk_upload_is_limited_to_their_own_assets(box, monkeypatch):
     u = fake_user(monkeypatch, role="USER", username="NOBODY", engineer_key=None)
     monkeypatch.setattr(routes_swobs, "current_user", me)
     assert c.post("/api/software/bulk", content=sheet("ANKZZ-PC1"), headers=H).status_code == 403
+
+
+# ---------------------------------------------------------------- richer check script: services, updates, installed software
+CHECK2 = CHECK.replace("TREND_NAME=Trend Micro Apex One Security Agent\nTREND_VER=14.0.12345\n", "TREND_STATUS=DETECTED\nTREND_NAME=Trend Micro - detected by TmListen service\nTREND_VER=\nTREND_LISTENER_STATE=4\nTREND_SCAN_STATE=1\n") + """WIN_PRODUCT_RAW=Windows 10 Pro
+ZSCALER_SERVICE_STATE=4
+BIGFIX_SERVICE_STATE=4
+O365_STATUS=REGISTRY_IDENTITY_FOUND_NOT_VERIFIED_ACTIVE
+O365_ACCOUNT_SOURCE=HKCU\\Software\\Microsoft\\Office\\16.0\\Common\\Identity\\Identities / EmailAddress
+TREND_CANDIDATE_NAME=Some Security Agent
+TREND_CANDIDATE_VER=1.2
+[UPDATES]
+Event[0]
+  Log Name: System
+  Date: 2026-10-17T11:37:16.3800000Z
+  Event ID: 19
+  Description:
+Installation Successful: Windows successfully installed the following update: Security Intelligence Update for Microsoft Defender Antivirus - KB2267602 (Version 1.461.65.0) - Current Channel (Broad)
+
+Event[1]
+  Log Name: System
+  Date: 2026-10-14T03:10:00.0000000Z
+  Event ID: 19
+  Description:
+Installation Successful: Windows successfully installed the following update: 2026-10 Cumulative Update for Windows 11 Version 25H2 for x64-based Systems (KB5066835)
+
+Event[2]
+  Date: not a date
+  Description:
+nothing useful here
+[SOFTWARE]
+Source: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall
+HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AAA}
+    DisplayName    REG_SZ    BigFix Client
+    DisplayVersion    REG_SZ    11.0.6.137
+    Publisher    REG_SZ    HCL
+HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AddressBook
+Source: HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall
+HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SAP
+    DisplayName    REG_SZ    SAP GUI for Windows 8.00
+    Publisher    REG_SZ    SAP SE
+Source: HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall
+HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Vowen
+    DisplayName    REG_SZ    Vowen 0.5.9
+    DisplayVersion    REG_SZ    0.5.9
+"""
+
+
+def test_parse_check_reads_services_candidates_updates_and_software():
+    c = swobs.parse_check(CHECK2)
+    f = c["facts"]
+    assert f["trend_installed"] is True and f["trend_services"] == "TmListen running; ntrtscan stopped"
+    assert f["vpn_service_state"] == "ZSAService running" and f["bigfix_service_state"] == "BESClient running" and f["os_product_raw"] == "Windows 10 Pro"
+    assert f["o365_status"].startswith("REGISTRY_IDENTITY_FOUND") and "EmailAddress" in f["o365_account_source"] and f["trend_candidate"] == "Some Security Agent 1.2"
+    assert f["os_update_title"].startswith("2026-10 Cumulative Update") and f["os_update_at"] == "2026-10-14 03:10"            # the OS update, not the newest Defender one
+    assert (f["defender_signature"], f["defender_signature_at"]) == ("1.461.65.0", "2026-10-17 11:37")
+    assert [(u["kb"], u["at"].day) for u in c["updates"]] == [("KB2267602", 17), ("KB5066835", 14)]                           # the unreadable event is skipped
+    assert c["apps"] == [("BigFix Client", "11.0.6.137", "HCL", "HKLM"), ("SAP GUI for Windows 8.00", None, "SAP SE", "HKLM (32-bit)"), ("Vowen 0.5.9", "0.5.9", None, "HKCU")]
+
+
+def test_ingest_check_stores_updates_once_and_software_only_when_it_changed(box):
+    _asset(box, "ANKZZ-PC1")
+    r1 = swobs.ingest_check(CHECK2, by="check script")
+    assert (r1["recorded"], r1["updates_seen"], r1["software"]) == (1, 2, 3)
+    r2 = swobs.ingest_check(CHECK2, by="check script")                                   # same machine, nothing changed
+    assert r2["recorded"] == 1
+    n = lambda sql: box.execute(sql).fetchone()[0]
+    assert n("SELECT count(*) FROM portal_sw_update WHERE asset_key = 'ANKZZ-PC1'") == 2                                  # each update event stored once
+    assert n("SELECT count(*) FROM portal_sw_obs_app a JOIN portal_sw_obs o USING (obs_id) WHERE o.asset_key = 'ANKZZ-PC1'") == 3
+    rows = box.execute("SELECT obs_id, apps_obs_id, apps_count FROM portal_sw_obs WHERE asset_key = 'ANKZZ-PC1' ORDER BY obs_id").fetchall()
+    assert rows[0][1] is None and rows[1][1] == rows[0][0] and rows[1][2] == 3                                           # the second run points at the first run's list
+    swobs.ingest_check(CHECK2.replace("Vowen 0.5.9", "Vowen 0.6.0"), by="check script")
+    assert n("SELECT count(*) FROM portal_sw_obs_app a JOIN portal_sw_obs o USING (obs_id) WHERE o.asset_key = 'ANKZZ-PC1'") == 6      # changed list: stored again
+    for sql in ("UPDATE portal_sw_update SET title = 'x'", "DELETE FROM portal_sw_obs_app"):
+        with pytest.raises(psycopg.errors.RaiseException):
+            with box.transaction():
+                box.execute(sql)
+
+
+def test_panel_shows_latest_software_and_updates(box):
+    _asset(box, "ANKZZ-PC1")
+    swobs.ingest_check(CHECK2, by="check script")
+    swobs.ingest_check(CHECK2, by="check script")
+    p = swobs.panel("ANKZZ-PC1", "DESKTOP")
+    assert [a["name"] for a in p["apps"]] == ["BigFix Client", "SAP GUI for Windows 8.00", "Vowen 0.5.9"]                    # found through the pointer of the latest run
+    assert [u["kb"] for u in p["updates"]] == ["KB2267602", "KB5066835"]
+    assert swobs.panel("ANKZZ-PC1", "PRINTER") is None

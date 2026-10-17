@@ -8,7 +8,9 @@ import { toast } from '../ui/toast.js';
 
 const SOURCES = { BIGFIX_REPORT: 'BigFix report', TREND_REPORT: 'Trend Micro report', SCRIPT: 'Check script', MANUAL: 'Entered by hand' };
 const FIELDS = ['os_edition', 'os_build', 'os_feature_version', 'trend_installed', 'trend_version', 'trend_status', 'bigfix_installed', 'bigfix_version', 'vpn_name', 'vpn_version', 'vpn_other',
-  'sap_gui_version', 'o365_account', 'o365_version', 'last_user', 'connection', 'bitlocker', 'tpm_secureboot', 'office_channel', 'domain_joined', 'last_boot', 'browser_version', 'local_admins', 'remarks'];
+  'sap_gui_version', 'o365_account', 'o365_version', 'last_user', 'connection', 'bitlocker', 'tpm_secureboot', 'office_channel', 'domain_joined', 'last_boot', 'browser_version', 'local_admins',
+  'os_product_raw', 'trend_services', 'trend_candidate', 'vpn_service_state', 'vpn_candidate', 'bigfix_service_state', 'o365_status', 'o365_account_source', 'os_update_title', 'os_update_at',
+  'defender_signature', 'defender_signature_at', 'remarks'];
 
 const cell = (v) => (v === true ? 'Yes' : v === false ? 'No' : v == null || v === '' ? h('span', { class: 'faint' }, '—') : String(v));
 
@@ -55,6 +57,16 @@ export function softwareTab(sw, add) {
       sw.conflicts.map((c) => h('div', null, `${c.field}: ` + Object.entries(c.values).map(([s, v]) => `${SOURCES[s] || s} says ${v}`).join('; '))))));
   }
   out.push(h('div', { class: 'dsec' }, h('h3', null, `Latest by source (${sw.latest.length})`), table(sw.latest)));
+  if (sw.updates?.length) {
+    out.push(h('div', { class: 'dsec' }, h('h3', null, `Windows update history (${sw.updates.length})`), h('p', { class: 'muted small' }, 'Installation events from the log on the PC itself; a Defender signature update is one of these. The Windows build number in the table above is the real patch level.'),
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Installed', 'Update', 'KB'].map((c) => h('th', null, c)))),
+        h('tbody', null, sw.updates.map((u) => h('tr', null, h('td', null, when(u.installed_at)), h('td', { class: 'wrap' }, u.title), h('td', { class: 'mono' }, u.kb || '—'))))))));
+  }
+  if (sw.apps?.length) {
+    out.push(h('div', { class: 'dsec' }, h('details', null, h('summary', null, `Installed software seen by the check script (${sw.apps.length})`),
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Program', 'Version', 'Publisher', 'Where'].map((c) => h('th', null, c)))),
+        h('tbody', null, sw.apps.map((a) => h('tr', null, h('td', { class: 'wrap' }, a.name), h('td', null, a.version || '—'), h('td', { class: 'wrap' }, a.publisher || '—'), h('td', null, a.hive)))))))));
+  }
   if (sw.history.length > sw.latest.length) out.push(h('div', { class: 'dsec' }, h('h3', null, `All observations (${sw.history.length})`), table(sw.history)));
   return out;
 }
