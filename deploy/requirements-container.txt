@@ -10,3 +10,5 @@ charset-normalizer==3.5.1
 tzdata
 # the Data import converters (tools/*.py) need pandas
 pandas
+ldap3==2.9.1
+pyasn1==0.6.1

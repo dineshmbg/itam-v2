@@ -7,3 +7,5 @@ reportlab==5.0.1
 segno==1.6.6
 pillow==12.3.0
 charset-normalizer==3.5.1
+ldap3==2.9.1
+pyasn1==0.6.1

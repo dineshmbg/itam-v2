@@ -72,3 +72,59 @@ def test_domain_account_cannot_use_portal_password_or_reset(world):
     assert auth.request_password_reset("900001", "1.1.1.1") == "ignored"
     with pytest.raises(auth.AuthError):
         auth.login("900001", "!", "1.1.1.1", "t")
+
+
+class _Conn:
+    """ldap3.Connection stand-in: remembers how it was asked to bind and answers from a script."""
+    script, calls = {}, []
+
+    def __init__(self, server, user=None, password=None, authentication=None, **kw):
+        self.user, self.auth, self.password = user, authentication, password
+        self.result, self.entries = {}, []
+        _Conn.calls.append((user, authentication))
+
+    def bind(self):
+        r = _Conn.script.get(self.auth, "invalidCredentials")
+        if isinstance(r, Exception):
+            raise r
+        self.result = {"description": r}
+        return r == "success"
+
+    def search(self, *a, **k):
+        return False
+
+    def unbind(self):
+        pass
+
+
+@pytest.fixture()
+def ldap(monkeypatch):
+    import ldap3
+    _Conn.script, _Conn.calls = {}, []
+    monkeypatch.setattr(ldap3, "Connection", _Conn)
+    return ldap3
+
+
+def test_ldap_ntlm_with_domain_name_and_cpf(ldap):
+    d = domain.LdapDirectory("dc", 389, "ONGC")
+    _Conn.script = {ldap.NTLM: "success"}
+    assert d.bind("900001", "pw") == {} and _Conn.calls == [("ONGC\900001", ldap.NTLM)]
+
+
+def test_ldap_wrong_password_is_none_and_empty_never_asks(ldap):
+    d = domain.LdapDirectory("dc", 389, "ONGC")
+    assert d.bind("900001", "bad") is None and d.bind("900001", "") is None and len(_Conn.calls) == 1
+
+
+def test_ldap_ntlm_refused_is_down_unless_simple_allowed(ldap):
+    _Conn.script = {ldap.NTLM: "unwillingToPerform", ldap.SIMPLE: "success"}
+    with pytest.raises(domain.DirectoryDown):
+        domain.LdapDirectory("dc", 389, "ONGC").bind("900001", "pw")
+    assert domain.LdapDirectory("dc", 389, "ONGC", allow_simple=True).bind("900001", "pw") == {}
+    assert [a for _, a in _Conn.calls] == [ldap.NTLM, ldap.NTLM, ldap.SIMPLE]
+
+
+def test_ldap_unreachable_is_down(ldap):
+    _Conn.script = {ldap.NTLM: OSError("timed out")}
+    with pytest.raises(domain.DirectoryDown):
+        domain.LdapDirectory("dc", 389, "ONGC").bind("900001", "pw")

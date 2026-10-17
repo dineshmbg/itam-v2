@@ -30,13 +30,58 @@ class FakeDirectory:
         return dict(hit[1]) if hit and password and hit[0] == password else None
 
 
-_directory = None          # tests set this; D3 replaces the fallback with the real LDAP client
+class LdapDirectory:
+    """Active Directory over plain LDAP. NTLM first (the password is never sent readable); a simple bind only if the administrator allowed it.
+    The bind name is DOMAIN-slash-cpf (for example ONGC then a backslash then the CPF number), so no search is needed to sign in. Only a bind that the controller itself rejects as invalidCredentials is
+    'wrong password'; every other failure (no route, timeout, NTLM refused) is DirectoryDown."""
+    def __init__(self, host, port, netbios, base_dns=(), allow_simple=False, timeout=5):
+        self.host, self.port, self.netbios, self.base_dns, self.allow_simple, self.timeout = host, int(port), netbios, list(base_dns), allow_simple, timeout
+
+    def _bind(self, ldap3, user, password, how):
+        server = ldap3.Server(self.host, port=self.port, get_info=ldap3.NONE, connect_timeout=self.timeout)
+        conn = ldap3.Connection(server, user=user, password=password, authentication=how, receive_timeout=self.timeout, raise_exceptions=False)
+        try:
+            ok = conn.bind()
+        except Exception as ex:                      # noqa: BLE001 - socket errors, timeouts, protocol errors: all 'cannot reach / cannot talk'
+            raise DirectoryDown(type(ex).__name__) from ex
+        return conn if ok else (None if (conn.result or {}).get("description") == "invalidCredentials" else DirectoryDown((conn.result or {}).get("description") or "bind failed"))
+
+    def bind(self, cpf, password):
+        import ldap3
+        from ldap3.utils.conv import escape_filter_chars
+        if not password:                             # an empty password would be an anonymous bind, which 'succeeds'
+            return None
+        user = self.netbios + "\\" + cpf
+        res = self._bind(ldap3, user, password, ldap3.NTLM)
+        if isinstance(res, DirectoryDown) and self.allow_simple:
+            res = self._bind(ldap3, user, password, ldap3.SIMPLE)
+        if isinstance(res, DirectoryDown):
+            raise res
+        if res is None:
+            return None
+        info = {}
+        try:                                         # the address is a courtesy; failing to read it never fails the sign-in
+            for base in self.base_dns:
+                if res.search(base, f"(sAMAccountName={escape_filter_chars(cpf)})", attributes=["mail"], size_limit=1) and res.entries:
+                    info["mail"] = str(res.entries[0].mail.value or "") or None
+                    break
+        except Exception:                            # noqa: BLE001
+            pass
+        finally:
+            res.unbind()
+        return info
+
+
+_directory = None          # tests set this
 
 
 def get_directory():
     if _directory is not None:
         return _directory
-    raise DirectoryDown("The domain connection is not set up yet.")
+    c = config()
+    if not c["domain_host"]:
+        raise DirectoryDown("The domain connection is not set up yet.")
+    return LdapDirectory(c["domain_host"], c["domain_port"], c["domain_netbios"], c["domain_base_dns"], c["domain_allow_simple"])
 
 
 def config():
