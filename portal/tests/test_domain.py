@@ -128,3 +128,30 @@ def test_ldap_unreachable_is_down(ldap):
     _Conn.script = {ldap.NTLM: OSError("timed out")}
     with pytest.raises(domain.DirectoryDown):
         domain.LdapDirectory("dc", 389, "ONGC").bind("900001", "pw")
+
+
+def test_admin_saves_validates_and_tests_domain_settings(world, monkeypatch):
+    from conftest import fake_user
+    fake_user(monkeypatch, role="ADMIN")
+    ok = {"domain_enabled": True, "domain_host": "dc.example.org", "domain_port": 389, "domain_netbios": "ongc", "domain_base_dns": ["ou=a,dc=b", ""], "domain_allow_simple": False}
+    r = call("/api/admin/domain/save", {"domain": ok})
+    assert r.status_code == 200 and r.json()["domain"]["domain_netbios"] == "ONGC" and r.json()["domain"]["domain_base_dns"] == ["ou=a,dc=b"]
+    assert call("/api/admin/domain/save", {"domain": {**ok, "domain_port": 99999}}).status_code == 400
+    assert call("/api/admin/domain/save", {"domain": {**ok, "domain_host": ""}}).status_code == 400       # on, but no controller
+    assert call("/api/admin/domain/save", {"domain": {**ok, "domain_host": "bad host!"}}).status_code == 400
+    monkeypatch.setattr(domain.LdapDirectory, "probe", lambda self: {"ntlm": "ok", "simple": "ok"})
+    assert call("/api/admin/domain/test", {"domain": ok}).json() == {"ntlm": "ok", "simple": "ok"}
+    assert TestClient(app).get("/api/admin/domain").json()["domain"]["domain_host"] == "dc.example.org"
+
+
+def test_plain_user_cannot_reach_domain_settings(world, monkeypatch):
+    from conftest import fake_user
+    fake_user(monkeypatch, role="USER")
+    assert call("/api/admin/domain/save", {"domain": {}}).status_code == 403
+    assert TestClient(app).get("/api/admin/domain").status_code == 403
+
+
+def test_probe_reports_ntlm_ok_when_controller_rejects_made_up_account(ldap):
+    _Conn.script = {ldap.NTLM: "invalidCredentials", ldap.SIMPLE: "unwillingToPerform"}
+    out = domain.LdapDirectory("dc", 389, "ONGC").probe()
+    assert out["ntlm"] == "ok" and out["simple"].startswith("refused")

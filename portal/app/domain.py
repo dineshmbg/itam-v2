@@ -72,6 +72,17 @@ class LdapDirectory:
         return info
 
 
+    def probe(self):
+        """Test connection: one bind per method with a made-up account (no real password is used). -> {"ntlm": ..., "simple": ...}, each
+        'ok' (the controller answered and understands the method) or 'refused or no answer: <why>'."""
+        import ldap3
+        out = {}
+        for key, how in (("ntlm", ldap3.NTLM), ("simple", ldap3.SIMPLE)):
+            r = self._bind(ldap3, self.netbios + "\\" + "0000001", "not-a-real-password", how)
+            out[key] = "ok" if r is None else "refused or no answer: " + str(r)
+        return out
+
+
 _directory = None          # tests set this
 
 
@@ -143,3 +154,37 @@ def login(username, password, ip, user_agent):
                        ON CONFLICT (username) DO UPDATE SET display_name = EXCLUDED.display_name, email = COALESCE(EXCLUDED.email, portal_user.email)""",
                     (name, emp["employee_name"], info.get("mail"), NO_PASSWORD))
     return auth.open_session(db.one("SELECT * FROM portal_user WHERE username = %s", [name]), ip, user_agent, via="domain")
+
+
+def save_config(values, editor):
+    """Validate and store the domain settings (portal_setting). Raises auth.AuthError naming the offending field."""
+    import json
+    c = config()
+    c.update({k: v for k, v in values.items() if k in DEFAULTS})
+    bad = {}
+    host = str(c["domain_host"] or "").strip()
+    if host and not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", host):
+        bad["domain_host"] = "a host name or IP address"
+    try:
+        port = int(c["domain_port"])
+        if not 1 <= port <= 65535:
+            raise ValueError
+    except (TypeError, ValueError):
+        port, bad["domain_port"] = 389, "1 to 65535"
+    net = str(c["domain_netbios"] or "").strip().upper()
+    if not re.fullmatch(r"[A-Z0-9-]{1,15}", net):
+        bad["domain_netbios"] = "short domain name, up to 15 letters or digits (for example ONGC)"
+    dns = [str(x).strip() for x in (c["domain_base_dns"] or []) if str(x).strip()]
+    if len(dns) > 10 or any(len(x) > 300 or "=" not in x for x in dns):
+        bad["domain_base_dns"] = "up to 10 distinguished names, one per line (ou=...,dc=...)"
+    if c["domain_enabled"] and not host:
+        bad["domain_host"] = "required while domain sign-in is on"
+    if bad:
+        raise auth.AuthError("Check: " + "; ".join(f"{k.replace('domain_', '')} - {v}" for k, v in bad.items()) + ".", 400, fields=bad)
+    clean = {"domain_enabled": bool(c["domain_enabled"]), "domain_host": host, "domain_port": port, "domain_netbios": net, "domain_base_dns": dns,
+             "domain_allow_simple": bool(c["domain_allow_simple"])}
+    with db.write() as con:
+        for k, v in clean.items():
+            con.execute("INSERT INTO portal_setting (key, value, updated_by) VALUES (%s,%s::jsonb,%s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by",
+                        (k, json.dumps(v), editor))
+    return clean

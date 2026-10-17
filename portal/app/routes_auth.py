@@ -175,6 +175,30 @@ async def settings_save(request):
     return json_response({"settings": out, "policy": auth.policy_text()})
 
 
+async def domain_get(request):
+    return json_response({"domain": await run_in_threadpool(domain.config)})
+
+
+async def domain_save(request):
+    u = request.state.user
+    out = await run_in_threadpool(domain.save_config, request.state.body.get("domain") or {}, u["username"])
+    await run_in_threadpool(auth.log, u["username"], client_ip(request), "SETTINGS_CHANGED", "domain sign-in", out)
+    return json_response({"domain": out})
+
+
+async def domain_test(request):
+    """Tries the values on the form (saved or not). No real password is involved: the controller is asked to bind a made-up account."""
+    c = {**domain.config(), **{k: v for k, v in (request.state.body.get("domain") or {}).items() if k in domain.DEFAULTS}}
+    try:
+        port = int(c["domain_port"])
+    except (TypeError, ValueError):
+        return error(400, "Port: enter a number.")
+    if not str(c["domain_host"] or "").strip():
+        return error(400, "Enter the domain controller host first.")
+    d = domain.LdapDirectory(str(c["domain_host"]).strip(), port, str(c["domain_netbios"] or "").strip().upper(), [], bool(c["domain_allow_simple"]))
+    return json_response(await run_in_threadpool(d.probe))
+
+
 async def activity_list(request):
     a = dict(request.query_params)
     limit = max(1, min(int(a.get("limit", 100)), 200))
@@ -223,5 +247,8 @@ routes = [
     Route("/api/admin/users/update", write(user_update, admin="lead_strict"), methods=["POST"]),
     Route("/api/admin/users/reset-password", write(user_reset_password, admin="lead_strict"), methods=["POST"]),
     Route("/api/admin/settings", write(settings_save, admin="strict"), methods=["POST"]),
+    Route("/api/admin/domain", read(domain_get, admin="strict")),
+    Route("/api/admin/domain/save", write(domain_save, admin="strict"), methods=["POST"]),
+    Route("/api/admin/domain/test", write(domain_test, admin="strict", mutates=False), methods=["POST"]),
     Route("/api/admin/activity", read(activity_list, admin="lead_strict")),
 ]

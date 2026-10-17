@@ -23,7 +23,8 @@ export function mountUsers(root) {
   const addBtn = h('button', { class: 'btn', type: 'button', onClick: newUserDialog }, icon('add'), 'Add user');
   const syncBtn = h('button', { class: 'btn primary', type: 'button', onClick: syncRoster }, icon('renew'), 'Sync from roster');
   const setBtn = h('button', { class: 'btn', type: 'button', onClick: securityDialog }, icon('security'), 'Security settings');
-  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. Sync from roster covers everyone on the CIPL roster; Add user covers anyone else.', lead ? [addBtn] : [setBtn, addBtn, syncBtn]),
+  const domBtn = h('button', { class: 'btn', type: 'button', onClick: domainDialog }, icon('network--3'), 'Domain sign-in');
+  holder.append(pageHead('Users and security', 'Two groups: administrators manage everything; users work with the registers within their permissions. Sync from roster covers everyone on the CIPL roster; Add user covers anyone else.', lead ? [addBtn] : [domBtn, setBtn, addBtn, syncBtn]),
     h('section', { class: 'panel' }, body));
 
   function newUserDialog() {
@@ -186,6 +187,34 @@ export function mountUsers(root) {
     openModal({ title: 'Temporary password', locked: true, lead: `Give this to ${username}. It is shown only now and must be changed at first sign-in.`,
       body: h('div', { class: 'secret mono big' }, pw),
       actions: [{ label: 'Copy', icon: 'copy', keepOpen: true, onClick: async () => { try { await navigator.clipboard.writeText(pw); toast('Copied'); } catch (_) { toast('Copy is not available here. Select the text and copy it.'); } return false; } }, { label: 'Done', primary: true }] });
+  }
+
+  async function domainDialog() {
+    const d = (await get('/api/admin/domain')).domain;
+    const f = (id, label, el, hint) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el, hint ? h('div', { class: 'hint' }, hint) : null);
+    const chk = (id, label, on) => {
+      const c = h('input', { type: 'checkbox', id }); c.checked = !!on;
+      return [c, h('label', { class: 'opt', for: id }, c, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, label))];
+    };
+    const [en, enRow] = chk('dm-en', 'Domain sign-in is on', d.domain_enabled);
+    const [simple, simpleRow] = chk('dm-simple', 'Allow a simple bind if NTLM is refused (the password then crosses the network readable)', d.domain_allow_simple);
+    const host = h('input', { id: 'dm-host', type: 'text', value: d.domain_host, autocomplete: 'off', spellcheck: 'false' });
+    const port = h('input', { id: 'dm-port', type: 'number', min: '1', max: '65535', value: String(d.domain_port) });
+    const net = h('input', { id: 'dm-net', type: 'text', maxlength: '15', value: d.domain_netbios, autocomplete: 'off' });
+    const dns = h('textarea', { id: 'dm-dns', rows: '4', spellcheck: 'false' }, (d.domain_base_dns || []).join('\n'));
+    const out = h('div', { class: 'hint', role: 'status', 'aria-live': 'polite' });
+    const read = () => ({ domain_enabled: en.checked, domain_host: host.value.trim(), domain_port: Number(port.value), domain_netbios: net.value.trim(), domain_allow_simple: simple.checked, domain_base_dns: dns.value.split('\n') });
+    const test = h('button', { class: 'btn', type: 'button', onClick: async () => {
+      out.textContent = 'Testing - this can take up to 20 seconds...';
+      try { const r = await send('/api/admin/domain/test', { domain: read() }); out.textContent = `NTLM: ${r.ntlm}. Simple bind: ${r.simple}.`; } catch (e) { out.textContent = e.message; }
+    } }, icon('play'), 'Test connection');
+    openModal({
+      title: 'Domain sign-in', lead: 'People who are not in the engineer register sign in with their Windows password, checked by the domain controller. Their user name is their CPF number and must be an active employee. Engineers and existing accounts are not affected.',
+      body: h('div', null, enRow, f('dm-host', 'Domain controller', host, 'Host name or IP address.'), f('dm-port', 'Port', port, 'LDAP is 389.'),
+        f('dm-net', 'Domain short name', net, 'Sign-in uses this name, a backslash and the CPF number.'),
+        f('dm-dns', 'Search bases', dns, 'One per line. Used to read the e-mail address after a successful sign-in.'), simpleRow, h('div', { class: 'frow' }, test, out)),
+      actions: [{ label: 'Cancel' }, { label: 'Save', primary: true, onClick: async () => { await send('/api/admin/domain/save', { domain: read() }); toast('Domain sign-in saved'); } }],
+    });
   }
 
   function securityDialog() {
