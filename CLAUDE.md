@@ -4,20 +4,6 @@ IT asset/HR data conversion tooling plus a full ITAM web portal, both built arou
 database (`ongc_ank`) for ONGC Ankleshwar's IT asset management. Everything runs locally and offline -
 no CDN, no internet at run time, anywhere in this project.
 
-## Layout
-
-| Path | What it is |
-|---|---|
-| `portal/` | The ITAM web portal (Starlette + PostgreSQL + esbuild front end) - see `portal/README.md` and its own `portal/CLAUDE.md`-equivalent detail below. This is the actively developed part of the project. |
-| `tools/` | Standalone Python converters, shared by the command line and by the portal's own Data import feature: `inventory_to_master.py`, `hr_export_to_template.py`, `cipl_roster.py`, `call_tracking.py`, `sdwan_match.py`, `master_db.py`, `itam_rules.py` (shared validation/normalisation rules), `itam_locks.py` (manual-edit-protection, shared with the portal). |
-| `templates/` | Blank upload templates (`*_Upload_Template.xlsx`) - **every template this project produces goes here by default.** |
-| `samples/` | Generated preview/sample files - **every sample or preview file goes here by default.** |
-| `masters/` | Converted "master" output files (`*_Master_*.xlsx`) - the result of running a `tools/*.py` converter against a raw export. |
-| `data/` | Raw source exports as received (asset inventory, HR manpower, CIPL roster, call tracker) plus `hr_master.db`. |
-| `uploads/` | Scratch area for files uploaded through the portal's Data import feature. |
-| `backups/` | `pg_dump` backups of `ongc_ank` (portal's Backup and restore feature, and manual `pg_dump`). |
-| Loose `.xlsx` files at the root | Raw exports as handed over by the user, not yet filed into `data/`. |
-
 ## The ITAM Portal (`portal/`)
 
 Login-protected, offline web app over `ongc_ank`: live dashboards (assets, calls, engineers, PM),
@@ -50,31 +36,11 @@ USB/network share, install Python packages from the already-vendored `portal/ven
 internet needed, `run_portal.ps1` already does this automatically), migrate or import the real data,
 then register the Scheduled Task.
 
-**Container / VM deployment** - `deploy/` (Containerfile, entrypoint, Podman Quadlet unit, `vm-install.sh`, `new-certificate.sh`, `make-release-key.ps1` + `build-release.ps1` (dev PC: tests + build + SIGN a `.itamrel` package), `updater/` (VM update service behind the portal's Data tools > Software update page; verifies signature, backs up, health-checks, auto-rollback), `update-portal.sh` (CLI for the same), `host/Prepare-Database.ps1`, `host/Backup-Database.ps1`,
-`images/itam-portal.tar` for offline transfer) - see `deploy/README.md`. The portal is ONE container in the Ubuntu VM; the **database is NOT containerised** - it is the PostgreSQL
-installed on the physical server (`Prepare-Database.ps1` there creates role/database and restores a backup). Build the image from the project root
-(`podman build -f deploy/Containerfile -t localhost/itam-portal:latest .`).
+**Container / VM deployment** - see `deploy/CLAUDE.md` and `deploy/README.md`. The portal is ONE container in the Ubuntu VM; the **database is NOT containerised** (PostgreSQL on the physical server). Build the image from the project root: `podman build -f deploy/Containerfile -t localhost/itam-portal:latest .`
 
 ## Data conversion tools (`tools/`)
 
-Each converter takes a raw export (as received - not pre-cleaned) and produces a validated "master"
-upload file, following the same rules the portal's own importer uses:
-- `inventory_to_master.py` - IT asset inventory export -> `IT_Asset_Master_*.xlsx`
-- `hr_export_to_template.py` - raw Ank-manpower HR export -> `Employee_Master_Upload_*.xlsx` (see the
-  `hr-manpower-monthly-upload` memory for the recurring monthly version of this)
-- `cipl_roster.py` - CIPL employee roster -> loads `cipl_employee` directly (also used by the portal's
-  "Sync from roster" account creation)
-- `call_tracking.py` - CIPL call tracker export -> `Call_Tracker_*.xlsx`
-- `sdwan_match.py` - matches SD-WAN/Cisco device details against the asset inventory
-- `itam_rules.py` - shared validation/normalisation rules used by every loader **and** by the portal's
-  own edit engine (`portal/app/edit.py`), so a manually-edited value and an imported value are checked
-  the same way
-- `itam_locks.py` - manual-edit protection (`portal_lock`): once a field is changed by hand (in the
-  portal) or explicitly set by certain loader paths, a later re-import will not silently overwrite it
-
-Run any converter directly with the portal's own venv's Python (it has `pandas`) or the base
-interpreter if `pandas` isn't otherwise available - see `portal/tests/test_edit.py`'s import fallback
-pattern for exactly how tests locate it.
+Converters in `tools/*.py` take a raw export **as received (not pre-cleaned)** and produce a validated master/upload file using the same rules as the portal importer (`itam_rules.py`; `itam_locks.py` stops a re-import overwriting hand-edited fields). Run them with the portal's venv Python (it has `pandas`); see `portal/tests/test_edit.py` for the import fallback. Monthly HR export: see the `hr-manpower-monthly-upload` memory. Outputs go to `masters/`, raw exports live in `data/`; loose root `.xlsx` files are raw exports not yet filed.
 
 ## Standing instructions from the user (permanent - do not drop or dilute)
 
