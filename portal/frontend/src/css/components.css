@@ -296,3 +296,11 @@ kbd { font: 500 11px var(--font-mono); border: 1px solid var(--c-border-strong);
   .print-only { display: block; padding: 8mm; }
   .print-only .asset-label { border: 1px solid #000; }
 }
+
+/* Remove from AMC (pick mode of the Assets register): the three-step strip and the "Add to basket" bar on the results */
+.pick-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; font-size: 12px; color: var(--c-text-2); }
+.pick-steps span { border: 1px solid var(--c-border); background: var(--c-surface); border-radius: 999px; padding: 3px 12px; }
+.pick-steps b { color: var(--c-accent); }
+.pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--c-accent-bg); border-bottom: 1px solid var(--c-border); }
+.pick-bar strong { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin-right: 4px; }
+.pick-bar .menu button { white-space: nowrap; }

@@ -136,33 +136,57 @@ const downloadTemplate = async () => {
 };
 
 // ------------------------------------------------------------------ the page
+/** A drop-down menu in the site's own style (the same markup as the Download / share menu). */
+function dropMenu({ text, ico, items }) {
+  const btn = h('button', { class: 'btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, icon(ico), text, icon('chevron--down', 'sm'));
+  const menu = h('div', { class: 'menu', role: 'menu', hidden: true, style: { left: '0', right: 'auto', minWidth: '270px' } });
+  const wrap = h('div', { class: 'usr-wrap' }, btn, menu);
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  items.forEach(([ico2, label2, fn]) => menu.append(h('button', { role: 'menuitem', type: 'button', onClick: () => { close(); fn(); } }, icon(ico2), label2)));
+  btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) menu.querySelector('button').focus(); });
+  const away = (e) => { if (!menu.hidden && !wrap.contains(e.target)) close(); };
+  document.addEventListener('click', away);
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); btn.focus(); } });
+  wrap.dispose = () => document.removeEventListener('click', away);
+  return wrap;
+}
+
 export function mountAmcPick(root) {
   let page = null;
-  let waiting = 0;
-  const basketBtn = h('button', { class: 'btn primary', type: 'button', onClick: () => openBasket({ onDone: () => page?.refresh?.() }) });
-  const reqLink = h('a', { class: 'btn', href: href('admin/amc-requests') }, icon('catalog'), 'Requests');
-  const paint = () => { basketBtn.replaceChildren(icon('package'), `Basket (${int(basket.size)})`); };
+  const basketBtn = h('button', { class: 'btn primary', type: 'button', title: 'Open the basket: reason, date, verbal approval and send', onClick: () => openBasket({ onDone: () => page?.refresh?.() }) });
+  const reqLink = h('a', { class: 'btn', href: href('admin/amc-requests'), title: 'Every request, reinstating, and the Excel report' }, icon('catalog'), 'Requests');
+  const inBasketEl = h('span', { class: 'count-line', role: 'status' });
+  const paint = () => { basketBtn.replaceChildren(icon('package'), `Basket (${int(basket.size)}) — review and send`); inBasketEl.textContent = `${int(basket.size)} in the basket · click a row to add or remove it`; };
   const stopSub = (() => { subs.add(paint); return () => subs.delete(paint); })();
   paint();
-  get('/api/amc-removal/summary').then((s) => { waiting = s.waiting; if (waiting) { reqLink.replaceChildren(icon('catalog'), `Requests (${waiting} waiting)`); reqLink.classList.add('primary'); } }).catch(() => {});
+  get('/api/amc-removal/summary').then((s) => { if (s.waiting) { reqLink.replaceChildren(icon('catalog'), `Requests (${s.waiting} waiting)`); reqLink.classList.add('primary'); } }).catch(() => {});
 
+  const step = (n, text) => h('span', null, h('b', null, `${n} `), text);
+  const steps = h('div', { class: 'pick-steps', 'aria-label': 'How it works' }, step(1, 'Filter on the left, or search'), step(2, 'Click rows, or add everything listed'), step(3, 'Open the basket: reason, date, approver, send'));
+
+  let timer = null, menus = [];
   const pick = {
     title: 'Remove from AMC',
-    sub: 'Filter the register, then click rows (or add everything listed) to fill the basket - assets of any class and type can go in one request. Removed assets are archived, never deleted.',
+    sub: 'Removed assets are archived, never deleted. Reinstating is possible from the requests page.',
+    steps,
     isPicked: inBasket,
     toggle,
     ready: (h2) => { page = h2; subs.add(h2.restyle); },
-    tools: (api) => [
-      h('button', { class: 'btn', type: 'button', title: 'Add every asset matching the current search and filters (those that can be removed) to the basket', onClick: async () => {
+    head: () => [reqLink, basketBtn],
+    // The buttons that act on the list sit on the list, beside the count they refer to.
+    bar: (api) => {
+      const addAll = h('button', { class: 'btn', type: 'button', title: 'Add every asset matching the current search and filters (those that can be removed) to the basket', onClick: async () => {
         try { await addKeys(await api.allKeys(2000)); } catch (e) { toast(e.message, 'bad'); }
-      } }, icon('add'), 'Add all listed'),
-      h('button', { class: 'btn', type: 'button', onClick: listDialog }, icon('upload'), 'Paste or upload a list'),
-      h('button', { class: 'btn', type: 'button', title: 'An Excel sheet to fill in: Asset (CI) or Serial no., and a Reason', onClick: downloadTemplate }, icon('download'), 'Upload template'),
-      reqLink, basketBtn,
-    ],
+      } });
+      const label2 = () => { addAll.replaceChildren(icon('add'), api.total ? `Add all listed (${int(api.total)})` : 'Add all listed'); };
+      label2(); timer = setInterval(label2, 700);                       // the count follows the filters
+      const fromList = dropMenu({ text: 'From a list', ico: 'upload', items: [['upload', 'Paste or upload a list…', listDialog], ['download', 'Download upload template', downloadTemplate]] });
+      menus.push(fromList);
+      return h('div', { class: 'pick-bar' }, h('strong', null, 'Add to basket'), addAll, fromList, h('span', { style: { marginLeft: 'auto' } }, inBasketEl));
+    },
   };
   const reg = mountRegister(root, 'assets', { pick });
   const done = reg.destroy;
-  reg.destroy = () => { stopSub(); if (page) subs.delete(page.restyle); done?.(); };          // the register's own object stays (it has live getters)
+  reg.destroy = () => { stopSub(); clearInterval(timer); menus.forEach((m) => m.dispose?.()); if (page) subs.delete(page.restyle); done?.(); };          // the register's own object stays (it has live getters)
   return reg;
 }

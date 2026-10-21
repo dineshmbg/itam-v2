@@ -148,11 +148,12 @@ export function mountRegister(root, name, opts = {}) {
       readUrl();
       const schema = await getSchema().catch(() => null);
       const tools = [];
+      const side = [];                                   // pick mode: Columns and Export sit on the results bar, not in the page head
       const arch = h('input', { type: 'checkbox', 'aria-label': 'Show archived records' });
       arch.checked = archived;
       arch.addEventListener('change', () => { archived = arch.checked; syncUrl(); requery(); });
       if (!pick) tools.push(h('label', { class: 'pill-toggle' }, arch, icon('checkbox', 'off'), icon('checkbox--checked--filled', 'on'), 'Show archived'));
-      if (pick) tools.push(...pick.tools(api));
+      if (pick) tools.push(...pick.head(api));
       if (name === 'pm' && !pick) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: async () => {
         const keys = await api.allKeys(500);
         if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
@@ -167,12 +168,13 @@ export function mountRegister(root, name, opts = {}) {
       let cols = await loadColumns(name, ds.columns);
       if (pick) cols = cols.map((c) => ({ ...c, visible: c.visible || ['serial_no', 'rate_value', 'cover_status'].includes(c.key) }));      // a basket needs the serial number and the rate in view
       const colsBtn = h('button', { class: 'btn', type: 'button', onClick: () => columnsDialog({ name, columns: cols, onApply: (next) => { if (!next) clearSavedWidths(widthKey); cols = next || ds.columns.map((c) => ({ ...c, visible: true })); rebuildTable(); } }) }, icon('settings'), 'Columns');
-      tools.push(colsBtn);
-      tools.push(h('button', { class: 'btn', type: 'button', title: 'Download everything matching the current search and filters as a CSV file (opens in Excel)',
+      (pick ? side : tools).push(colsBtn);
+      (pick ? side : tools).push(h('button', { class: 'btn', type: 'button', title: 'Download everything matching the current search and filters as a CSV file (opens in Excel)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/' + name + '/export', paramsForServer(0, 0, false), name + '.csv'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('download'), 'Export CSV'));
       if (name === 'assets' && !pick) tools.push(h('button', { class: 'btn', type: 'button', title: 'Print Code128 barcode stickers for everything matching the current search and filters (one per asset, Asset (CI) number)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/assets/labels', paramsForServer(0, 0, false), 'asset_labels.pdf'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('barcode'), 'Print barcode labels'));
       if (!opts.embedded) holder.append(pick ? pageHead(pick.title, pick.sub, tools) : pageHead(ds.label, `${ds.label} — updates live as records change`, tools));
+      if (pick?.steps) holder.append(pick.steps);
       facets = createFacets({ facets: ds.facets, defaults: ds.defaults, onChange: (f, clearAll) => { filters = clearAll ? Object.fromEntries(ds.facets.map((x) => [x.key, []])) : f; applyFilters(); } });
       const myEngineerKey = name === 'engineers' ? sessionUser()?.engineer_key : null;
       const widthKey = `itam.colw.${sessionUser()?.username || sessionUser()?.id || ''}.${name}`;
@@ -193,8 +195,8 @@ export function mountRegister(root, name, opts = {}) {
       table = buildTable();
       pick?.ready({ restyle: () => table.restyle(), refresh: () => table.refresh() });
       search.value = q; clearBtn.hidden = !q;
-      const toolbar = h('div', { class: 'toolbar' }, h('div', { class: 'field' }, icon('search'), search, clearBtn), countEl);
-      const results = h('section', { class: 'results', 'aria-label': `${ds.label} results` }, toolbar, chipsEl, table.el);
+      const toolbar = h('div', { class: 'toolbar' }, h('div', { class: 'field' }, icon('search'), search, clearBtn), countEl, ...side);
+      const results = h('section', { class: 'results', 'aria-label': `${ds.label} results` }, toolbar, pick ? pick.bar(api) : null, chipsEl, table.el);
       holder.append(h('div', { class: 'register' }, facets.el, results));
       facets.setFilters(filters);
       drawChips();
