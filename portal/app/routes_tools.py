@@ -327,7 +327,7 @@ async def backup_settings(request):
 async def backup_restore(request):
     b, u = request.state.body, request.state.user
     file = str(b.get("file") or "")
-    if b.get("confirm") != "RESTORE":
+    if str(b.get("confirm") or "").strip().upper() != "RESTORE":
         raise backup.BackupError("Type RESTORE to confirm.")
     await _log(request, "RESTORE_STARTED", file)
     out = await run_in_threadpool(backup.restore, file, u["username"])

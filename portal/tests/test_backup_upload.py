@@ -48,3 +48,11 @@ def test_real_dump_is_listed_as_uploaded(sandbox, folder, monkeypatch):
         assert name.endswith("_uploaded.dump") and (folder / name).exists()
         assert [b["kind"] for b in c.get("/api/admin/backups").json()["backups"] if b["file"] == name] == ["UPLOADED"]
         assert backup.verify(name)["ok"]
+
+
+def test_restore_confirm_word_ignores_case(sandbox, monkeypatch):
+    # the confirm box is styled upper-case on screen, so what the user typed may be lower-case
+    as_user(monkeypatch, "ADMIN", username="BKU_C")
+    with TestClient(app) as c:
+        r = c.post("/api/admin/backups/restore", json={"file": "nope.dump", "confirm": " restore "}, headers={"X-Requested-With": "itam-portal"})
+        assert "Type RESTORE" not in r.text, r.text      # got past the confirmation (then fails on the missing file)
