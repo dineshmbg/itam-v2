@@ -49,17 +49,40 @@ export function mountAmcRequests(root) {
     const own = r.lines.filter((x) => !x.via_parent);
     const parts = r.lines.filter((x) => x.via_parent);
     const back = own.filter((x) => !x.reinstated_at && !x.skipped_reason && r.status === 'APPLIED');
+    // Which assets of this request go back is the person's choice: a request can hold many assets and only some may be needed again.
+    // With several to choose from nothing is ticked at first, so a stray click never reinstates the lot. Parts always return with their asset.
+    const chosen = new Set(back.length === 1 ? [back[0].asset_key] : []);
+    const boxes = new Map();
+    const reinstateBtn = h('button', { class: 'btn', type: 'button', onClick: () => amcReinstateDialog({ keys: [...chosen], onDone: load }) });
+    const paint = () => {
+      reinstateBtn.replaceChildren(icon('renew'), chosen.size ? `Reinstate ${chosen.size === 1 ? [...chosen][0] : chosen.size + ' selected assets'}` : 'Reinstate selected');
+      reinstateBtn.disabled = !chosen.size;
+      boxes.forEach((cb, k) => { cb.checked = chosen.has(k); });
+      if (all) { all.checked = chosen.size === back.length; all.indeterminate = chosen.size > 0 && chosen.size < back.length; }
+    };
+    const all = back.length > 1 ? h('input', { type: 'checkbox', 'aria-label': 'Select every asset that can be reinstated' }) : null;
+    all?.addEventListener('change', () => { back.forEach((x) => (all.checked ? chosen.add(x.asset_key) : chosen.delete(x.asset_key))); paint(); });
+    const pick = (x) => {
+      if (!back.includes(x)) return h('td', null);
+      const cb = h('input', { type: 'checkbox', 'aria-label': `Select ${x.asset_key} to reinstate` });
+      cb.addEventListener('change', () => { if (cb.checked) chosen.add(x.asset_key); else chosen.delete(x.asset_key); paint(); });
+      boxes.set(x.asset_key, cb);
+      return h('td', null, cb);
+    };
     const tools = h('div', { class: 'btn-row' },
-      back.length ? h('button', { class: 'btn', type: 'button', onClick: () => amcReinstateDialog({ keys: back.map((x) => x.asset_key), onDone: load }) }, icon('renew'), `Reinstate ${back.length === 1 ? back[0].asset_key : back.length + ' assets'}`) : null,
+      back.length ? reinstateBtn : null,
       ['PENDING', 'REQUESTED'].includes(r.status) ? h('button', { class: 'btn', type: 'button', onClick: async () => { try { await send('/api/amc-removal/cancel', { removal_no: r.removal_no }); toast('Request cancelled'); load(); } catch (e) { toast(e.message, 'bad'); } } }, icon('close'), 'Cancel request') : null);
     const decide = r.status === 'REQUESTED' ? decision(r) : null;
-    return h('details', { class: 'panel', style: { padding: '8px 12px', marginBottom: '8px' }, open: r.status === 'REQUESTED' },
+    const rows = r.lines.map((x) => h('tr', null, ...(back.length ? [pick(x)] : []), h('td', { class: 'mono' }, x.asset_key, x.via_parent ? h('span', { class: 'muted small' }, ` (comes back with ${x.via_parent})`) : null),
+      h('td', null, x.via_parent ? '' : x.reason.replace(/_/g, ' ').toLowerCase()), h('td', { class: 'num' }, x.reinstated_at ? int(x.net_credit_days) : x.credit_days == null ? '—' : int(x.credit_days)),
+      h('td', { class: 'num' }, inr(x.reinstated_at ? x.net_credit_amount : x.credit_amount)), h('td', null, x.skipped_reason ? `skipped: ${x.skipped_reason}` : x.reinstated_at ? `reinstated ${date(x.reinstated_at)}` : '')));
+    const el = h('details', { class: 'panel', style: { padding: '8px 12px', marginBottom: '8px' }, open: r.status === 'REQUESTED' },
       h('summary', null, h('strong', { class: 'mono' }, r.removal_no), ' ', statusChip(r.status), ` · ${int(own.length)} asset(s)${parts.length ? ` + ${parts.length} parts` : ''} · effective ${date(r.effective_date)} · credit ${inr(r.credit_total)}`),
       h('p', { class: 'muted small' }, `Requested by ${r.requested_by}${r.approved_by ? ` · verbal approval by ${r.approved_by} on ${date(r.approved_on)}` : ''}${r.decided_by && r.decided_by !== r.requested_by ? ` · decided by ${r.decided_by}` : ''}${r.note ? ` · "${r.note}"` : ''}${r.decision_note ? ` · turned down: ${r.decision_note}` : ''}`),
-      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Asset (CI)', 'Reason', 'Days', 'Credit', 'Note'].map((t) => h('th', null, t)))),
-        h('tbody', null, r.lines.map((x) => h('tr', null, h('td', { class: 'mono' }, x.asset_key, x.via_parent ? h('span', { class: 'muted small' }, ` (part of ${x.via_parent})`) : null), h('td', null, x.via_parent ? '' : x.reason.replace(/_/g, ' ').toLowerCase()),
-          h('td', { class: 'num' }, x.reinstated_at ? int(x.net_credit_days) : x.credit_days == null ? '—' : int(x.credit_days)), h('td', { class: 'num' }, inr(x.reinstated_at ? x.net_credit_amount : x.credit_amount)),
-          h('td', null, x.skipped_reason ? `skipped: ${x.skipped_reason}` : x.reinstated_at ? `reinstated ${date(x.reinstated_at)}` : '')))))), decide, tools);
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ...(back.length ? [h('th', null, all)] : []), ...['Asset (CI)', 'Reason', 'Days', 'Credit', 'Note'].map((t) => h('th', null, t)))), h('tbody', null, rows))),
+      back.length > 1 ? h('p', { class: 'muted small' }, 'Tick the assets to put back into the AMC. The others stay removed.') : null, decide, tools);
+    paint();
+    return el;
   }
 
   /** An engineer's request waits for a decision: approve it (verbal approver, date, override note) or turn it down with a reason the engineer reads. */
