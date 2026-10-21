@@ -18,7 +18,7 @@ let view = null;
 let running = false;
 let lastPath = '';
 
-const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', work: 'PM work orders', wo: 'PM work order', findings: 'PM findings', checklists: 'PM checklists', reports: 'Report builder', import: 'Data import', match: 'Inventory match', inventory: 'My inventory report', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
+const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', work: 'PM work orders', wo: 'PM work order', findings: 'PM findings', checklists: 'PM checklists', reports: 'Report builder', import: 'Data import', match: 'Inventory match', amc: 'Remove from AMC', inventory: 'My inventory report', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
   integrity: 'Data integrity', audit: 'Change log', users: 'Users and security', activity: 'Activity log' };
 
 // Views are loaded on demand so the first screen stays small.
@@ -37,6 +37,7 @@ const VIEWS = {
   'pm/checklists': () => import('./views/pm-checklists.js').then((m) => m.mountPmChecklists),
   reports: () => import('./views/reports.js').then((m) => m.mountReports),
   'reports/inventory': () => import('./views/inventory-mine.js').then((m) => m.mountInventoryMine),
+  'admin/amc': () => import('./views/amc-picker.js').then((m) => m.mountAmcPicker),
   'admin/match': () => import('./views/inventory-match.js').then((m) => m.mountInventoryMatch),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),
   'admin/backup': () => import('./views/admin-backup.js').then((m) => m.mountBackup),

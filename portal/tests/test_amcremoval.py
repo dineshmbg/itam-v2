@@ -79,10 +79,95 @@ def test_open_call_needs_an_override_note(fleet):
     assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 0
 
 
-def test_component_lines_are_refused_for_now(fleet):
-    make_asset(fleet, "TST-D-1/MON", record_level="COMPONENT", parent_asset_key="TST-D-1")
-    with pytest.raises(Conflict, match="component"):
-        go(["TST-D-1"])
+# ---------------------------------------------------------------- T5: component lines leave with their parent
+def with_parts(box):
+    make_asset(box, "TST-D-1/MON1", record_level="COMPONENT", parent_asset_key="TST-D-1", asset_type="MONITOR", rate_value=189.12)
+    make_asset(box, "TST-D-1/GPU1", record_level="COMPONENT", parent_asset_key="TST-D-1", asset_type="GRAPHICS CARD", rate_value=141.84, cover_type="WRTY")
+
+
+def test_components_leave_with_their_parent_and_their_rates_are_credited(fleet):
+    with_parts(fleet)
+    r = go(["TST-D-1"])
+    assert r["assets"] == ["TST-D-1"] and r["components"] == 2
+    got = {x["asset_key"]: x for x in rows(fleet, "SELECT a.asset_key, a.is_current, l.via_parent, l.credit_amount FROM asset a JOIN amc_removal_line l USING (asset_key) WHERE a.asset_key LIKE 'TST-D-1%%'")}
+    assert {k: (v["is_current"], v["via_parent"]) for k, v in got.items()} == {"TST-D-1": (0, None), "TST-D-1/MON1": (0, "TST-D-1"), "TST-D-1/GPU1": (0, "TST-D-1")}
+    assert str(got["TST-D-1/MON1"]["credit_amount"]) == "189.12"
+    assert n(fleet, "SELECT count(*) FROM asset WHERE parent_asset_key = 'TST-D-1' AND is_current = 1") == 0       # no orphan lines left in the register
+
+
+def test_impact_adds_the_component_rates_to_the_parent(fleet):
+    with_parts(fleet)
+    a = amcremoval.impact(["TST-D-1"], Q["start"].isoformat())["assets"][0]
+    assert (a["components"], str(a["component_amount"]), str(a["amount"])) == (2, "330.96", "1830.96")
+
+
+def test_a_component_can_be_removed_on_its_own_and_the_parent_stays(fleet):
+    with_parts(fleet)
+    go(["TST-D-1/MON1"])
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1/MON1'")["is_current"] == 0
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1/GPU1'")["is_current"] == 1
+
+
+def test_choosing_a_component_and_its_parent_together_gives_one_line_each(fleet):
+    with_parts(fleet)
+    r = go(["TST-D-1", "TST-D-1/MON1"])
+    assert n(fleet, "SELECT count(*) FROM amc_removal_line WHERE asset_key = 'TST-D-1/MON1' AND removal_no = %s", (r["removal_no"],)) == 1
+
+
+def test_a_component_added_after_a_pending_request_still_leaves_and_a_blocked_parent_keeps_its_parts(fleet, monkeypatch):
+    d = dt.date.today() + dt.timedelta(days=1)
+    if d > Q["end"]:
+        pytest.skip("today is the last day of the quarter")
+    with_parts(fleet)
+    first = go(["TST-D-1"], effective_date=d.isoformat())["removal_no"]
+    second = go(["TST-S-1"], effective_date=d.isoformat())["removal_no"]
+    make_asset(fleet, "TST-D-1/UPS9", record_level="COMPONENT", parent_asset_key="TST-D-1", asset_type="UPS", rate_value=10)       # arrives after the request
+    make_asset(fleet, "TST-S-1/SFP1", record_level="COMPONENT", parent_asset_key="TST-S-1", asset_type="SFP")
+    fleet.execute("UPDATE asset SET cover_type = 'WRTY' WHERE asset_key = 'TST-S-1'")                  # the second parent stops being eligible
+    monkeypatch.setattr(amcremoval, "TODAY", lambda: d)
+    assert amcremoval.apply_due() == [(first, 4, 0), (second, 0, 1)]
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1/UPS9'")["is_current"] == 0
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-S-1/SFP1'")["is_current"] == 1       # a parent that stays keeps its parts
+
+
+# ---------------------------------------------------------------- T6: finding assets to pick
+def test_candidates_list_only_eligible_assets_across_classes_with_facets(fleet):
+    c = amcremoval.candidates({"q": "TST-"})
+    keys = {r["asset_key"] for r in c["rows"]}
+    assert keys == {"TST-D-1", "TST-S-1", "TST-U-1"}                                                # laptop and warranty asset are not offered
+    assert c["total"] == 3 and set(c["keys"]) == keys and not c["capped"]
+    assert {x["value"] for x in c["facets"]["classes"]} >= {"DESKTOP", "SWITCH", "UPS"}
+    assert "LAPTOP" not in {x["value"] for x in c["facets"]["classes"]}
+
+
+def test_candidates_filter_by_class_type_engineer_and_location(fleet):
+    fleet.execute("UPDATE asset SET engineer_name = 'TST ENG', location_code = 'TST_LOC' WHERE asset_key IN ('TST-D-1','TST-S-1')")
+    pick = lambda **f: {r["asset_key"] for r in amcremoval.candidates({"q": "TST-", **f})["rows"]}  # noqa: E731
+    assert pick(classes=["SWITCH", "UPS"]) == {"TST-S-1", "TST-U-1"}                                # several classes at once
+    assert pick(types=["CORE SWITCH"]) == {"TST-S-1"}
+    assert pick(engineer="tst eng") == {"TST-D-1", "TST-S-1"}
+    assert pick(location="TST_LOC", classes=["DESKTOP"]) == {"TST-D-1"}
+
+
+def test_candidates_hide_component_lines_unless_asked_and_drop_removed_assets(fleet):
+    with_parts(fleet)
+    ids = lambda **f: {r["asset_key"] for r in amcremoval.candidates({"q": "TST-D-1", **f})["rows"]}  # noqa: E731
+    assert ids() == {"TST-D-1"}
+    assert ids(components=True) == {"TST-D-1", "TST-D-1/MON1"}                                       # the warranty component is not AMC
+    assert amcremoval.candidates({"q": "TST-D-1"})["rows"][0]["components"] == 2
+    go(["TST-D-1"])
+    assert ids() == set()
+
+
+def test_candidates_route_is_limited_and_serialises(fleet, monkeypatch):
+    fake_user(monkeypatch, "USER")
+    with TestClient(app) as c:
+        assert c.get("/api/amc-removal/candidates?q=TST-", headers=HDR).status_code == 403
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        r = c.get("/api/amc-removal/candidates?q=TST-&classes=SWITCH,UPS", headers=HDR)
+        assert r.status_code == 200 and {x["asset_key"] for x in r.json()["rows"]} == {"TST-S-1", "TST-U-1"}
 
 
 def test_effective_date_must_fall_in_the_running_quarter(fleet):

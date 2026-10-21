@@ -22,6 +22,17 @@ async def remove(request):
     return json_response(await run_in_threadpool(run))
 
 
+async def meta(request):
+    return json_response(await run_in_threadpool(amcremoval.meta))
+
+
+async def candidates(request):
+    q = request.query_params
+    split = lambda name: [x for x in (q.get(name) or "").split(",") if x.strip()]  # noqa: E731
+    return json_response(await run_in_threadpool(amcremoval.candidates, {"q": q.get("q"), "classes": split("classes"), "types": split("types"), "engineer": q.get("engineer"),
+                                                                       "location": q.get("location"), "components": q.get("components") == "1", "all": q.get("all") == "1"}))
+
+
 async def impact(request):
     q = request.query_params
     return json_response(await run_in_threadpool(amcremoval.impact, [k for k in (q.get("keys") or "").split(",") if k.strip()], q.get("date")))
@@ -42,6 +53,8 @@ async def cancel(request):
 
 routes = [
     Route("/api/amc-removal/preflight", read(preflight, admin="lead")),
+    Route("/api/amc-removal/meta", read(meta, admin="lead")),
+    Route("/api/amc-removal/candidates", read(candidates, admin="lead")),
     Route("/api/amc-removal/impact", read(impact, admin="lead")),
     Route("/api/amc-removal/requests", read(requests, admin="lead")),
     Route("/api/amc-removal/cancel", write(cancel, admin="lead"), methods=["POST"]),

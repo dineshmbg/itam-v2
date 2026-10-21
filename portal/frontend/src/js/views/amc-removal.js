@@ -35,6 +35,7 @@ export async function amcRemovalDialog({ asset, onDone }) {
       frow('amc-reason', 'Reason', reason), frow('amc-date', 'Effective date', when, `Any day of ${pre.quarter.label} (${pre.quarter.start} to ${pre.quarter.end}); defaults to its first day. A later day than today waits and is applied automatically.`),
       frow('amc-who', 'Verbal approval given by', who), frow('amc-note', 'Note', note),
       open ? frow('amc-override', 'Override note (required)', override, `Still has ${pre.open_calls} open call(s) and ${pre.open_rma} OEM RMA case(s) not yet returned.`) : null,
+      pre.components ? h('p', { class: 'rec-note info' }, `Its ${pre.components} part(s) (monitor, graphics card ...) leave with it and their rates are credited too.`) : null,
       credit, h('p', { class: 'muted small' }, 'The rate is saved on the request and cleared from the asset.')),
     actions: [{ label: 'Cancel' }, { label: 'Remove from AMC', danger: true, onClick: async () => {
       const r = await send('/api/amc-removal/remove', { keys: [key], reason: reason.value, effective_date: when.value, approved_by: who.value, note: note.value, override_note: override.value });

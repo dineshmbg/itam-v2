@@ -32,6 +32,7 @@ DDL = [
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_days INT",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_amount NUMERIC(14,2)",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS skipped_reason TEXT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS via_parent TEXT",       # a component line removed together with this parent asset
 ]
 
 REASONS = {"DECOMMISSIONED": "Decommissioned / retired", "SURPLUS": "Surplus", "TRANSFERRED": "Transferred to another site", "REPLACED": "Replaced",
@@ -65,8 +66,8 @@ def _ineligible(row):
     """Why this asset cannot be removed from AMC, or None."""
     if row["is_current"] != 1:
         return "it is archived or not current"
-    if row["record_level"] != "ASSET":
-        return "it is a component line, not a whole asset (remove its parent)"
+    if row["record_level"] not in ("ASSET", "COMPONENT"):
+        return "it is not an asset or a component line"
     if row["asset_class"] == "LAPTOP":
         return "laptops are outside AMC scope"
     if row.get("cover_type") != "AMC":
@@ -74,6 +75,21 @@ def _ineligible(row):
     if row.get("asset_status") == "REMOVED_FROM_AMC":
         return "it is already removed from AMC"
     return None
+
+
+def _expand(q, keys):
+    """Every line a request needs, parents first: the chosen keys, each followed by its component lines (monitor, GPU ... billed under it and
+    leaving with it). A component chosen on its own stays a line of its own, unless its parent is chosen too (then it follows the parent).
+    `q(sql, params)` returns rows. -> [(asset_key, via_parent or None)]"""
+    chosen = set(keys)
+    own = {r["asset_key"]: r["parent_asset_key"] for r in q("SELECT asset_key, parent_asset_key FROM asset WHERE asset_key = ANY(%s)", (keys,))}
+    out = []
+    for k in keys:
+        if own.get(k) in chosen:
+            continue                                          # it follows its parent below
+        out.append((k, None))
+        out += [(r["asset_key"], k) for r in q("SELECT asset_key FROM asset WHERE parent_asset_key = %s AND is_current = 1 AND asset_key <> %s ORDER BY asset_key", (k, k))]
+    return out
 
 
 def _open_work(con, k):
@@ -90,30 +106,78 @@ def preflight(key):
     calls = db.one("SELECT count(*) AS n FROM svc_call WHERE asset_key = %s AND is_current = 1 AND call_status = 'OPEN'", [key])["n"]
     rma = db.one("SELECT count(*) AS n FROM oem_rma WHERE asset_key = %s AND is_current = 1 AND coalesce(return_status, 'PENDING') <> 'RETURNED'", [key])["n"]
     comps = db.one("SELECT count(*) AS n FROM asset WHERE parent_asset_key = %s AND is_current = 1", [key])["n"]
+    return {"key": key, "blocked": _ineligible(row), "open_calls": calls, "open_rma": rma, "components": comps, **meta(),
+            "asset": {f: row.get(f) for f in ("asset_key", "asset_class", "asset_type", "make", "model", "serial_no", "engineer_name", "location_code", *SNAP)}}
+
+
+def meta():
+    """What the picker page needs once: the quarter, the reasons and the people who can have given the verbal approval."""
     q = pm.quarter(TODAY())
-    return {"key": key, "blocked": _ineligible(row), "open_calls": calls, "open_rma": rma, "components": comps,
-            "asset": {f: row.get(f) for f in ("asset_key", "asset_class", "asset_type", "make", "model", "serial_no", "engineer_name", "location_code", *SNAP)},
-            "quarter": {"label": q["label"], "start": q["start"], "end": q["end"]}, "default_date": q["start"],
+    return {"quarter": {"label": q["label"], "start": q["start"], "end": q["end"]}, "default_date": q["start"],
             "reasons": [{"value": k, "label": v} for k, v in REASONS.items()],
             "approvers": [{"username": r["username"], "display_name": r["display_name"]} for r in db.query("SELECT username, display_name FROM portal_user WHERE active ORDER BY display_name")]}
 
 
 def impact(keys, effective_date):
-    """The billing impact of removing these assets on a date: days and credit per asset, and the total. Read only."""
+    """The billing impact of removing these assets on a date: days and credit per asset (its component lines' rates included), and the total. Read only."""
     q = pm.quarter(TODAY())
     when = _date(effective_date, q)
     keys = list(dict.fromkeys(str(k).strip().upper() for k in (keys or []) if str(k).strip()))
-    rows = {r["asset_key"]: r for r in db.query("SELECT asset_key, rate_value, cover_type, asset_class, is_current, record_level, asset_status FROM asset WHERE asset_key = ANY(%s)", [keys])}
-    out, total = [], Decimal("0")
-    for k in keys:
+    lines = _expand(lambda sql, p: db.query(sql, list(p)), keys)
+    rows = {r["asset_key"]: r for r in db.query("SELECT asset_key, rate_value, cover_type, asset_class, is_current, record_level, asset_status FROM asset WHERE asset_key = ANY(%s)", [[k for k, _ in lines]])}
+    out, total = {}, Decimal("0")
+    for k, parent in lines:
         r = rows.get(k)
         b = billing(r["rate_value"] if r else None, when)
-        if b["amount"] is not None:
-            total += b["amount"]
-        out.append({"asset_key": k, "rate_value": r["rate_value"] if r else None, "days": b["days"], "amount": b["amount"], "no_rate": bool(r) and r["rate_value"] is None,
-                    "blocked": "it was not found" if not r else _ineligible(r)})
-    return {"effective_date": when, "quarter": {"label": q["label"], "start": q["start"], "end": q["end"], "days": (q["end"] - q["start"]).days + 1}, "assets": out, "total": total,
+        o = out.setdefault(parent or k, {"asset_key": parent or k, "rate_value": None, "days": b["days"], "amount": Decimal("0"), "component_amount": Decimal("0"), "components": 0, "no_rate": False, "blocked": None})
+        if parent:
+            o["components"] += 1
+            o["component_amount"] += b["amount"] or 0
+        else:
+            o.update(rate_value=r["rate_value"] if r else None, no_rate=bool(r) and r["rate_value"] is None, blocked="it was not found" if not r else _ineligible(r))
+        o["amount"] += b["amount"] or 0
+        total += b["amount"] or 0
+    return {"effective_date": when, "quarter": {"label": q["label"], "start": q["start"], "end": q["end"], "days": (q["end"] - q["start"]).days + 1}, "assets": list(out.values()), "total": total,
             "note": "Credit due from the vendor for the part of the quarter the asset is no longer covered. The rate is per quarter."}
+
+
+CANDIDATE_CAP, KEY_CAP = 300, 2000
+
+
+def candidates(f):
+    """The assets that can be picked for removal, with the filters offered beside them. Only eligible assets are listed (current, AMC cover,
+    not a laptop, not already removed); a component line is listed only when `components` is set - otherwise it travels with its parent.
+    f: q (text), classes[], types[], engineer, location, components (0/1), all (return every match, up to the cap, not just the first page). Read only."""
+    f = f or {}
+    where = ["is_current = 1", "cover_type = 'AMC'", "asset_class <> 'LAPTOP'", "coalesce(asset_status, '') <> 'REMOVED_FROM_AMC'"]
+    where.append("record_level IN ('ASSET','COMPONENT')" if f.get("components") else "record_level = 'ASSET'")
+    base = " AND ".join(where)
+    p = []
+    q = (f.get("q") or "").strip()[:60]
+    flt = ""
+    if q:
+        like = "%" + q.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%"
+        flt += " AND (asset_key ILIKE %s OR hostname ILIKE %s OR serial_no ILIKE %s OR model ILIKE %s OR make ILIKE %s OR ongc_asset_id ILIKE %s OR user_name ILIKE %s)"
+        p += [like] * 7
+    for col, vals in (("asset_class", f.get("classes")), ("asset_type", f.get("types"))):
+        vals = [str(v).strip().upper() for v in (vals or []) if str(v).strip()]
+        if vals:
+            flt += f" AND {col} = ANY(%s)"
+            p.append(vals)
+    for col, val in (("engineer_name", f.get("engineer")), ("location_code", f.get("location"))):
+        if val:
+            flt += f" AND {col} = %s"
+            p.append(str(val).strip().upper())
+    cols = """asset_key, record_level, parent_asset_key, asset_class, asset_type, make, model, serial_no, engineer_name, location_code, rate_value, cover_expiry_date,
+              (SELECT count(*) FROM asset c WHERE c.parent_asset_key = asset.asset_key AND c.is_current = 1 AND c.asset_key <> asset.asset_key) AS components,
+              (SELECT count(*) FROM svc_call s WHERE s.asset_key = asset.asset_key AND s.is_current = 1 AND s.call_status = 'OPEN') AS open_calls"""
+    keys = [r["asset_key"] for r in db.query(f"SELECT asset_key FROM asset WHERE {base}{flt} ORDER BY asset_class, asset_type, asset_key LIMIT {KEY_CAP + 1}", p)]
+    rows = db.query(f"SELECT {cols} FROM asset WHERE {base}{flt} ORDER BY asset_class, asset_type, asset_key LIMIT {KEY_CAP if f.get('all') else CANDIDATE_CAP}", p)
+    facets = {"classes": db.query(f"SELECT asset_class AS value, count(*) AS n FROM asset WHERE {base} AND asset_class IS NOT NULL GROUP BY 1 ORDER BY 1"),
+              "types": db.query(f"SELECT asset_class, asset_type AS value, count(*) AS n FROM asset WHERE {base} AND asset_type IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2"),
+              "engineers": db.query(f"SELECT engineer_name AS value, count(*) AS n FROM asset WHERE {base} AND engineer_name IS NOT NULL GROUP BY 1 ORDER BY 1"),
+              "locations": db.query(f"SELECT location_code AS value, count(*) AS n FROM asset WHERE {base} AND location_code IS NOT NULL GROUP BY 1 ORDER BY 1")}
+    return {"rows": rows, "total": len(keys) if len(keys) <= KEY_CAP else None, "keys": keys[:KEY_CAP] if len(keys) <= KEY_CAP else [], "capped": len(keys) > len(rows), "facets": facets}
 
 
 def _archive_line(con, no, line, row, when, approver, note, editor, ip):
@@ -138,17 +202,28 @@ def _apply(con, no, editor, ip):
         raise NotFound("This request is not waiting to be applied.")
     head = head[0]
     done = skipped = 0
-    for line in edit._rows(con, "SELECT * FROM amc_removal_line WHERE removal_no = %s ORDER BY line_id", (no,)):
+    blocked_parents = set()
+    lines = edit._rows(con, "SELECT * FROM amc_removal_line WHERE removal_no = %s ORDER BY line_id", (no,))
+    for line in lines:
         r = edit._rows(con, "SELECT * FROM asset WHERE asset_key = %s FOR UPDATE", (line["asset_key"],))
-        why = "it was not found" if not r else _ineligible(r[0])
-        if not why and edit._exists(con, "SELECT 1 FROM asset WHERE parent_asset_key = %s AND is_current = 1", (line["asset_key"],)):
-            why = "it has component lines"
+        if line["via_parent"]:                                  # a component line: it only needs its parent to have gone
+            why = "its parent asset was not removed" if line["via_parent"] in blocked_parents else ("it was not found" if not r or r[0]["is_current"] != 1 else None)
+        else:
+            why = "it was not found" if not r else _ineligible(r[0])
         if why:
             con.execute("UPDATE amc_removal_line SET skipped_reason = %s WHERE line_id = %s", (why, line["line_id"]))
+            blocked_parents.add(line["asset_key"])
             skipped += 1
             continue
         _archive_line(con, no, line, r[0], head["effective_date"], head["approved_by"], head["note"], editor, ip)
         done += 1
+        if not line["via_parent"]:                              # a component added after the request was made still leaves with its parent
+            known = {x["asset_key"] for x in lines}
+            for c in edit._rows(con, "SELECT * FROM asset WHERE parent_asset_key = %s AND is_current = 1 AND asset_key <> %s ORDER BY asset_key FOR UPDATE", (line["asset_key"], line["asset_key"])):
+                if c["asset_key"] not in known:
+                    nl = edit._rows(con, "INSERT INTO amc_removal_line (removal_no, asset_key, reason, via_parent) VALUES (%s,%s,%s,%s) RETURNING *", (no, c["asset_key"], line["reason"], line["asset_key"]))[0]
+                    _archive_line(con, no, nl, c, head["effective_date"], head["approved_by"], head["note"], editor, ip)
+                    done += 1
     con.execute("UPDATE amc_removal SET status = 'APPLIED' WHERE removal_no = %s", (no,))
     return done, skipped
 
@@ -175,15 +250,14 @@ def remove(keys, body, editor, ip):
         if not approver or not edit._exists(con, "SELECT 1 FROM portal_user WHERE username = %s AND active", (approver,)):
             raise Invalid("Choose the portal user who gave the verbal approval.", {"approved_by": "required - pick an active portal user"})
         rows = {r["asset_key"]: r for r in edit._rows(con, "SELECT * FROM asset WHERE asset_key = ANY(%s) ORDER BY asset_key FOR UPDATE", (keys,))}
+        lines = _expand(lambda sql, p: edit._rows(con, sql, p), keys)
         problems, warnings = [], []
-        for k in keys:
+        for k in (k for k, parent in lines if parent is None):
             r = rows.get(k)
             why = "it was not found" if not r else _ineligible(r)
             if why:
                 problems.append(f"{k}: {why}")
                 continue
-            if edit._exists(con, "SELECT 1 FROM asset WHERE parent_asset_key = %s AND is_current = 1", (k,)):
-                problems.append(f"{k}: it has component lines - they cannot be removed yet (coming in a later step)")
             calls, rma = _open_work(con, k)
             if (calls or rma) and not (override and len(override) >= 5):
                 warnings.append(f"{k}: {calls} open call(s), {rma} OEM RMA case(s) not returned")
@@ -197,11 +271,11 @@ def remove(keys, body, editor, ip):
         no = f"AMCR-{fy}{q['label'][:2]}-{seq:03d}"
         con.execute("INSERT INTO amc_removal (removal_no, quarter_label, seq, effective_date, requested_by, approved_by, approved_on, note, status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'PENDING')",
                     (no, q["label"], seq, when, editor, approver, TODAY(), note))
-        for k in keys:
-            con.execute("INSERT INTO amc_removal_line (removal_no, asset_key, reason, override_note) VALUES (%s,%s,%s,%s)", (no, k, reasons[k], override))
+        for k, parent in lines:
+            con.execute("INSERT INTO amc_removal_line (removal_no, asset_key, reason, override_note, via_parent) VALUES (%s,%s,%s,%s,%s)", (no, k, reasons[parent or k], override if not parent else None, parent))
         if when <= TODAY():
             _apply(con, no, editor, ip)
-    return {"removal_no": no, "assets": keys, "status": "APPLIED" if when <= TODAY() else "PENDING"}
+    return {"removal_no": no, "assets": [k for k, p in lines if p is None], "components": sum(1 for _, p in lines if p), "status": "APPLIED" if when <= TODAY() else "PENDING"}
 
 
 def apply_due(editor="SCHEDULER", ip=None):

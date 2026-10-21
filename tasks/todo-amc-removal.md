@@ -22,8 +22,8 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 ## Phase 2 - Many assets, any class/type
 
 - [x] **T4: Archive side-effects check** (S) - confirm an archived asset drops out of PM scope, cover/expiry mails and dashboards; inventory re-import does not resurrect it; PM history untouched. Dep: T2. Done: tests show PM scope, cover mails and dashboard counts drop it; the archive lock the loader reads (`master_db.py:376`) is set; loader run itself not executed.
-- [ ] **T5: Components removed with the parent** (S) - Dep: T2.
-- [ ] **T6: Basket picker across classes and types with eligibility rules** (M)
+- [x] **T5: Components removed with the parent** (S) - Dep: T2. Done 2026-10-21: parts leave with the parent (their own rates are credited), a part can also be removed alone, a part added after a pending request still leaves with it, a parent that gets skipped keeps its parts.
+- [x] **T6: Basket picker across classes and types with eligibility rules** (M) - page `Data tools > Remove from AMC` (`admin/amc`, Administrators and Team Leader/SI). Checked in the browser pane with a stubbed API fed from real read-only data (1,084 eligible assets); not against the live server.
   - Accept: filters (class, type, make, model, location, engineer, status, cover expiry); 3+ assets of 2+ classes in one request; LAPTOP, WRTY, already-removed, non-current are blocked with the reason shown; open call/RMA = warning needing an override note.
   - Dep: T3.
 - [ ] **T7: Paste/upload list of CI names / serials / keys** (M) - unmatched and ineligible rows listed, nothing applied until confirmed. Dep: T6.
