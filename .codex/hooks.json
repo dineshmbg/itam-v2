@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File 'C:\\Users\\dines\\Documents\\project-claude\\.codex\\hooks\\dev-reload.ps1'",
+            "timeout": 90,
+            "statusMessage": "Reloading dev server..."
+          }
+        ]
+      }
+    ]
+  }
+}
