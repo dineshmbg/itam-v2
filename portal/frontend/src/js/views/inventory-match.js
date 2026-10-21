@@ -190,13 +190,11 @@ export function mountInventoryMatch(root) {
 // The PC check script: a .bat that reads one PC (no agent, no PowerShell, no administrator rights) and sends the result to the portal, or saves a file to upload here.
 function checkScriptPanel() {
   const rotate = h('input', { type: 'checkbox', id: 'sw-rotate' });
-  const drop = h('input', { type: 'text', id: 'sw-drop', value: '\\\\10.205.64.203\\ank-helpdesk\\common-for-all\\check-results', maxlength: 200 });
   const getScript = async () => {
-    try { await download('/api/software/script', { rotate: rotate.checked, drop: drop.value }, 'ankcheck.bat'); rotate.checked = false; toast('Script downloaded. Put it on the share.'); } catch (e) { toast(e.message || 'Could not build the script.', 'bad'); }
+    try { await download('/api/software/script', { rotate: rotate.checked }, 'ankcheck.bat'); rotate.checked = false; toast('Script downloaded. Put it on the share.'); } catch (e) { toast(e.message || 'Could not build the script.', 'bad'); }
   };
   return panel('Software check script (no agent needed)', { cls: 'span-12' }, h('div', { class: 'stack-v' },
-    h('p', { class: 'muted' }, 'A small .bat file that reads one PC (Windows build, Trend Micro, BigFix, Zscaler, other VPNs, SAP GUI, Microsoft 365 account) and sends the result here. It installs nothing and needs no administrator rights. Where the PC cannot reach the portal it saves a text file to the drop folder instead; upload those files below.'),
-    frow2('sw-drop', 'Drop folder for saved results', drop),
+    h('p', { class: 'muted' }, 'A small .bat file that reads one PC (Windows build, Trend Micro, BigFix, Zscaler, other VPNs, SAP GUI, Microsoft 365 account) and sends the result here. It installs nothing and needs no administrator rights. It creates one file, ankcheck_<PC name>.txt, in the folder it is run from (put the script on the share); only if that folder cannot be written does it save the file in the user Documents folder. When the PC cannot reach the portal, upload those files below.'),
     h('label', { class: 'opt', for: 'sw-rotate' }, rotate, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'Make a new token (copies already on the share stop working)')),
     h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: getScript }, icon('download'), 'Download ankcheck.bat')),
     h('h4', null, 'Enter many machines at once, and upload saved results'),

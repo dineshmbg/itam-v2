@@ -122,11 +122,12 @@ def test_asset_record_carries_software_panel_only_for_in_scope_classes(box):
 
 # ---------------------------------------------------------------- inventory match integration (task 4)
 def _ank(box, n=3):
-    from test_inventory_match import _machines
-    rows = [r[0] for r in _machines(box, 40) if r[0].startswith("ANK")]
+    # machines nobody has recorded anything about yet: the dev database holds real observations (every match run records the report), and a test must not depend on them
+    rows = [r[0] for r in box.execute("""SELECT ci_no FROM asset a WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND ci_no ~ '^ANK'
+                                         AND NOT EXISTS (SELECT 1 FROM portal_sw_obs o WHERE o.asset_key = a.asset_key) ORDER BY ci_no LIMIT %s""", (n,)).fetchall()]
     if len(rows) < n:
         pytest.skip("not enough ANK desktops in the dev database")
-    return rows[:n]
+    return rows
 
 
 def test_match_cross_checks_report_against_script_and_manual_observations(box):
@@ -139,14 +140,14 @@ def test_match_cross_checks_report_against_script_and_manual_observations(box):
     assert "not installed" in by[a]["xcheck"] and "Script" in by[a]["xcheck"]
     assert "installed" in by[b]["xcheck"] and "Entered by hand" in by[b]["xcheck"]
     assert "xcheck" not in by[c] and "observed" not in by[c]                  # no observation: the row is exactly as before
-    assert summary["xcheck"] == 2
+    assert summary["xcheck"] >= 2                                             # at least these two; real observations on other machines may add more
 
 
 def test_match_without_observations_adds_nothing(box):
     from test_inventory_match import TM, _go, _tm
     a, *_ = _ank(box, 1)
     summary, res = _go([(TM, [_tm(a)])], {"prefix": "ANK"})
-    assert "xcheck" not in summary and all("xcheck" not in r for r in res["assets"])
+    assert all("xcheck" not in r and "observed" not in r for r in res["assets"] if r["ci"] == a)
 
 
 def test_running_a_match_records_the_report_as_observations(box):
@@ -226,8 +227,11 @@ def test_check_token_is_stable_rotatable_and_constant_time_checked(box):
 
 
 def test_script_text_has_the_address_and_token_and_windows_line_endings():
-    s = swobs.script_text("https://10.205.64.25", "TOKEN123", r"\srv\share\drop")
-    assert 'set "URL=https://10.205.64.25"' in s and "/api/software/check" in s and "TOKEN123" in s and r"\srv\share\drop" in s
+    s = swobs.script_text("https://10.205.64.25", "TOKEN123")
+    assert 'set "URL=https://10.205.64.25"' in s and "/api/software/check" in s and "TOKEN123" in s
+    # one file only, next to the script (the share); Documents only when that folder cannot be written; no report folder, no scratch files
+    assert 'set "OUT=%HERE%ankcheck_%COMPUTERNAME%.txt"' in s and "%~dp0" in s and "\\Documents\\ankcheck_" in s
+    assert "REPORTDIR" not in s and "Details.txt" not in s and "Software_Raw" not in s and "mkdir" not in s.lower() and "__DROP__" not in s
     assert s.count("\r\n") > 40 and "\n" not in s.replace("\r\n", "")
     assert "powershell" not in s.lower().replace("no powershell", "")
 
