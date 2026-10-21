@@ -9,7 +9,7 @@ import os
 import threading
 import time
 
-from . import domain, auth, backup, db, mailer, pm, pmwo
+from . import amcremoval, domain, auth, backup, db, mailer, pm, pmwo
 
 log = logging.getLogger("itam.scheduler")
 DEFAULT_BACKUP = {"enabled": True, "time": "02:00", "keep": 14}
@@ -82,6 +82,13 @@ def tick(now=None):
                 auth.log("SCHEDULER", None, "PM_WO_DEEMED", None, {"work_orders": d})
         job("pm", do_pm)
         st["last_pm"] = today; changed = True
+
+    if st.get("last_amc") != today:
+        def do_amc():
+            for no, done, skipped in amcremoval.apply_due("SCHEDULER"):
+                auth.log("SCHEDULER", None, "AMC_REMOVE", no, {"applied": done, "skipped": skipped})
+        job("amc_removals", do_amc)
+        st["last_amc"] = today; changed = True
 
     last_rules = st.get("last_rules_ts", 0)
     if time.time() - last_rules >= mailer.RULE_INTERVAL_S:

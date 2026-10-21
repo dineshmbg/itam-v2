@@ -255,7 +255,7 @@ def detect(rule_key, params, today=None):
         rows = db.query("""SELECT a.asset_key, a.asset_class, trim(coalesce(a.make,'') || ' ' || coalesce(a.model,'')) AS model, a.location_code, a.engineer_name
                            FROM asset a WHERE a.is_current = 0 AND a.record_level = 'ASSET' AND a.engineer_name IS NOT NULL
                              AND (EXISTS (SELECT 1 FROM asset_change_log l WHERE l.asset_key = a.asset_key AND l.change_type = 'REMOVED' AND l.snapshot_date >= %s)
-                                  OR EXISTS (SELECT 1 FROM portal_audit p WHERE p.dataset = 'assets' AND p.record_key = a.asset_key AND p.action = 'ARCHIVE' AND p.at >= %s))""", [_lookback(params), _lookback(params)])
+                                  OR EXISTS (SELECT 1 FROM portal_audit p WHERE p.dataset = 'assets' AND p.record_key = a.asset_key AND p.action IN ('ARCHIVE','AMC_REMOVE') AND p.at >= %s))""", [_lookback(params), _lookback(params)])
         for eng, items in _group(rows, "engineer_name").items():
             D[eng] = dict(event_key="|".join(sorted(i["asset_key"] for i in items))[:300], subject=f"{len(items)} asset(s) removed from your list", intro="These assets are no longer in the register.",
                           rows=items, columns=[("asset_key", "Asset"), ("asset_class", "Class"), ("model", "Model"), ("location_code", "Location")])

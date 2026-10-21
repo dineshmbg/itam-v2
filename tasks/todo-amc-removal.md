@@ -12,7 +12,7 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 - [x] **T2: Apply effects with snapshot** (S)
   - Accept: rate/cover/pm_status copied to the line, then rate cleared; `amc_removed_rate` integrity check stays green.
   - Dep: T1. Done together with T1 (snapshot + rate cleared in `amcremoval.remove`).
-- [ ] **T3: Future-dated removal + billing impact** (M) - date >= quarter start and default already done in T1; remaining: future dates and the credit amount (rate is per quarter)
+- [x] **T3: Future-dated removal + billing impact** (M) - date >= quarter start and default already done in T1; done 2026-10-21: later day in the running quarter waits as PENDING and is applied by the daily scheduler job; credit = quarterly rate x days left / days in quarter, stored on the line; pending requests can be cancelled; API `/api/amc-removal/impact|requests|cancel` (no requests list screen yet - T10). Mailer 'asset removed' rule now also covers AMC removals
   - Accept: date < running-quarter start rejected; days and credit amount shown per line and total; future date applied by the scheduled task.
   - Dep: T2. Needs open question 1.
 
@@ -21,7 +21,7 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 
 ## Phase 2 - Many assets, any class/type
 
-- [ ] **T4: Archive side-effects check** (S) - confirm an archived asset drops out of PM scope, cover/expiry mails and dashboards; inventory re-import does not resurrect it; PM history untouched. Dep: T2.
+- [x] **T4: Archive side-effects check** (S) - confirm an archived asset drops out of PM scope, cover/expiry mails and dashboards; inventory re-import does not resurrect it; PM history untouched. Dep: T2. Done: tests show PM scope, cover mails and dashboard counts drop it; the archive lock the loader reads (`master_db.py:376`) is set; loader run itself not executed.
 - [ ] **T5: Components removed with the parent** (S) - Dep: T2.
 - [ ] **T6: Basket picker across classes and types with eligibility rules** (M)
   - Accept: filters (class, type, make, model, location, engineer, status, cover expiry); 3+ assets of 2+ classes in one request; LAPTOP, WRTY, already-removed, non-current are blocked with the reason shown; open call/RMA = warning needing an override note.

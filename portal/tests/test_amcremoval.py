@@ -85,11 +85,11 @@ def test_component_lines_are_refused_for_now(fleet):
         go(["TST-D-1"])
 
 
-def test_effective_date_rules(fleet):
-    with pytest.raises(Invalid, match="before the running quarter"):
+def test_effective_date_must_fall_in_the_running_quarter(fleet):
+    with pytest.raises(Invalid, match="running quarter"):
         go(["TST-D-1"], effective_date=(Q["start"] - dt.timedelta(days=1)).isoformat())
-    with pytest.raises(Invalid, match="future"):
-        go(["TST-D-1"], effective_date=(dt.date.today() + dt.timedelta(days=1)).isoformat())
+    with pytest.raises(Invalid, match="running quarter"):
+        go(["TST-D-1"], effective_date=(Q["end"] + dt.timedelta(days=1)).isoformat())
     go(["TST-D-1"], effective_date=dt.date.today().isoformat())
     assert one(fleet, "SELECT effective_date FROM amc_removal")["effective_date"] == dt.date.today()
 
@@ -130,3 +130,108 @@ def test_route_is_for_administrators_and_team_leaders_only(fleet, monkeypatch):
         r = c.post("/api/amc-removal/remove", json=body, headers=HDR)
         assert r.status_code == 200, r.text
         assert r.json()["assets"] == ["TST-D-1"]
+
+
+# ---------------------------------------------------------------- T3: billing and future-dated removals
+def test_billing_is_pro_rata_on_the_quarterly_rate():
+    q = pm.quarter(dt.date(2026, 10, 21))                                   # Q3: 1 Oct - 31 Dec 2026, 92 days
+    assert (q["start"], q["end"]) == (dt.date(2026, 10, 1), dt.date(2026, 12, 31))
+    full = amcremoval.billing(1500, dt.date(2026, 10, 1))
+    assert (full["days"], full["quarter_days"], str(full["amount"])) == (92, 92, "1500.00")      # removed on day 1 = the whole quarter is credited
+    assert (amcremoval.billing(1500, dt.date(2026, 11, 1))["days"], str(amcremoval.billing(1500, dt.date(2026, 11, 1))["amount"])) == (61, "994.57")
+    assert str(amcremoval.billing(1500, dt.date(2026, 12, 31))["amount"]) == "16.30"                # last day only: 1 of 92 days
+    assert amcremoval.billing(None, dt.date(2026, 10, 1))["amount"] is None
+
+
+def test_credit_is_stored_on_the_line_when_applied(fleet):
+    r = go(["TST-D-1", "TST-S-1"], effective_date=Q["start"].isoformat())
+    lines = {x["asset_key"]: x for x in rows(fleet, "SELECT * FROM amc_removal_line WHERE removal_no = %s", (r["removal_no"],))}
+    qdays = (Q["end"] - Q["start"]).days + 1
+    assert (lines["TST-D-1"]["credit_days"], str(lines["TST-D-1"]["credit_amount"])) == (qdays, "1500.00")
+    assert str(lines["TST-S-1"]["credit_amount"]) == "9000.00"
+    assert [x for x in amcremoval.requests() if x["removal_no"] == r["removal_no"]][0]["credit_total"] == 10500
+
+
+def test_impact_shows_days_credit_and_total_before_anything_is_changed(fleet):
+    out = amcremoval.impact(["TST-D-1", "TST-S-1", "TST-L-1"], Q["start"].isoformat())
+    by = {a["asset_key"]: a for a in out["assets"]}
+    assert str(by["TST-D-1"]["amount"]) == "1500.00" and by["TST-L-1"]["blocked"] == "laptops are outside AMC scope"
+    assert str(out["total"]) == "10500.00" and out["quarter"]["days"] == (Q["end"] - Q["start"]).days + 1
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1        # read only
+
+
+@pytest.fixture()
+def tomorrow():
+    d = dt.date.today() + dt.timedelta(days=1)
+    if d > Q["end"]:
+        pytest.skip("today is the last day of the quarter - no later day to test with")
+    return d
+
+
+def test_a_later_date_waits_and_is_applied_when_it_arrives(fleet, tomorrow, monkeypatch):
+    r = go(["TST-D-1"], effective_date=tomorrow.isoformat())
+    assert r["status"] == "PENDING"
+    assert one(fleet, "SELECT is_current, rate_value FROM asset WHERE asset_key = 'TST-D-1'") == {"is_current": 1, "rate_value": 1500}      # untouched
+    assert amcremoval.apply_due() == []                                                                  # its day has not come
+    monkeypatch.setattr(amcremoval, "TODAY", lambda: tomorrow)
+    assert amcremoval.apply_due() == [(r["removal_no"], 1, 0)]
+    assert one(fleet, "SELECT is_current, asset_status FROM asset WHERE asset_key = 'TST-D-1'") == {"is_current": 0, "asset_status": "REMOVED_FROM_AMC"}
+    assert one(fleet, "SELECT status FROM amc_removal WHERE removal_no = %s", (r["removal_no"],))["status"] == "APPLIED"
+    assert amcremoval.apply_due() == []                                                                  # never applied twice
+
+
+def test_a_pending_asset_that_became_ineligible_is_skipped_with_the_reason(fleet, tomorrow, monkeypatch):
+    r = go(["TST-D-1", "TST-S-1"], effective_date=tomorrow.isoformat())
+    fleet.execute("UPDATE asset SET cover_type = 'WRTY' WHERE asset_key = 'TST-S-1'")                   # cover changed in the meantime
+    monkeypatch.setattr(amcremoval, "TODAY", lambda: tomorrow)
+    assert amcremoval.apply_due() == [(r["removal_no"], 1, 1)]
+    assert one(fleet, "SELECT skipped_reason FROM amc_removal_line WHERE asset_key = 'TST-S-1'")["skipped_reason"] == "it is not covered by AMC"
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-S-1'")["is_current"] == 1
+
+
+def test_a_pending_request_can_be_cancelled_but_an_applied_one_cannot(fleet, tomorrow):
+    r = go(["TST-D-1"], effective_date=tomorrow.isoformat())
+    amcremoval.cancel(r["removal_no"], ED, IP)
+    assert amcremoval.apply_due() == [] and one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1
+    done = go(["TST-S-1"])
+    with pytest.raises(Conflict, match="waiting"):
+        amcremoval.cancel(done["removal_no"], ED, IP)
+
+
+# ---------------------------------------------------------------- T4: what an archived asset drops out of
+def test_removed_asset_drops_out_of_pm_scope_and_cover_alerts(fleet):
+    from portal.app import mailer
+    scope = f"SELECT count(*) FROM asset WHERE {pm.IN_SCOPE} AND asset_key = 'TST-D-1'"
+    fleet.execute("UPDATE asset SET pm_status = 'PENDING', engineer_name = 'TST ENG', cover_expiry_date = current_date + 10, cover_status = 'EXPIRING_90D' WHERE asset_key = 'TST-D-1'")
+    assert n(fleet, scope) == 1
+    go(["TST-D-1"])
+    assert n(fleet, scope) == 0                                                                           # no longer in the PM list or PM counts
+    for rule in ("AMC_EXPIRED", "AMC_EXPIRING"):
+        got = mailer.detect(rule, {"lookback_days": 3650, "within_days": 90}, today=dt.date(2026, 10, 19))      # a Monday
+        assert not [i for d in got.values() for i in d["rows"] if i["asset_key"] == "TST-D-1"]
+
+
+def test_the_engineer_is_told_the_asset_left_their_list(fleet):
+    from portal.app import mailer
+    fleet.execute("UPDATE asset SET engineer_name = 'TST ENG' WHERE asset_key = 'TST-D-1'")
+    go(["TST-D-1"])
+    got = mailer.detect("ASSET_REMOVED", {"lookback_days": 7}, today=dt.date.today())
+    assert [i["asset_key"] for i in got["TST ENG"]["rows"]] == ["TST-D-1"]
+
+
+def test_the_archive_lock_the_inventory_loader_reads_is_set(fleet):
+    import itam_locks
+    go(["TST-D-1"])
+    _, _, archived = itam_locks.load_overrides(fleet, "assets")
+    assert "TST-D-1" in archived                                  # master_db.py keeps these rows is_current = 0 on every re-import
+
+
+def test_read_routes_serialise_money_and_dates(fleet, monkeypatch):
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        r = c.get(f"/api/amc-removal/impact?keys=TST-D-1,TST-S-1&date={Q['start']}", headers=HDR)
+        assert r.status_code == 200, r.text
+        assert float(r.json()["total"]) == 10500 and r.json()["assets"][0]["days"] == (Q["end"] - Q["start"]).days + 1
+        assert c.post("/api/amc-removal/remove", json={"keys": ["TST-D-1"], "reason": "SURPLUS", "approved_by": "TST-APPROVER"}, headers=HDR).status_code == 200
+        rows = c.get("/api/amc-removal/requests", headers=HDR).json()["rows"]
+        assert rows[0]["status"] == "APPLIED" and float(rows[0]["credit_total"]) == 1500
