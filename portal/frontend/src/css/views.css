@@ -130,3 +130,6 @@
 .sw-step { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c-text-3); }
 .sw-grow { flex: 1; }
 .sw-out:not(:empty) { border-top: 1px solid var(--c-border); padding-top: 8px; font-size: 13px; }
+.sw-card { --tint: var(--chart-1); background: color-mix(in srgb, var(--tint) 9%, var(--c-surface)); border-top: 3px solid var(--tint); }
+.sw-card:nth-child(2) { --tint: var(--chart-2); }
+.sw-card:nth-child(3) { --tint: var(--chart-3); }
