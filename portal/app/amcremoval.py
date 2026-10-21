@@ -26,8 +26,13 @@ DDL = [
     "CREATE INDEX IF NOT EXISTS ix_amc_removal_line_asset ON amc_removal_line (asset_key)",
     # PENDING: waiting for its effective date. The snapshot and the credit are taken when it is applied. SKIPPED lines were no longer eligible then.
     "ALTER TABLE amc_removal DROP CONSTRAINT IF EXISTS amc_removal_status_check",
-    "ALTER TABLE amc_removal ADD CONSTRAINT amc_removal_status_check CHECK (status IN ('PENDING','APPLIED','REVERSED','CANCELLED'))",
+    "ALTER TABLE amc_removal ADD CONSTRAINT amc_removal_status_check CHECK (status IN ('REQUESTED','PENDING','APPLIED','REVERSED','CANCELLED','REJECTED'))",
     "ALTER TABLE amc_removal ALTER COLUMN status SET DEFAULT 'PENDING'",
+    # REQUESTED: an engineer's request waiting for a team leader / administrator (no approver yet); REJECTED carries the reason the engineer reads.
+    "ALTER TABLE amc_removal ALTER COLUMN approved_by DROP NOT NULL",
+    "ALTER TABLE amc_removal ALTER COLUMN approved_on DROP NOT NULL",
+    "ALTER TABLE amc_removal ADD COLUMN IF NOT EXISTS decided_by TEXT",
+    "ALTER TABLE amc_removal ADD COLUMN IF NOT EXISTS decision_note TEXT",
     "ALTER TABLE amc_removal_line ALTER COLUMN snapshot DROP NOT NULL",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_days INT",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_amount NUMERIC(14,2)",
@@ -64,6 +69,8 @@ def billing(rate, effective):
 
 def _ineligible(row):
     """Why this asset cannot be removed from AMC, or None."""
+    if row.get("asset_status") == "REMOVED_FROM_AMC":
+        return "it is already removed from AMC"
     if row["is_current"] != 1:
         return "it is archived or not current"
     if row["record_level"] not in ("ASSET", "COMPONENT"):
@@ -72,8 +79,6 @@ def _ineligible(row):
         return "laptops are outside AMC scope"
     if row.get("cover_type") != "AMC":
         return "it is not covered by AMC"
-    if row.get("asset_status") == "REMOVED_FROM_AMC":
-        return "it is already removed from AMC"
     return None
 
 
@@ -228,54 +233,140 @@ def _apply(con, no, editor, ip):
     return done, skipped
 
 
+def _norm(keys):
+    return list(dict.fromkeys(str(k).strip().upper() for k in (keys or []) if str(k).strip()))
+
+
+def _text(raw):
+    return re.sub(r"\s+", " ", str(raw or "").strip())[:300] or None
+
+
+def _reasons(keys, body):
+    r = body.get("reason")
+    r = r if isinstance(r, dict) else {k: r for k in keys}
+    r = {k: str(r.get(k) or "").upper() for k in keys}
+    if any(v not in REASONS for v in r.values()):
+        raise Invalid("Give a reason for every asset.", {"reason": "required"})
+    return r
+
+
+def _check(con, keys, override, owner=None):
+    """Lock the chosen assets, work out the lines (parts follow their parent) and refuse the request - touching nothing - if any chosen asset
+    cannot go. Open calls / RMA cases refuse it too unless an override note is given. `owner`: every chosen asset must be assigned to this engineer."""
+    rows = {r["asset_key"]: r for r in edit._rows(con, "SELECT * FROM asset WHERE asset_key = ANY(%s) ORDER BY asset_key FOR UPDATE", (keys,))}
+    lines = _expand(lambda sql, p: edit._rows(con, sql, p), keys)
+    problems, warnings = [], []
+    for k in (k for k, parent in lines if parent is None):
+        r = rows.get(k)
+        why = "it was not found" if not r else _ineligible(r)
+        if not why and owner is not None and r.get("engineer_name") != owner:
+            why = "it is not assigned to you"
+        if why:
+            problems.append(f"{k}: {why}")
+            continue
+        calls, rma = _open_work(con, k)
+        if owner is None and (calls or rma) and not (override and len(override) >= 5):
+            warnings.append(f"{k}: {calls} open call(s), {rma} OEM RMA case(s) not returned")
+    if problems:
+        raise Conflict("Nothing was removed. " + "; ".join(problems))
+    if warnings:
+        raise Conflict("Nothing was removed. " + "; ".join(warnings) + ". Give an override note (at least 5 characters) to remove them anyway.")
+    return lines
+
+
+def _approver(con, raw):
+    who = str(raw or "").strip()
+    if not who or not edit._exists(con, "SELECT 1 FROM portal_user WHERE username = %s AND active", (who,)):
+        raise Invalid("Choose the portal user who gave the verbal approval.", {"approved_by": "required - pick an active portal user"})
+    return who
+
+
+def _create(con, q, when, requested_by, approver, note, status, lines, reasons, override):
+    con.execute("SELECT pg_advisory_xact_lock(hashtext('amc_removal'))")          # two requests at once must not take the same number
+    seq = edit._rows(con, "SELECT coalesce(max(seq), 0) + 1 AS n FROM amc_removal WHERE quarter_label = %s", (q["label"],))[0]["n"]
+    fy = q["start"].year if q["start"].month >= 4 else q["start"].year - 1
+    no = f"AMCR-{fy}{q['label'][:2]}-{seq:03d}"
+    con.execute("INSERT INTO amc_removal (removal_no, quarter_label, seq, effective_date, requested_by, approved_by, approved_on, note, status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (no, q["label"], seq, when, requested_by, approver, TODAY() if approver else None, note, status))
+    for k, parent in lines:
+        con.execute("INSERT INTO amc_removal_line (removal_no, asset_key, reason, override_note, via_parent) VALUES (%s,%s,%s,%s,%s)", (no, k, reasons[parent or k], override if not parent else None, parent))
+    return no
+
+
+def _result(no, lines, status):
+    return {"removal_no": no, "assets": [k for k, p in lines if p is None], "components": sum(1 for _, p in lines if p), "status": status}
+
+
 def remove(keys, body, editor, ip):
-    """Remove the assets `keys` from AMC in one request. body: reason (a REASONS key, or {asset_key: reason}), approved_by (portal username),
-    effective_date (a day of the running quarter; today or earlier applies at once, a later day waits), note, override_note (needed when an asset
-    still has open calls / RMA cases). Returns {"removal_no", "assets", "status"}."""
+    """A team leader / administrator removes the assets `keys` from AMC in one request. body: reason (a REASONS key, or {asset_key: reason}),
+    approved_by (portal username), effective_date (a day of the running quarter; today or earlier applies at once, a later day waits), note,
+    override_note (needed when an asset still has open calls / RMA cases). Returns {"removal_no", "assets", "components", "status"}."""
     body = body or {}
-    keys = list(dict.fromkeys(str(k).strip().upper() for k in (keys or []) if str(k).strip()))
+    keys = _norm(keys)
     if not keys:
         raise Invalid("Choose at least one asset.", {"keys": "required"})
-    reasons = body.get("reason")
-    reasons = reasons if isinstance(reasons, dict) else {k: reasons for k in keys}
-    reasons = {k: str(reasons.get(k) or "").upper() for k in keys}
-    if any(r not in REASONS for r in reasons.values()):
-        raise Invalid("Give a reason for every asset.", {"reason": "required"})
-    note = re.sub(r"\s+", " ", str(body.get("note") or "").strip())[:300] or None
-    override = re.sub(r"\s+", " ", str(body.get("override_note") or "").strip())[:300] or None
+    reasons = _reasons(keys, body)
     q = pm.quarter(TODAY())
     when = _date(body.get("effective_date"), q)
-    approver = str(body.get("approved_by") or "").strip()
     with db.write() as con:
-        if not approver or not edit._exists(con, "SELECT 1 FROM portal_user WHERE username = %s AND active", (approver,)):
-            raise Invalid("Choose the portal user who gave the verbal approval.", {"approved_by": "required - pick an active portal user"})
-        rows = {r["asset_key"]: r for r in edit._rows(con, "SELECT * FROM asset WHERE asset_key = ANY(%s) ORDER BY asset_key FOR UPDATE", (keys,))}
-        lines = _expand(lambda sql, p: edit._rows(con, sql, p), keys)
-        problems, warnings = [], []
-        for k in (k for k, parent in lines if parent is None):
-            r = rows.get(k)
-            why = "it was not found" if not r else _ineligible(r)
-            if why:
-                problems.append(f"{k}: {why}")
-                continue
-            calls, rma = _open_work(con, k)
-            if (calls or rma) and not (override and len(override) >= 5):
-                warnings.append(f"{k}: {calls} open call(s), {rma} OEM RMA case(s) not returned")
-        if problems:
-            raise Conflict("Nothing was removed. " + "; ".join(problems))
-        if warnings:
-            raise Conflict("Nothing was removed. " + "; ".join(warnings) + ". Give an override note (at least 5 characters) to remove them anyway.")
-        con.execute("SELECT pg_advisory_xact_lock(hashtext('amc_removal'))")          # two requests at once must not take the same number
-        seq = edit._rows(con, "SELECT coalesce(max(seq), 0) + 1 AS n FROM amc_removal WHERE quarter_label = %s", (q["label"],))[0]["n"]
-        fy = q["start"].year if q["start"].month >= 4 else q["start"].year - 1
-        no = f"AMCR-{fy}{q['label'][:2]}-{seq:03d}"
-        con.execute("INSERT INTO amc_removal (removal_no, quarter_label, seq, effective_date, requested_by, approved_by, approved_on, note, status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'PENDING')",
-                    (no, q["label"], seq, when, editor, approver, TODAY(), note))
-        for k, parent in lines:
-            con.execute("INSERT INTO amc_removal_line (removal_no, asset_key, reason, override_note, via_parent) VALUES (%s,%s,%s,%s,%s)", (no, k, reasons[parent or k], override if not parent else None, parent))
+        approver = _approver(con, body.get("approved_by"))
+        lines = _check(con, keys, _text(body.get("override_note")))
+        no = _create(con, q, when, editor, approver, _text(body.get("note")), "PENDING", lines, reasons, _text(body.get("override_note")))
         if when <= TODAY():
             _apply(con, no, editor, ip)
-    return {"removal_no": no, "assets": [k for k, p in lines if p is None], "components": sum(1 for _, p in lines if p), "status": "APPLIED" if when <= TODAY() else "PENDING"}
+    return _result(no, lines, "APPLIED" if when <= TODAY() else "PENDING")
+
+
+def request(keys, body, engineer_key, editor, ip):
+    """An engineer asks for some of THEIR OWN assets to be removed from AMC. Nothing changes until a team leader or administrator approves."""
+    body = body or {}
+    keys = _norm(keys)
+    if not engineer_key:
+        raise Invalid("Only an engineer can request this.")
+    if not keys:
+        raise Invalid("Choose at least one asset.", {"keys": "required"})
+    reasons = _reasons(keys, body)
+    q = pm.quarter(TODAY())
+    with db.write() as con:
+        lines = _check(con, keys, None, owner=engineer_key)
+        no = _create(con, q, _date(body.get("effective_date"), q), editor, None, _text(body.get("note")), "REQUESTED", lines, reasons, None)
+    return _result(no, lines, "REQUESTED")
+
+
+def approve(removal_no, body, editor, ip):
+    """A team leader / administrator decides an engineer's request: records who gave the verbal approval, may change the date, then applies
+    it (or waits for the date). The assets are checked again, and open calls need an override note, exactly as in remove()."""
+    body = body or {}
+    no = str(removal_no or "").strip().upper()
+    q = pm.quarter(TODAY())
+    with db.write() as con:
+        head = edit._rows(con, "SELECT * FROM amc_removal WHERE removal_no = %s AND status = 'REQUESTED' FOR UPDATE", (no,))
+        if not head:
+            raise Conflict("This request is not waiting for a decision.")
+        head = head[0]
+        when = _date(body.get("effective_date") or max(head["effective_date"], q["start"]), q)
+        approver = _approver(con, body.get("approved_by"))
+        override = _text(body.get("override_note"))
+        keys = [r["asset_key"] for r in edit._rows(con, "SELECT asset_key FROM amc_removal_line WHERE removal_no = %s AND via_parent IS NULL ORDER BY line_id", (no,))]
+        _check(con, keys, override)
+        con.execute("UPDATE amc_removal SET status = 'PENDING', approved_by = %s, approved_on = %s, effective_date = %s, decided_by = %s WHERE removal_no = %s", (approver, TODAY(), when, editor, no))
+        if override:
+            con.execute("UPDATE amc_removal_line SET override_note = %s WHERE removal_no = %s AND via_parent IS NULL", (override, no))
+        if when <= TODAY():
+            _apply(con, no, editor, ip)
+    return {"removal_no": no, "status": "APPLIED" if when <= TODAY() else "PENDING"}
+
+
+def reject(removal_no, body, editor, ip):
+    """Turn an engineer's request down. A reason is required: the engineer reads it."""
+    why = _text((body or {}).get("reason"))
+    if not why or len(why) < 5:
+        raise Invalid("Give the engineer a reason (at least 5 characters).", {"reason": "required"})
+    no = str(removal_no or "").strip().upper()
+    with db.write() as con:
+        if not con.execute("UPDATE amc_removal SET status = 'REJECTED', decided_by = %s, decision_note = %s WHERE removal_no = %s AND status = 'REQUESTED'", (editor, why, no)).rowcount:
+            raise Conflict("This request is not waiting for a decision.")
+    return {"removal_no": no, "status": "REJECTED"}
 
 
 def apply_due(editor="SCHEDULER", ip=None):
@@ -287,20 +378,97 @@ def apply_due(editor="SCHEDULER", ip=None):
     return out
 
 
-def cancel(removal_no, editor, ip):
-    """Withdraw a request that is still waiting for its effective date. Nothing has been changed on the assets yet."""
+def cancel(removal_no, editor, ip, only_own=False):
+    """Withdraw a request that has not been applied (waiting for its date, or for a decision). Nothing has been changed on the assets yet.
+    `only_own`: an engineer may only withdraw their own request, and only while it waits for a decision."""
     no = str(removal_no or "").strip().upper()
+    sql = "UPDATE amc_removal SET status = 'CANCELLED' WHERE removal_no = %s AND " + ("status = 'REQUESTED' AND requested_by = %s" if only_own else "status IN ('PENDING','REQUESTED')")
     with db.write() as con:
-        if not con.execute("UPDATE amc_removal SET status = 'CANCELLED' WHERE removal_no = %s AND status = 'PENDING'", (no,)).rowcount:
-            raise Conflict("Only a request that is still waiting for its effective date can be cancelled.")
+        if not con.execute(sql, (no, editor) if only_own else (no,)).rowcount:
+            raise Conflict("Only a request that has not been applied yet can be cancelled" + (", and only by the person who made it." if only_own else "."))
     return {"removal_no": no, "status": "CANCELLED"}
 
 
-def requests(limit=100):
-    """Recent requests, newest first, each with its lines and the credit owed. Read only."""
-    heads = db.query("SELECT * FROM amc_removal ORDER BY created_at DESC, removal_no DESC LIMIT %s", [int(limit)])
-    lines = db.query("SELECT removal_no, asset_key, reason, credit_days, credit_amount, skipped_reason FROM amc_removal_line WHERE removal_no = ANY(%s) ORDER BY line_id", [[h["removal_no"] for h in heads]])
+def _with_lines(heads):
+    lines = db.query("SELECT removal_no, asset_key, reason, via_parent, credit_days, credit_amount, skipped_reason FROM amc_removal_line WHERE removal_no = ANY(%s) ORDER BY line_id", [[h["removal_no"] for h in heads]])
     for h in heads:
         h["lines"] = [x for x in lines if x["removal_no"] == h["removal_no"]]
         h["credit_total"] = sum((x["credit_amount"] or 0 for x in h["lines"]), Decimal("0"))
     return heads
+
+
+def requests(limit=100, status=None):
+    """Recent requests, newest first, each with its lines and the credit owed (waiting ones first when filtered). Read only."""
+    heads = db.query("SELECT * FROM amc_removal WHERE (%s::text IS NULL OR status = %s) ORDER BY created_at DESC, removal_no DESC LIMIT %s", [status, status, int(limit)])
+    return _with_lines(heads)
+
+
+def mine(engineer_key, username):
+    """What an engineer sees: their own assets that can be requested, their requests and what became of them, and - read only, outside every
+    count - their assets that have left the AMC."""
+    heads = db.query("SELECT * FROM amc_removal WHERE requested_by = %s ORDER BY created_at DESC LIMIT 100", [username])
+    removed = db.query("""SELECT l.asset_key, l.via_parent, l.reason, r.removal_no, r.effective_date, a.asset_class, a.asset_type, a.make, a.model, a.serial_no, a.location_code
+                          FROM amc_removal_line l JOIN amc_removal r USING (removal_no) JOIN asset a ON a.asset_key = l.asset_key
+                          WHERE r.status = 'APPLIED' AND l.skipped_reason IS NULL AND a.is_current = 0 AND a.engineer_name = %s ORDER BY r.effective_date DESC, l.asset_key""", [engineer_key])
+    return {"assets": candidates({"engineer": engineer_key, "all": True})["rows"] if engineer_key else [], "requests": _with_lines(heads), "removed": removed,
+            "reasons": [{"value": k, "label": v} for k, v in REASONS.items()], "quarter": meta()["quarter"], "default_date": meta()["default_date"]}
+
+
+# ---------------------------------------------------------------- a pasted / uploaded list
+LIST_CAP = 2000
+_HEADER_WORDS = {"asset", "asset (ci)", "ci", "ci no", "ci number", "asset key", "asset_key", "hostname", "host name", "serial", "serial no", "serial number", "serial_no", "name", "computer name", "key"}
+
+
+def parse_list(text):
+    """Asset names from pasted text: one per line, or separated by commas, tabs or semicolons. A first line that is a column heading is dropped."""
+    toks = [t.strip().strip("'\"").upper() for t in re.split(r"[\r\n,;\t]+", str(text or "")) if t.strip().strip("'\"")]
+    if toks and toks[0].lower() in _HEADER_WORDS:
+        toks = toks[1:]
+    return list(dict.fromkeys(toks))[:LIST_CAP]
+
+
+def list_from_file(data, filename):
+    """The same from an uploaded file: text/CSV as it is, or the first column of the first sheet of an Excel workbook."""
+    if data[:2] == b"PK":
+        import io
+        from openpyxl import load_workbook
+        try:
+            ws = load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0]
+            return parse_list("\n".join(str(r[0]).strip() for r in ws.iter_rows(values_only=True) if r and r[0] is not None))
+        except Exception as e:      # noqa: BLE001
+            raise Invalid("That Excel file could not be read.") from e
+    return parse_list(data.decode("utf-8", "replace"))
+
+
+def match_list(tokens, owner=None):
+    """Match each name against the register (asset key, CI number, hostname, serial number or ONGC asset ID). For every name: the asset it
+    found and whether it can be removed, or why not - an asset already removed is recognised, not 'not found'. Nothing is changed.
+    `owner`: an engineer sees only their own assets (anything else reads as not found)."""
+    tokens = _norm(tokens)[:LIST_CAP]
+    found = db.query("""SELECT asset_key, ci_no, hostname, serial_no, ongc_asset_id, is_current, record_level, asset_class, asset_type, make, model, engineer_name, location_code,
+                               cover_type, asset_status, rate_value,
+                               (SELECT count(*) FROM asset c WHERE c.parent_asset_key = asset.asset_key AND c.is_current = 1 AND c.asset_key <> asset.asset_key) AS components,
+                               (SELECT count(*) FROM svc_call s WHERE s.asset_key = asset.asset_key AND s.is_current = 1 AND s.call_status = 'OPEN') AS open_calls
+                        FROM asset WHERE upper(asset_key) = ANY(%s) OR upper(ci_no) = ANY(%s) OR upper(hostname) = ANY(%s) OR upper(serial_no) = ANY(%s) OR upper(ongc_asset_id) = ANY(%s)""",
+                      [tokens] * 5)
+    out, seen = [], {}
+    for t in tokens:
+        hits = [r for r in found if t in {str(r[c] or "").upper() for c in ("asset_key", "ci_no", "hostname", "serial_no", "ongc_asset_id")}]
+        live = [r for r in hits if r["is_current"] == 1]
+        hits = live or hits                                                   # a live record beats an archived one carrying the same name
+        if owner is not None:
+            hits = [r for r in hits if r["engineer_name"] == owner]
+        if not hits:
+            out.append({"input": t, "result": "NOT_FOUND", "why": "no asset in the register has this name, serial number or ONGC ID"})
+        elif len(hits) > 1:
+            out.append({"input": t, "result": "AMBIGUOUS", "why": "matches " + ", ".join(sorted(r["asset_key"] for r in hits)[:5]) + " - use the asset key"})
+        else:
+            r = hits[0]
+            why = _ineligible(r)
+            if not why and r["asset_key"] in seen:
+                why = f"same asset as {seen[r['asset_key']]}"
+            seen.setdefault(r["asset_key"], t)
+            row = {k: r[k] for k in ("asset_key", "record_level", "asset_class", "asset_type", "make", "model", "serial_no", "engineer_name", "location_code", "rate_value", "components", "open_calls")}
+            out.append({"input": t, "result": "BLOCKED" if why else "OK", "why": why, "row": row})
+    n = lambda s: sum(1 for x in out if x["result"] == s)  # noqa: E731
+    return {"rows": out, "ok": n("OK"), "blocked": n("BLOCKED"), "not_found": n("NOT_FOUND"), "ambiguous": n("AMBIGUOUS"), "capped": len(_norm(tokens)) >= LIST_CAP}

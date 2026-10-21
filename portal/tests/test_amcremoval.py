@@ -67,7 +67,7 @@ def test_ineligible_assets_block_the_whole_request_and_nothing_changes(fleet, ba
 
 def test_cannot_remove_twice(fleet):
     go(["TST-D-1"])
-    with pytest.raises(Conflict, match="archived or not current"):
+    with pytest.raises(Conflict, match="already removed"):
         go(["TST-D-1"])
 
 
@@ -279,7 +279,7 @@ def test_a_pending_request_can_be_cancelled_but_an_applied_one_cannot(fleet, tom
     amcremoval.cancel(r["removal_no"], ED, IP)
     assert amcremoval.apply_due() == [] and one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1
     done = go(["TST-S-1"])
-    with pytest.raises(Conflict, match="waiting"):
+    with pytest.raises(Conflict, match="not been applied"):
         amcremoval.cancel(done["removal_no"], ED, IP)
 
 
@@ -320,3 +320,169 @@ def test_read_routes_serialise_money_and_dates(fleet, monkeypatch):
         assert c.post("/api/amc-removal/remove", json={"keys": ["TST-D-1"], "reason": "SURPLUS", "approved_by": "TST-APPROVER"}, headers=HDR).status_code == 200
         rows = c.get("/api/amc-removal/requests", headers=HDR).json()["rows"]
         assert rows[0]["status"] == "APPLIED" and float(rows[0]["credit_total"]) == 1500
+
+
+# ---------------------------------------------------------------- T7: a pasted or uploaded list
+def test_parse_list_splits_on_lines_commas_tabs_and_drops_a_heading():
+    assert amcremoval.parse_list("Asset (CI)\n tst-d-1 ,TST-S-1;\tTST-U-1\r\n\nTST-D-1\n'TST-L-1'") == ["TST-D-1", "TST-S-1", "TST-U-1", "TST-L-1"]
+    assert amcremoval.parse_list("") == [] and amcremoval.parse_list(None) == []
+
+
+def test_match_list_finds_by_key_hostname_serial_and_ongc_id_and_explains_the_rest(fleet):
+    fleet.execute("UPDATE asset SET hostname = 'TSTHOST-S' WHERE asset_key = 'TST-S-1'")
+    fleet.execute("UPDATE asset SET serial_no = 'TSTSER-U' WHERE asset_key = 'TST-U-1'")
+    fleet.execute("UPDATE asset SET ongc_asset_id = 'TST-ONGC-D' WHERE asset_key = 'TST-D-1'")
+    m = amcremoval.match_list(["tsthost-s", "TSTSER-U", "TST-ONGC-D", "TST-L-1", "TST-W-1", "TST-NOPE", "TST-S-1"])
+    by = {r["input"]: r for r in m["rows"]}
+    assert by["TSTHOST-S"]["row"]["asset_key"] == "TST-S-1" and by["TSTSER-U"]["row"]["asset_key"] == "TST-U-1" and by["TST-ONGC-D"]["row"]["asset_key"] == "TST-D-1"
+    assert by["TST-L-1"]["result"] == "BLOCKED" and "laptops" in by["TST-L-1"]["why"] and by["TST-W-1"]["why"] == "it is not covered by AMC"
+    assert by["TST-NOPE"]["result"] == "NOT_FOUND"
+    assert by["TST-S-1"]["result"] == "BLOCKED" and "same asset as TSTHOST-S" in by["TST-S-1"]["why"]       # two names for one asset: counted once
+    assert (m["ok"], m["blocked"], m["not_found"]) == (3, 3, 1)
+
+
+def test_match_list_recognises_an_asset_that_was_already_removed_and_ambiguous_names(fleet):
+    go(["TST-D-1"])
+    assert amcremoval.match_list(["TST-D-1"])["rows"][0]["why"] == "it is already removed from AMC"
+    fleet.execute("UPDATE asset SET hostname = 'TSTSAME' WHERE asset_key IN ('TST-S-1','TST-U-1')")
+    r = amcremoval.match_list(["TSTSAME"])["rows"][0]
+    assert r["result"] == "AMBIGUOUS" and "TST-S-1" in r["why"] and "TST-U-1" in r["why"]
+
+
+def test_list_from_file_reads_text_and_the_first_column_of_a_workbook(fleet):
+    import io
+    from openpyxl import Workbook
+    assert amcremoval.list_from_file(b"CI\nTST-D-1\nTST-S-1\n", "a.csv") == ["TST-D-1", "TST-S-1"]
+    wb = Workbook()
+    wb.active.append(["Asset (CI)", "Remarks"])
+    wb.active.append(["TST-U-1", "x"])
+    wb.active.append(["TST-D-1", "y"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    assert amcremoval.list_from_file(buf.getvalue(), "a.xlsx") == ["TST-U-1", "TST-D-1"]
+
+
+# ---------------------------------------------------------------- T8: engineers request, deciders approve
+ENG = "TST ENG"
+
+
+@pytest.fixture()
+def mine_(fleet):
+    fleet.execute("UPDATE asset SET engineer_name = %s WHERE asset_key IN ('TST-D-1','TST-S-1')", (ENG,))
+    return fleet
+
+
+def ask(keys=("TST-D-1",), **body):
+    return amcremoval.request(list(keys), {"reason": "SURPLUS", "note": "machine is in the store", **body}, ENG, "TST-ENG-USER", IP)
+
+
+def test_an_engineer_request_changes_nothing_until_it_is_approved(mine_):
+    r = ask(["TST-D-1", "TST-S-1"])
+    assert r["status"] == "REQUESTED" and r["assets"] == ["TST-D-1", "TST-S-1"]
+    head = one(mine_, "SELECT * FROM amc_removal WHERE removal_no = %s", (r["removal_no"],))
+    assert (head["status"], head["requested_by"], head["approved_by"], head["approved_on"]) == ("REQUESTED", "TST-ENG-USER", None, None)
+    assert n(mine_, "SELECT count(*) FROM asset WHERE asset_key IN ('TST-D-1','TST-S-1') AND is_current = 1") == 2         # still in the register
+    assert amcremoval.apply_due() == []                                                                                # and the scheduler ignores it
+
+
+def test_an_engineer_can_only_request_their_own_assets(mine_):
+    with pytest.raises(Conflict, match="TST-U-1: it is not assigned to you"):
+        ask(["TST-D-1", "TST-U-1"])
+    with pytest.raises(Invalid, match="engineer"):
+        amcremoval.request(["TST-D-1"], {"reason": "SURPLUS"}, None, "SOMEONE", IP)
+    mine_.execute("UPDATE asset SET engineer_name = %s WHERE asset_key = 'TST-L-1'", (ENG,))
+    with pytest.raises(Conflict, match="laptops"):
+        ask(["TST-L-1"])
+    assert n(mine_, "SELECT count(*) FROM amc_removal WHERE requested_by = 'TST-ENG-USER'") == 0
+
+
+def test_approving_records_the_verbal_approver_and_applies_it(mine_):
+    no = ask()["removal_no"]
+    with pytest.raises(Invalid, match="verbal approval"):
+        amcremoval.approve(no, {}, "TST-LEAD", IP)
+    r = amcremoval.approve(no, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)
+    assert r["status"] == "APPLIED"
+    head = one(mine_, "SELECT * FROM amc_removal WHERE removal_no = %s", (no,))
+    assert (head["status"], head["approved_by"], head["decided_by"], head["requested_by"], head["effective_date"]) == ("APPLIED", "TST-APPROVER", "TST-LEAD", "TST-ENG-USER", Q["start"])
+    assert one(mine_, "SELECT is_current, asset_status FROM asset WHERE asset_key = 'TST-D-1'") == {"is_current": 0, "asset_status": "REMOVED_FROM_AMC"}
+    with pytest.raises(Conflict, match="not waiting"):
+        amcremoval.approve(no, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)                                   # decided once
+
+
+def test_the_decider_can_set_a_later_date_and_open_calls_need_an_override(mine_):
+    mine_.execute("INSERT INTO svc_call (sr_id, asset_key, call_status, is_current, cipl_call_date) VALUES ('TST-SR-8','TST-D-1','OPEN',1,%s)", (dt.date.today(),))
+    no = ask()["removal_no"]                                                                                          # the engineer is not asked about calls
+    with pytest.raises(Conflict, match="open call"):
+        amcremoval.approve(no, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)
+    assert one(mine_, "SELECT status FROM amc_removal WHERE removal_no = %s", (no,))["status"] == "REQUESTED"          # a refused approval leaves it waiting
+    d = dt.date.today() + dt.timedelta(days=1)
+    if d <= Q["end"]:
+        assert amcremoval.approve(no, {"approved_by": "TST-APPROVER", "override_note": "printer call, not AMC", "effective_date": d.isoformat()}, "TST-LEAD", IP)["status"] == "PENDING"
+
+
+def test_approval_checks_the_assets_again(mine_):
+    no = ask()["removal_no"]
+    mine_.execute("UPDATE asset SET cover_type = 'WRTY' WHERE asset_key = 'TST-D-1'")                                  # changed while it waited
+    with pytest.raises(Conflict, match="not covered by AMC"):
+        amcremoval.approve(no, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)
+
+
+def test_rejecting_needs_a_reason_the_engineer_can_read(mine_):
+    no = ask()["removal_no"]
+    with pytest.raises(Invalid, match="reason"):
+        amcremoval.reject(no, {"reason": "no"}, "TST-LEAD", IP)
+    assert amcremoval.reject(no, {"reason": "Still in use by the control room"}, "TST-LEAD", IP)["status"] == "REJECTED"
+    assert one(mine_, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1
+    assert amcremoval.mine(ENG, "TST-ENG-USER")["requests"][0]["decision_note"] == "Still in use by the control room"
+    with pytest.raises(Conflict, match="not waiting"):
+        amcremoval.reject(no, {"reason": "again and again"}, "TST-LEAD", IP)
+
+
+def test_an_engineer_can_withdraw_only_their_own_waiting_request(mine_):
+    no = ask()["removal_no"]
+    with pytest.raises(Conflict, match="only by the person"):
+        amcremoval.cancel(no, "TST-OTHER", IP, only_own=True)
+    assert amcremoval.cancel(no, "TST-ENG-USER", IP, only_own=True)["status"] == "CANCELLED"
+    done = ask()["removal_no"]
+    amcremoval.approve(done, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)
+    with pytest.raises(Conflict):
+        amcremoval.cancel(done, "TST-ENG-USER", IP, only_own=True)
+
+
+def test_the_engineers_page_lists_their_assets_requests_and_removed_assets_outside_the_counts(mine_):
+    before = amcremoval.mine(ENG, "TST-ENG-USER")
+    assert {a["asset_key"] for a in before["assets"]} == {"TST-D-1", "TST-S-1"} and before["removed"] == []
+    no = ask(["TST-D-1"])["removal_no"]
+    amcremoval.approve(no, {"approved_by": "TST-APPROVER"}, "TST-LEAD", IP)
+    after = amcremoval.mine(ENG, "TST-ENG-USER")
+    assert {a["asset_key"] for a in after["assets"]} == {"TST-S-1"}                                                    # no longer one of their assets...
+    assert [(r["asset_key"], r["removal_no"]) for r in after["removed"]] == [("TST-D-1", no)]                           # ...but they can still see it was removed
+    assert after["requests"][0]["status"] == "APPLIED"
+    assert amcremoval.mine("TST OTHER ENG", "x")["removed"] == []                                                       # and nobody else's
+
+
+def test_engineer_routes_and_permissions(mine_, monkeypatch):
+    fake_user(monkeypatch, "USER", username="TST-ENG-USER", engineer_key=ENG)
+    with TestClient(app) as c:
+        r = c.post("/api/amc-removal/request", json={"keys": ["TST-D-1"], "reason": "SURPLUS"}, headers=HDR)
+        assert r.status_code == 200 and r.json()["status"] == "REQUESTED", r.text
+        no = r.json()["removal_no"]
+        assert c.get("/api/amc-removal/mine", headers=HDR).json()["requests"][0]["removal_no"] == no
+        assert c.post("/api/amc-removal/approve", json={"removal_no": no, "approved_by": "TST-APPROVER"}, headers=HDR).status_code == 403      # engineers cannot decide
+        assert c.post("/api/amc-removal/reject", json={"removal_no": no, "reason": "no reason"}, headers=HDR).status_code == 403
+        assert c.get("/api/amc-removal/requests", headers=HDR).status_code == 403
+        m = c.post("/api/amc-removal/match", json={"text": "TST-D-1\nTST-S-1\nTST-U-1"}, headers=HDR).json()
+        assert [x["result"] for x in m["rows"]] == ["OK", "OK", "NOT_FOUND"]                                                              # TST-U-1 is not theirs: invisible, not "found"
+        assert c.post("/api/amc-removal/withdraw", json={"removal_no": no}, headers=HDR).status_code == 200
+    fake_user(monkeypatch, "USER", username="NOBODY")                                                                          # a user with no engineer link
+    with TestClient(app) as c:
+        assert c.post("/api/amc-removal/request", json={"keys": ["TST-D-1"], "reason": "SURPLUS"}, headers=HDR).status_code in (400, 403, 422)
+        assert c.post("/api/amc-removal/match", json={"text": "TST-D-1"}, headers=HDR).status_code in (400, 403, 422)
+    lead = fake_user(monkeypatch, "USER", username="TST-LEAD")
+    lead["lead_tools"] = True
+    no2 = ask()["removal_no"]
+    with TestClient(app) as c:
+        assert c.get("/api/amc-removal/requests?status=REQUESTED", headers=HDR).status_code == 200
+        r = c.post("/api/amc-removal/approve", json={"removal_no": no2, "approved_by": "TST-APPROVER"}, headers=HDR)
+        assert r.status_code == 200 and r.json()["status"] == "APPLIED", r.text
+        assert len(c.post("/api/amc-removal/match", json={"text": "TST-U-1"}, headers=HDR).json()["rows"]) == 1                 # a team leader sees every asset

@@ -37,6 +37,7 @@ const VIEWS = {
   'pm/checklists': () => import('./views/pm-checklists.js').then((m) => m.mountPmChecklists),
   reports: () => import('./views/reports.js').then((m) => m.mountReports),
   'reports/inventory': () => import('./views/inventory-mine.js').then((m) => m.mountInventoryMine),
+  'reports/amc': () => import('./views/amc-mine.js').then((m) => m.mountAmcMine),
   'admin/amc': () => import('./views/amc-picker.js').then((m) => m.mountAmcPicker),
   'admin/match': () => import('./views/inventory-match.js').then((m) => m.mountInventoryMatch),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),

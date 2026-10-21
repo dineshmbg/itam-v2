@@ -7,6 +7,7 @@ import { int, titleCase } from '../core/format.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
+import { chip, listChecker } from './amc-list.js';
 
 const inr = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const label = (s) => titleCase(String(s || '').replace(/_/g, ' '));
@@ -156,13 +157,36 @@ export function mountAmcPicker(root) {
         panel('1 · Find assets', { cls: 'span-7', hint: 'only assets that can be removed are listed' }, h('div', null,
           field('Search', search), h('div', { class: 'btn-row' }, selClass, selType, selEng, selLoc),
           h('label', { class: 'ropt', style: { marginTop: '8px' } }, comp, icon('checkbox', 'glyph off'), icon('checkbox--checked', 'glyph on'), h('span', null, 'Also list parts (monitor, graphics card ...) on their own - otherwise they leave with their asset')),
-          findTools, summary, results)),
+          listChecker({ onAdd: (rows) => addRows(rows) }), findTools, summary, results)),
         panel('2 · Basket and request', { cls: 'span-5', hint: '' }, h('div', null, countEl,
           field('Reason for new additions (and all, when changed)', defaultReason), list,
           field('Effective date', when, `Any day of ${meta.quarter.label}; defaults to its first day. A later day than today waits and is applied automatically.`),
           field('Verbal approval given by', who), field('Note', note), overrideRow, credit,
           h('div', { class: 'btn-row', style: { marginTop: '12px' } }, submit))));
       Object.assign(body.lastElementChild.style, { alignSelf: 'start', position: 'sticky', top: '12px' });      // the basket stays in view while the list scrolls
+      // ---- requests from engineers that wait for a decision
+      const waitBox = h('div', { class: 'stack-v' });
+      const waiting = panel('Waiting for a decision', { cls: 'span-12', hint: 'requests from engineers for their own assets' }, waitBox);
+      waiting.style.display = 'none';
+      body.prepend(waiting);
+      const reasonName = (v) => meta.reasons.find((x) => x.value === v)?.label || v;
+      const card = (r) => {
+        const who2 = h('select', { 'aria-label': 'Verbal approval given by' }, h('option', { value: '' }, 'Choose who approved'), ...meta.approvers.map((a) => h('option', { value: a.username }, `${a.display_name} (${a.username})`)));
+        const date2 = h('input', { type: 'date', min: meta.quarter.start, max: meta.quarter.end, value: r.effective_date < meta.quarter.start ? meta.quarter.start : r.effective_date, 'aria-label': 'Effective date' });
+        const ovr = h('input', { type: 'text', maxlength: '300', placeholder: 'Override note (only if it still has open calls)', 'aria-label': 'Override note' });
+        const why = h('input', { type: 'text', maxlength: '300', placeholder: 'Reason for turning it down (the engineer reads this)', 'aria-label': 'Reason for turning it down' });
+        const done = async (fn, msg) => { try { await fn(); toast(msg); loadWaiting(); run(); } catch (e) { toast(e.message, 'bad'); } };
+        return h('div', { class: 'rec-note warn', style: { display: 'block' } },
+          h('div', null, chip('warn', 'pending', r.removal_no), ` from ${r.requested_by} · ${r.lines.filter((x) => !x.via_parent).length} asset(s)${r.note ? ` · "${r.note}"` : ''}`),
+          h('div', { class: 'muted small' }, r.lines.filter((x) => !x.via_parent).map((x) => `${x.asset_key} (${reasonName(x.reason)})`).join(', ')),
+          h('div', { class: 'btn-row', style: { margin: '8px 0' } }, who2, date2, ovr,
+            h('button', { class: 'btn primary', type: 'button', onClick: () => done(() => send('/api/amc-removal/approve', { removal_no: r.removal_no, approved_by: who2.value, effective_date: date2.value, override_note: ovr.value }), `${r.removal_no} approved`) }, icon('checkmark'), 'Approve')),
+          h('div', { class: 'btn-row' }, why, h('button', { class: 'btn', type: 'button', onClick: () => done(() => send('/api/amc-removal/reject', { removal_no: r.removal_no, reason: why.value }), `${r.removal_no} turned down`) }, icon('close'), 'Turn down')));
+      };
+      async function loadWaiting() {
+        try { const rows = (await get('/api/amc-removal/requests', { status: 'REQUESTED' })).rows; waiting.style.display = rows.length ? '' : 'none'; waitBox.replaceChildren(...rows.map(card)); } catch (e) { /* the page still works without it */ }
+      }
+      loadWaiting();
       drawBasket();
       await run();
     } catch (e) { body.replaceChildren(errorBlock(e)); }

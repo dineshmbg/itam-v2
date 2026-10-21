@@ -26,14 +26,14 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 - [x] **T6: Basket picker across classes and types with eligibility rules** (M) - page `Data tools > Remove from AMC` (`admin/amc`, Administrators and Team Leader/SI). Checked in the browser pane with a stubbed API fed from real read-only data (1,084 eligible assets); not against the live server.
   - Accept: filters (class, type, make, model, location, engineer, status, cover expiry); 3+ assets of 2+ classes in one request; LAPTOP, WRTY, already-removed, non-current are blocked with the reason shown; open call/RMA = warning needing an override note.
   - Dep: T3.
-- [ ] **T7: Paste/upload list of CI names / serials / keys** (M) - unmatched and ineligible rows listed, nothing applied until confirmed. Dep: T6.
+- [x] **T7: Paste/upload list of CI names / serials / keys** (M) - unmatched and ineligible rows listed, nothing applied until confirmed. Dep: T6. Done 2026-10-21: matches asset key, CI, hostname, serial or ONGC ID; paste, .txt/.csv or .xlsx (first column); explains not found / ambiguous / already removed / same asset twice; adds the good ones to the basket.
 
 ### Checkpoint 2
 - [ ] Bulk removal of mixed classes verified in browser; PM counts for the quarter drop correctly.
 
 ## Phase 3 - Roles, reversal, reporting
 
-- [ ] **T8: Team leader/SI grant decides; engineers request; engineers view their removed assets read-only** (M) - new "AMC removal" grant, permission-matrix test updated; removed assets listed in the engineer account outside all counts; same person may approve. Dep: T6.
+- [x] **T8: Team leader/SI grant decides; engineers request; engineers view their removed assets read-only** (M) - new "AMC removal" grant, permission-matrix test updated; removed assets listed in the engineer account outside all counts; same person may approve. Dep: T6. Done 2026-10-21: no new grant (Team Leader/SI = existing `is_lead`). Engineer page `Reports > AMC removals` (own assets only, request -> REQUESTED, withdraw, see decisions, read-only list of removed assets); deciders see 'Waiting for a decision' on the picker and approve (verbal approver, date, override note) or turn down with a reason. Approval re-checks the assets.
 - [ ] **T9: Reinstatement request** (M) - un-archives and restores snapshot values, audited, original request marked REVERSED. Dep: T8.
 - [ ] **T10: Reports, dashboard tile, README section** (M) - removals per quarter with credit due; `portal/README.md` updated. Dep: T9.
 
