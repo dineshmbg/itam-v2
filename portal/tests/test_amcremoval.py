@@ -671,3 +671,31 @@ def test_template_route_is_open_to_signed_in_users(fleet, monkeypatch):
     with TestClient(app) as c:
         r = c.get("/api/amc-removal/template", headers=HDR)
         assert r.status_code == 200 and r.content[:2] == b"PK" and "AMC_Removal_Upload_Template.xlsx" in r.headers["content-disposition"]
+
+
+# ---------------------------------------------------------------- assets marked "Out of AMC" by hand before the process existed
+def legacy(box):
+    make_asset(box, "TST-OLD-1", status="REMOVED_FROM_AMC", rate_value=118.20, remarks="REMOVE FROM AMC 01/10/2026")
+    make_asset(box, "TST-OLD-W", status="REMOVED_FROM_AMC", cover_type="WRTY")
+
+
+def test_an_asset_marked_out_of_amc_by_hand_can_go_through_the_process(fleet):
+    legacy(fleet)
+    m = {r["input"]: r for r in amcremoval.match_list(["TST-OLD-1", "TST-OLD-W"])["rows"]}
+    assert m["TST-OLD-1"]["result"] == "OK" and m["TST-OLD-W"]["why"] == "it is not covered by AMC"                      # a warranty asset still is not an AMC matter
+    assert "TST-OLD-1" in {r["asset_key"] for r in amcremoval.candidates({"q": "TST-OLD"})["rows"]}
+    no = go(["TST-OLD-1"], reason="SCOPE_CHANGE")["removal_no"]
+    a = one(fleet, "SELECT is_current, rate_value, asset_status FROM asset WHERE asset_key = 'TST-OLD-1'")
+    assert (a["is_current"], a["rate_value"], a["asset_status"]) == (0, None, "REMOVED_FROM_AMC")                      # archived, rate cleared
+    line = one(fleet, "SELECT * FROM amc_removal_line WHERE removal_no = %s", (no,))
+    assert str(line["credit_amount"]) == "118.20" and float(line["snapshot"]["rate_value"]) == 118.2                      # the credit comes from the rate it still carried
+    with pytest.raises(Conflict, match="already removed"):
+        go(["TST-OLD-1"])                                                                                                # now it really is done
+
+
+def test_reinstating_a_hand_marked_asset_puts_it_back_as_deployed(fleet):
+    legacy(fleet)
+    go(["TST-OLD-1"])
+    back(["TST-OLD-1"])
+    a = one(fleet, "SELECT is_current, asset_status, rate_value FROM asset WHERE asset_key = 'TST-OLD-1'")
+    assert (a["is_current"], a["asset_status"], float(a["rate_value"])) == (1, "IN_USE", 118.2)

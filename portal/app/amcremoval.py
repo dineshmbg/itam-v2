@@ -75,8 +75,10 @@ def billing(rate, effective):
 
 def _ineligible(row):
     """Why this asset cannot be removed from AMC, or None."""
-    if row.get("asset_status") == "REMOVED_FROM_AMC":
+    if row.get("asset_status") == "REMOVED_FROM_AMC" and row["is_current"] != 1:
         return "it is already removed from AMC"
+    # A live row whose status already says "Out of AMC" was marked by hand before this process existed: it is still in the register and still carries
+    # its rate, so it is allowed through - the request archives it, records who approved it and works out the credit like any other.
     if row["is_current"] != 1:
         return "it is archived or not current"
     if row["record_level"] not in ("ASSET", "COMPONENT"):
@@ -160,7 +162,7 @@ def candidates(f):
     not a laptop, not already removed); a component line is listed only when `components` is set - otherwise it travels with its parent.
     f: q (text), classes[], types[], engineer, location, components (0/1), all (return every match, up to the cap, not just the first page). Read only."""
     f = f or {}
-    where = ["is_current = 1", "cover_type = 'AMC'", "asset_class <> 'LAPTOP'", "coalesce(asset_status, '') <> 'REMOVED_FROM_AMC'"]
+    where = ["is_current = 1", "cover_type = 'AMC'", "asset_class <> 'LAPTOP'"]
     where.append("record_level IN ('ASSET','COMPONENT')" if f.get("components") else "record_level = 'ASSET'")
     base = " AND ".join(where)
     p = []
@@ -477,7 +479,8 @@ def reinstate(keys, body, editor, ip):
                                (ln["removal_no"], ln["asset_key"]))
             for x in [ln, *parts]:
                 s = x["snapshot"]
-                cols = {"is_current": 1, "asset_status": s.get("asset_status"), "cover_type": s.get("cover_type"), "pm_status": s.get("pm_status"),
+                # an asset that was only marked "Out of AMC" by hand before the process existed comes back as deployed, not as "Out of AMC" again
+                cols = {"is_current": 1, "asset_status": "IN_USE" if s.get("asset_status") == "REMOVED_FROM_AMC" else s.get("asset_status"), "cover_type": s.get("cover_type"), "pm_status": s.get("pm_status"),
                         "cover_expiry_date": L.from_json("cover_expiry_date", s.get("cover_expiry_date")), "rate_value": _num(s.get("rate_value"))}
                 edit._update_row(con, "assets", x["asset_key"], cols)
                 con.execute("DELETE FROM portal_lock WHERE dataset = 'assets' AND record_key = %s AND field = %s", (x["asset_key"], L.ARCHIVED))
@@ -488,7 +491,7 @@ def reinstate(keys, body, editor, ip):
                 con.execute("UPDATE amc_removal_line SET reinstated_at = %s, reinstated_by = %s, reinstated_approved_by = %s, reinstate_reason = %s, net_credit_days = %s, net_credit_amount = %s WHERE line_id = %s",
                             (when, editor, approver, why, days, net, x["line_id"]))
                 edit._audit(con, editor, ip, "assets", x["asset_key"], "AMC_REINSTATE",
-                            {"asset_status": {"old": "REMOVED_FROM_AMC", "new": s.get("asset_status")}, "rate_value": {"old": None, "new": s.get("rate_value")}, "removal_no": x["removal_no"],
+                            {"asset_status": {"old": "REMOVED_FROM_AMC", "new": cols["asset_status"]}, "rate_value": {"old": None, "new": s.get("rate_value")}, "removal_no": x["removal_no"],
                              "effective_date": when.isoformat(), "approved_by": approver, "net_credit_days": days}, why)
             touched.add(ln["removal_no"])
         for no in touched:
