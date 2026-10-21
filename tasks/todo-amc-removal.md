@@ -39,3 +39,9 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 
 ### Checkpoint 3
 - [ ] `..\check.ps1` clean; every acceptance item exercised and reported. (Full pytest run: 793 pass, 5 unrelated failures; check.ps1 and a live-server browser pass still to do.)
+
+## Revision 2026-10-21 (user feedback after first use)
+- [x] Picker redone as the Assets register in pick mode (site design: facets, grid, columns, drawer), serial no. always shown.
+- [x] Upload template (Asset (CI)/Serial no./Reason) served by the portal and saved in `templates/`.
+- [x] Verbal approver list limited to administrators and Team Leader/SI (server-enforced), signed-in person pre-selected.
+- [ ] `views/amc-picker.js` is dead code - remove only on `CONFIRM DELETE AMC-OLD-PICKER` (project rule: no deletions without consent).

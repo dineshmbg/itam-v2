@@ -126,7 +126,7 @@ def meta():
     q = pm.quarter(TODAY())
     return {"quarter": {"label": q["label"], "start": q["start"], "end": q["end"]}, "default_date": q["start"],
             "reasons": [{"value": k, "label": v} for k, v in REASONS.items()],
-            "approvers": [{"username": r["username"], "display_name": r["display_name"]} for r in db.query("SELECT username, display_name FROM portal_user WHERE active ORDER BY display_name")]}
+            "approvers": [{"username": r["username"], "display_name": r["display_name"]} for r in _only_deciders(db.query(_DECIDERS))]}
 
 
 def impact(keys, effective_date):
@@ -280,10 +280,20 @@ def _check(con, keys, override, owner=None):
     return lines
 
 
+_DECIDERS = """SELECT u.username, u.display_name, u.role, u.extended_access, u.read_only, e.designation FROM portal_user u
+               LEFT JOIN v_engineer e ON e.engineer_key = u.engineer_key WHERE u.active ORDER BY u.display_name, u.username"""
+
+
+def _only_deciders(rows):
+    """Active, writable accounts that decide: administrators and Team Leader/SI users (the same test as auth.is_lead). Nobody else can give the approval."""
+    from . import auth
+    return [r for r in rows if not r["read_only"] and (r["role"] == "ADMIN" or (not r["extended_access"] and auth.is_lead_designation(r["designation"])))]
+
+
 def _approver(con, raw):
     who = str(raw or "").strip()
-    if not who or not edit._exists(con, "SELECT 1 FROM portal_user WHERE username = %s AND active", (who,)):
-        raise Invalid("Choose the portal user who gave the verbal approval.", {"approved_by": "required - pick an active portal user"})
+    if not who or who not in {r["username"] for r in _only_deciders(edit._rows(con, _DECIDERS, ()))}:
+        raise Invalid("Choose the administrator or Team Leader/SI who gave the verbal approval.", {"approved_by": "required - only an administrator or Team Leader/SI can approve"})
     return who
 
 
@@ -500,6 +510,81 @@ def parse_list(text):
     return list(dict.fromkeys(toks))[:LIST_CAP]
 
 
+def _reason_key(v):
+    """A reason as typed in the template (its label, or its code) -> the code; '?text' when it is not one of the listed reasons; None when blank."""
+    t = str(v or "").strip()
+    if not t:
+        return None
+    by_label = {lbl.upper(): k for k, lbl in REASONS.items()}
+    return t.upper() if t.upper() in REASONS else by_label.get(t.upper()) or "?" + t
+
+
+def read_list(data):
+    """(names, {name: reason}) from an uploaded list. The upload template (columns Asset (CI), Serial no., Reason) gives a reason per row and either the
+    CI or the serial is enough; any other workbook is read as its first column, and text / CSV as names split on lines, commas, tabs or semicolons."""
+    if data[:2] != b"PK":
+        return parse_list(data.decode("utf-8", "replace")), {}
+    import io
+    from openpyxl import load_workbook
+    try:
+        rows = [list(r) for r in load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0].iter_rows(values_only=True)]
+    except Exception as e:      # noqa: BLE001
+        raise Invalid("That Excel file could not be read.") from e
+    head = [str(c or "").strip().lower() for c in (rows[0] if rows else [])]
+    if "asset (ci)" not in head and "serial no." not in head:
+        return parse_list("\n".join(str(r[0]).strip() for r in rows if r and r[0] is not None)), {}
+    at = lambda name: head.index(name) if name in head else None  # noqa: E731
+    ci, sn, rs = at("asset (ci)"), at("serial no."), at("reason")
+    names, reasons = [], {}
+    for r in rows[1:]:
+        cell = lambda i: str(r[i]).strip().upper() if i is not None and i < len(r) and r[i] is not None and str(r[i]).strip() else ""  # noqa: E731
+        t = cell(ci) or cell(sn)
+        if not t:
+            continue
+        names.append(t)
+        k = _reason_key(r[rs]) if rs is not None and rs < len(r) else None
+        if k:
+            reasons[t] = k
+    return list(dict.fromkeys(names))[:LIST_CAP], reasons
+
+
+def template_bytes():
+    """The bulk-upload template: Asset (CI), Serial no. (either is enough) and a Reason picked from a drop-down list."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.datavalidation import DataValidation
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Assets"
+    ws.append(["Asset (CI)", "Serial no.", "Reason"])
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    for col, w in zip("ABC", (28, 24, 34)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    lists = wb.create_sheet("Lists")
+    for i, lbl in enumerate(REASONS.values(), start=1):
+        lists.cell(row=i, column=1, value=lbl)
+    lists.sheet_state = "hidden"
+    dv = DataValidation(type="list", formula1=f"=Lists!$A$1:$A${len(REASONS)}", allow_blank=True)
+    dv.error, dv.errorTitle = "Choose a reason from the list.", "Reason"
+    ws.add_data_validation(dv)
+    dv.add("C2:C2001")
+    how = wb.create_sheet("How to fill")
+    for line in ("One asset per row on the Assets sheet, from row 2 (up to 2,000 rows).",
+                 "Asset (CI) or Serial no. - either one is enough. Hostname and ONGC asset ID also work in the Asset (CI) column.",
+                 "Reason - pick one from the list. Leave it blank to choose the reason in the basket afterwards.",
+                 "Nothing is removed by uploading: the portal checks every row, tells you which can go and which cannot (laptops, warranty-only, already removed, not found),",
+                 "and you add the good ones to the basket, set the date and the verbal approval, and send the request.",
+                 "Reasons: " + "; ".join(REASONS.values())):
+        how.append([line])
+    how.column_dimensions["A"].width = 150
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def list_from_file(data, filename):
     """The same from an uploaded file: text/CSV as it is, or the first column of the first sheet of an Excel workbook."""
     if data[:2] == b"PK":
@@ -513,7 +598,7 @@ def list_from_file(data, filename):
     return parse_list(data.decode("utf-8", "replace"))
 
 
-def match_list(tokens, owner=None):
+def match_list(tokens, owner=None, reasons=None):
     """Match each name against the register (asset key, CI number, hostname, serial number or ONGC asset ID). For every name: the asset it
     found and whether it can be removed, or why not - an asset already removed is recognised, not 'not found'. Nothing is changed.
     `owner`: an engineer sees only their own assets (anything else reads as not found)."""
@@ -529,6 +614,7 @@ def match_list(tokens, owner=None):
         hits = [r for r in found if t in {str(r[c] or "").upper() for c in ("asset_key", "ci_no", "hostname", "serial_no", "ongc_asset_id")}]
         live = [r for r in hits if r["is_current"] == 1]
         hits = live or hits                                                   # a live record beats an archived one carrying the same name
+        hits = [r for r in hits if str(r["asset_key"]).upper() == t] or hits  # and an exact asset key beats a hostname or serial that reads the same
         if owner is not None:
             hits = [r for r in hits if r["engineer_name"] == owner]
         if not hits:
@@ -542,7 +628,13 @@ def match_list(tokens, owner=None):
                 why = f"same asset as {seen[r['asset_key']]}"
             seen.setdefault(r["asset_key"], t)
             row = {k: r[k] for k in ("asset_key", "record_level", "asset_class", "asset_type", "make", "model", "serial_no", "engineer_name", "location_code", "rate_value", "components", "open_calls")}
-            out.append({"input": t, "result": "BLOCKED" if why else "OK", "why": why, "row": row})
+            res = {"input": t, "result": "BLOCKED" if why else "OK", "why": why, "row": row}
+            given = (reasons or {}).get(t)
+            if given and given.startswith("?"):
+                res["reason_note"] = f"the reason '{given[1:]}' is not one of the listed reasons - choose it in the basket"
+            elif given:
+                res["reason"] = given
+            out.append(res)
     n = lambda s: sum(1 for x in out if x["result"] == s)  # noqa: E731
     return {"rows": out, "ok": n("OK"), "blocked": n("BLOCKED"), "not_found": n("NOT_FOUND"), "ambiguous": n("AMBIGUOUS"), "capped": len(_norm(tokens)) >= LIST_CAP}
 

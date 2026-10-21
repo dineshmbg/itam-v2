@@ -6,13 +6,14 @@ import { date, int } from '../core/format.js';
 import { toast } from '../ui/toast.js';
 import { errorBlock, kpiStrip, pageHead, panel } from './common.js';
 import { amcReinstateDialog } from './amc-removal.js';
+import { user as sessionUser } from '../core/session.js';
 import { statusChip } from './amc-list.js';
 
 const inr = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const STATES = [['', 'All requests'], ['REQUESTED', 'Waiting for a decision'], ['PENDING', 'Approved - waiting for its date'], ['APPLIED', 'Removed'], ['REVERSED', 'Reinstated'], ['REJECTED', 'Turned down'], ['CANCELLED', 'Withdrawn']];
 
 export function mountAmcRequests(root) {
-  let dead = false, status = '', quarter = '';
+  let dead = false, status = '', quarter = '', meta = null;
   const head = h('div'), table = h('div');
   const sel = h('select', { 'aria-label': 'Show requests' }, STATES.map(([v, t]) => h('option', { value: v }, t)));
   sel.addEventListener('change', () => { status = sel.value; load(); });
@@ -23,7 +24,8 @@ export function mountAmcRequests(root) {
 
   async function load() {
     try {
-      const [s, r] = await Promise.all([get('/api/amc-removal/summary'), get('/api/amc-removal/requests', status ? { status } : {})]);
+      const [s, r, m] = await Promise.all([get('/api/amc-removal/summary'), get('/api/amc-removal/requests', status ? { status } : {}), meta ? Promise.resolve(meta) : get('/api/amc-removal/meta')]);
+      meta = m;
       if (!dead) draw(s, r.rows);
     } catch (e) { if (!dead) table.replaceChildren(errorBlock(e, load)); }
   }
@@ -50,13 +52,28 @@ export function mountAmcRequests(root) {
     const tools = h('div', { class: 'btn-row' },
       back.length ? h('button', { class: 'btn', type: 'button', onClick: () => amcReinstateDialog({ keys: back.map((x) => x.asset_key), onDone: load }) }, icon('renew'), `Reinstate ${back.length === 1 ? back[0].asset_key : back.length + ' assets'}`) : null,
       ['PENDING', 'REQUESTED'].includes(r.status) ? h('button', { class: 'btn', type: 'button', onClick: async () => { try { await send('/api/amc-removal/cancel', { removal_no: r.removal_no }); toast('Request cancelled'); load(); } catch (e) { toast(e.message, 'bad'); } } }, icon('close'), 'Cancel request') : null);
-    return h('details', { class: 'panel', style: { padding: '8px 12px', marginBottom: '8px' } },
+    const decide = r.status === 'REQUESTED' ? decision(r) : null;
+    return h('details', { class: 'panel', style: { padding: '8px 12px', marginBottom: '8px' }, open: r.status === 'REQUESTED' },
       h('summary', null, h('strong', { class: 'mono' }, r.removal_no), ' ', statusChip(r.status), ` · ${int(own.length)} asset(s)${parts.length ? ` + ${parts.length} parts` : ''} · effective ${date(r.effective_date)} · credit ${inr(r.credit_total)}`),
       h('p', { class: 'muted small' }, `Requested by ${r.requested_by}${r.approved_by ? ` · verbal approval by ${r.approved_by} on ${date(r.approved_on)}` : ''}${r.decided_by && r.decided_by !== r.requested_by ? ` · decided by ${r.decided_by}` : ''}${r.note ? ` · "${r.note}"` : ''}${r.decision_note ? ` · turned down: ${r.decision_note}` : ''}`),
       h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Asset (CI)', 'Reason', 'Days', 'Credit', 'Note'].map((t) => h('th', null, t)))),
         h('tbody', null, r.lines.map((x) => h('tr', null, h('td', { class: 'mono' }, x.asset_key, x.via_parent ? h('span', { class: 'muted small' }, ` (part of ${x.via_parent})`) : null), h('td', null, x.via_parent ? '' : x.reason.replace(/_/g, ' ').toLowerCase()),
           h('td', { class: 'num' }, x.reinstated_at ? int(x.net_credit_days) : x.credit_days == null ? '—' : int(x.credit_days)), h('td', { class: 'num' }, inr(x.reinstated_at ? x.net_credit_amount : x.credit_amount)),
-          h('td', null, x.skipped_reason ? `skipped: ${x.skipped_reason}` : x.reinstated_at ? `reinstated ${date(x.reinstated_at)}` : '')))))), tools);
+          h('td', null, x.skipped_reason ? `skipped: ${x.skipped_reason}` : x.reinstated_at ? `reinstated ${date(x.reinstated_at)}` : '')))))), decide, tools);
+  }
+
+  /** An engineer's request waits for a decision: approve it (verbal approver, date, override note) or turn it down with a reason the engineer reads. */
+  function decision(r) {
+    const me = sessionUser()?.username;
+    const who = h('select', { 'aria-label': 'Verbal approval given by' }, h('option', { value: '' }, 'Choose who approved'), meta.approvers.map((a) => h('option', { value: a.username }, `${a.display_name} (${a.username})`)));
+    if (me && meta.approvers.some((a) => a.username === me)) who.value = me;
+    const when = h('input', { type: 'date', min: meta.quarter.start, max: meta.quarter.end, value: r.effective_date < meta.quarter.start ? meta.quarter.start : r.effective_date, 'aria-label': 'Effective date' });
+    const ovr = h('input', { type: 'text', maxlength: '300', placeholder: 'Override note (only if it still has open calls)', 'aria-label': 'Override note' });
+    const why = h('input', { type: 'text', maxlength: '300', placeholder: 'Reason for turning it down (the engineer reads this)', 'aria-label': 'Reason for turning it down' });
+    const run = async (fn, msg) => { try { await fn(); toast(msg); load(); } catch (e) { toast(e.message, 'bad'); } };
+    return h('div', { class: 'rec-note warn', style: { display: 'block', marginBottom: '8px' } },
+      h('div', { class: 'btn-row' }, who, when, ovr, h('button', { class: 'btn primary', type: 'button', onClick: () => run(() => send('/api/amc-removal/approve', { removal_no: r.removal_no, approved_by: who.value, effective_date: when.value, override_note: ovr.value }), `${r.removal_no} approved`) }, icon('checkmark'), 'Approve')),
+      h('div', { class: 'btn-row', style: { marginTop: '8px' } }, why, h('button', { class: 'btn', type: 'button', onClick: () => run(() => send('/api/amc-removal/reject', { removal_no: r.removal_no, reason: why.value }), `${r.removal_no} turned down`) }, icon('close'), 'Turn down')));
   }
 
   load();

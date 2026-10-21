@@ -40,9 +40,9 @@ export function mountAmcMine(root) {
       cb.addEventListener('change', () => { if (cb.checked) picked.set(a.asset_key, a); else picked.delete(a.asset_key); tick(); });
       return { a, cb };
     });
-    const mineTbl = rows.length ? h('div', { class: 'tbl-wrap', style: { maxHeight: '45vh', overflow: 'auto' } }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['', 'Asset (CI)', 'Class / type', 'Location'].map((t) => h('th', null, t)))),
+    const mineTbl = rows.length ? h('div', { class: 'tbl-wrap', style: { maxHeight: '45vh', overflow: 'auto' } }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['', 'Asset (CI)', 'Serial no.', 'Class / type', 'Location'].map((t) => h('th', null, t)))),
       h('tbody', null, rows.map(({ a, cb }) => h('tr', null, h('td', null, cb), h('td', null, h('span', { class: 'mono' }, a.asset_key), h('div', { class: 'muted small' }, [a.make, a.model].filter(Boolean).join(' '))),
-        h('td', null, label(a.asset_class), h('div', { class: 'muted small' }, label(a.asset_type))), h('td', null, a.location_code || '—')))))) : h('p', { class: 'muted' }, 'You have no assets that can be removed from the AMC.');
+        h('td', { class: 'mono' }, a.serial_no || '—'), h('td', null, label(a.asset_class), h('div', { class: 'muted small' }, label(a.asset_type))), h('td', null, a.location_code || '—')))))) : h('p', { class: 'muted' }, 'You have no assets that can be removed from the AMC.');
     const checker = listChecker({ onAdd: (found) => { found.forEach((r) => picked.set(r.asset_key, r)); rows.forEach(({ a, cb }) => { cb.checked = picked.has(a.asset_key); }); tick(); } });
     tick();
     const reqs = data.requests.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Request', 'Assets', 'Status', 'Decision', ''].map((t) => h('th', null, t)))),

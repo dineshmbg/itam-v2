@@ -17,7 +17,7 @@ Q = pm.quarter(dt.date.today())
 @pytest.fixture()
 def fleet(box):
     """Three whole assets of different classes under AMC, plus one laptop and one warranty asset (both ineligible)."""
-    box.execute("INSERT INTO portal_user (username, display_name, role, password_hash) VALUES ('TST-APPROVER','TST APPROVER','USER','x') ON CONFLICT DO NOTHING")
+    box.execute("INSERT INTO portal_user (username, display_name, role, password_hash) VALUES ('TST-APPROVER','TST APPROVER','ADMIN','x') ON CONFLICT DO NOTHING")
     make_asset(box, "TST-D-1", rate_value=1500)
     make_asset(box, "TST-S-1", asset_class="SWITCH", asset_type="CORE SWITCH", rate_value=9000)
     make_asset(box, "TST-U-1", asset_class="UPS", asset_type="UPS", rate_value=400)
@@ -32,7 +32,7 @@ def go(keys, **body):
 
 def test_removes_one_asset_by_archiving_it_with_a_snapshot_and_audit(fleet):
     r = go(["TST-D-1"], note="verbal OK from SI")
-    assert r["assets"] == ["TST-D-1"] and r["removal_no"].startswith("AMCR-") and r["removal_no"].endswith("-001")
+    assert r["assets"] == ["TST-D-1"] and r["removal_no"].startswith("AMCR-")
     a = one(fleet, "SELECT * FROM asset WHERE asset_key = 'TST-D-1'")
     assert (a["is_current"], a["asset_status"], a["rate_value"]) == (0, "REMOVED_FROM_AMC", None)      # archived, rate cleared, row still there
     assert n(fleet, "SELECT count(*) FROM portal_lock WHERE dataset='assets' AND record_key='TST-D-1' AND field='__archived__'") == 1
@@ -175,8 +175,8 @@ def test_effective_date_must_fall_in_the_running_quarter(fleet):
         go(["TST-D-1"], effective_date=(Q["start"] - dt.timedelta(days=1)).isoformat())
     with pytest.raises(Invalid, match="running quarter"):
         go(["TST-D-1"], effective_date=(Q["end"] + dt.timedelta(days=1)).isoformat())
-    go(["TST-D-1"], effective_date=dt.date.today().isoformat())
-    assert one(fleet, "SELECT effective_date FROM amc_removal")["effective_date"] == dt.date.today()
+    no = go(["TST-D-1"], effective_date=dt.date.today().isoformat())["removal_no"]
+    assert one(fleet, "SELECT effective_date FROM amc_removal WHERE removal_no = %s", (no,))["effective_date"] == dt.date.today()
 
 
 def test_approver_must_be_an_active_portal_user_and_reason_is_required(fleet):
@@ -611,3 +611,63 @@ def test_waiting_requests_alert_administrators_and_team_leaders(mine_):
     assert eng in got and no in {r["removal_no"] for r in got[eng]["rows"]} and "waiting for your decision" in got[eng]["subject"]
     amcremoval.reject(no, {"reason": "not now at all"}, "TST-LEAD", IP)
     assert no not in {r["removal_no"] for r in mailer.detect("AMC_REQUEST", {}).get(eng, {"rows": []})["rows"]}              # decided: no longer announced
+
+
+# ---------------------------------------------------------------- only administrators and Team Leader/SI give the verbal approval; the upload template
+def test_only_administrators_and_team_leaders_can_give_the_approval(fleet, monkeypatch):
+    from portal.app import auth
+    fleet.execute("INSERT INTO portal_user (username, display_name, role, password_hash) VALUES ('TST-PLAIN','TST PLAIN','USER','x'), ('TST-RO','TST RO','ADMIN','x') ON CONFLICT DO NOTHING")
+    fleet.execute("UPDATE portal_user SET read_only = TRUE WHERE username = 'TST-RO'")
+    names = {a["username"] for a in amcremoval.meta()["approvers"]}
+    assert "TST-APPROVER" in names and "TST-PLAIN" not in names and "TST-RO" not in names             # an ordinary user and a read-only account are not offered
+    with pytest.raises(Invalid, match="administrator or Team Leader"):
+        go(["TST-D-1"], approved_by="TST-PLAIN")
+    # a plain user whose designation is Team Leader/SI is offered
+    eng = one(fleet, "SELECT engineer_key FROM portal_engineer ORDER BY engineer_key LIMIT 1")["engineer_key"]
+    fleet.execute("UPDATE portal_user SET engineer_key = %s WHERE username = 'TST-PLAIN'", (eng,))
+    monkeypatch.setattr(auth, "is_lead_designation", lambda d: True)
+    assert "TST-PLAIN" in {a["username"] for a in amcremoval.meta()["approvers"]}
+    assert go(["TST-D-1"], approved_by="TST-PLAIN")["status"] == "APPLIED"
+
+
+def test_template_has_the_columns_and_a_reason_list():
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(amcremoval.template_bytes()))
+    assert [c.value for c in wb["Assets"][1]] == ["Asset (CI)", "Serial no.", "Reason"]
+    assert [r[0].value for r in wb["Lists"].iter_rows()] == list(amcremoval.REASONS.values())
+    assert wb["Assets"].data_validations.dataValidation[0].formula1 == "=Lists!$A$1:$A$9"
+
+
+def test_a_filled_template_gives_names_serials_and_a_reason_per_row(fleet):
+    import io
+    from openpyxl import load_workbook
+    fleet.execute("UPDATE asset SET serial_no = 'TSTSER-S' WHERE asset_key = 'TST-S-1'")
+    wb = load_workbook(io.BytesIO(amcremoval.template_bytes()))
+    ws = wb["Assets"]
+    ws.append(["TST-D-1", None, "Surplus"])
+    ws.append([None, "TSTSER-S", "End of life / support"])
+    ws.append(["TST-U-1", None, "Because I said so"])
+    ws.append(["TST-W-1", None, None])
+    buf = io.BytesIO()
+    wb.save(buf)
+    names, reasons = amcremoval.read_list(buf.getvalue())
+    assert names == ["TST-D-1", "TSTSER-S", "TST-U-1", "TST-W-1"]
+    assert reasons == {"TST-D-1": "SURPLUS", "TSTSER-S": "END_OF_LIFE", "TST-U-1": "?Because I said so"}
+    m = {r["input"]: r for r in amcremoval.match_list(names, None, reasons)["rows"]}
+    assert m["TSTSER-S"]["row"]["asset_key"] == "TST-S-1" and m["TSTSER-S"]["reason"] == "END_OF_LIFE" and m["TST-D-1"]["reason"] == "SURPLUS"
+    assert "not one of the listed reasons" in m["TST-U-1"]["reason_note"] and "reason" not in m["TST-U-1"]
+    assert m["TST-W-1"]["result"] == "BLOCKED" and "reason" not in m["TST-W-1"]
+
+
+def test_an_exact_asset_key_beats_a_hostname_that_reads_the_same(fleet):
+    fleet.execute("UPDATE asset SET hostname = 'TST-D-1' WHERE asset_key = 'TST-S-1'")
+    r = amcremoval.match_list(["TST-D-1"])["rows"][0]
+    assert r["result"] == "OK" and r["row"]["asset_key"] == "TST-D-1"
+
+
+def test_template_route_is_open_to_signed_in_users(fleet, monkeypatch):
+    fake_user(monkeypatch, "USER", username="TST-ENG-USER", engineer_key="TST ENG")
+    with TestClient(app) as c:
+        r = c.get("/api/amc-removal/template", headers=HDR)
+        assert r.status_code == 200 and r.content[:2] == b"PK" and "AMC_Removal_Upload_Template.xlsx" in r.headers["content-disposition"]

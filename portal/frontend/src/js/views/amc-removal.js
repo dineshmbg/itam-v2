@@ -1,6 +1,7 @@
 // Remove an asset from AMC (administrators and Team Leader/SI). The server checks everything again - see portal/app/amcremoval.py.
 import { get, send } from '../core/api.js';
 import { h } from '../core/dom.js';
+import { user as sessionUser } from '../core/session.js';
 import { toast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 
@@ -15,6 +16,8 @@ export async function amcRemovalDialog({ asset, onDone }) {
   const reason = h('select', { id: 'amc-reason' }, h('option', { value: '' }, 'Choose a reason'), pre.reasons.map((r) => h('option', { value: r.value }, r.label)));
   const when = h('input', { id: 'amc-date', type: 'date', value: pre.default_date, min: pre.quarter.start, max: pre.quarter.end });
   const who = h('select', { id: 'amc-who' }, h('option', { value: '' }, 'Choose who approved'), pre.approvers.map((a) => h('option', { value: a.username }, `${a.display_name} (${a.username})`)));
+  const me = sessionUser()?.username;
+  if (me && pre.approvers.some((a) => a.username === me)) who.value = me;           // the person at the keyboard is usually the one who approved
   const note = h('input', { id: 'amc-note', type: 'text', maxlength: '300', placeholder: 'Optional' });
   const credit = h('p', { class: 'rec-note info', role: 'status' });
   const showCredit = async () => {
@@ -52,6 +55,8 @@ export async function amcReinstateDialog({ keys, onDone }) {
   const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const who = h('select', { id: 'ri-who' }, h('option', { value: '' }, 'Choose who approved'), meta.approvers.map((a) => h('option', { value: a.username }, `${a.display_name} (${a.username})`)));
   const when = h('input', { id: 'ri-date', type: 'date', value: today, min: meta.quarter.start, max: today });
+  const me = sessionUser()?.username;
+  if (me && meta.approvers.some((a) => a.username === me)) who.value = me;
   const why = h('input', { id: 'ri-why', type: 'text', maxlength: '300', placeholder: 'Why is it going back into the AMC?' });
   openModal({
     title: `Reinstate ${keys.length === 1 ? keys[0] : keys.length + ' assets'} in AMC`,

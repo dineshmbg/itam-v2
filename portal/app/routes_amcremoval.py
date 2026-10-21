@@ -113,7 +113,10 @@ async def match_file(request):
         return error(413, "The file is too large.")
     owner = _owner(u)
     data = await request.body()
-    return json_response(await run_in_threadpool(lambda: amcremoval.match_list(amcremoval.list_from_file(data, request.headers.get("x-filename", "")), owner)))
+    def run():
+        names, reasons = amcremoval.read_list(data)
+        return amcremoval.match_list(names, owner, reasons)
+    return json_response(await run_in_threadpool(run))
 
 
 async def reinstate(request):
@@ -138,6 +141,11 @@ async def export(request):
                     headers={"Content-Disposition": 'attachment; filename="AMC_removals.xlsx"', "Cache-Control": "no-store"})
 
 
+async def template(request):
+    return Response(await run_in_threadpool(amcremoval.template_bytes), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="AMC_Removal_Upload_Template.xlsx"', "Cache-Control": "no-store"})
+
+
 async def approve(request):
     b, u, ip = request.state.body, request.state.user, client_ip(request)
     def run():
@@ -158,6 +166,7 @@ async def reject(request):
 
 routes = [
     Route("/api/amc-removal/mine", read(mine)),
+    Route("/api/amc-removal/template", read(template)),
     Route("/api/amc-removal/request", write(make_request), methods=["POST"]),
     Route("/api/amc-removal/withdraw", write(withdraw), methods=["POST"]),
     Route("/api/amc-removal/match", write(match, mutates=False), methods=["POST"]),

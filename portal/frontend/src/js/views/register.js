@@ -22,6 +22,7 @@ export const getMeta = () => (metaP ||= get('/api/meta'));
 
 export function mountRegister(root, name, opts = {}) {
   let dead = false, table, facets, drawer, meta, ds, rec = null, openId = null;
+  const pick = opts.pick;      // a pick list (Remove from AMC): the same register, but a click puts the row in a basket instead of opening it - see amc-basket.js
   let q = '', sort = null, filters = {}, archived = false;
   const holder = h('div', { class: 'page' });
   root.append(holder);
@@ -150,33 +151,35 @@ export function mountRegister(root, name, opts = {}) {
       const arch = h('input', { type: 'checkbox', 'aria-label': 'Show archived records' });
       arch.checked = archived;
       arch.addEventListener('change', () => { archived = arch.checked; syncUrl(); requery(); });
-      tools.push(h('label', { class: 'pill-toggle' }, arch, icon('checkbox', 'off'), icon('checkbox--checked--filled', 'on'), 'Show archived'));
-      if (name === 'pm') tools.push(h('button', { class: 'btn primary', type: 'button', onClick: async () => {
+      if (!pick) tools.push(h('label', { class: 'pill-toggle' }, arch, icon('checkbox', 'off'), icon('checkbox--checked--filled', 'on'), 'Show archived'));
+      if (pick) tools.push(...pick.tools(api));
+      if (name === 'pm' && !pick) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: async () => {
         const keys = await api.allKeys(500);
         if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
         recordPmDialog({ keys, onDone: () => table.refresh() });
       } }, icon('checkmark'), 'Record PM for listed assets'));
-      if (name === 'assets' && (isAdmin() || sessionUser()?.asset_access === 'FULL')) tools.push(h('button', { class: 'btn', type: 'button', title: 'Assign every asset matching the current search and filters to an engineer, or hand over one engineer’s assets to another', onClick: async () => {
+      if (name === 'assets' && !pick && (isAdmin() || sessionUser()?.asset_access === 'FULL')) tools.push(h('button', { class: 'btn', type: 'button', title: 'Assign every asset matching the current search and filters to an engineer, or hand over one engineer’s assets to another', onClick: async () => {
         const keys = await api.allKeys(5000);
         if (!keys.length) { toast('No assets are listed.', 'bad'); return; }
         assignEngineerDialog({ keys, onDone: () => table.refresh() });
       } }, icon('user--multiple'), 'Assign engineer'));
-      if (schema?.can_create[name]) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: () => newRecord({ name, label: ds.label.replace(/s$/, ''), onCreated: (id) => { table.refresh(); openDetail(id); } }) }, icon('add'), `New ${ds.label.replace(/s$/, '').toLowerCase()}`));
+      if (schema?.can_create[name] && !pick) tools.push(h('button', { class: 'btn primary', type: 'button', onClick: () => newRecord({ name, label: ds.label.replace(/s$/, ''), onCreated: (id) => { table.refresh(); openDetail(id); } }) }, icon('add'), `New ${ds.label.replace(/s$/, '').toLowerCase()}`));
       let cols = await loadColumns(name, ds.columns);
+      if (pick) cols = cols.map((c) => ({ ...c, visible: c.visible || ['serial_no', 'rate_value', 'cover_status'].includes(c.key) }));      // a basket needs the serial number and the rate in view
       const colsBtn = h('button', { class: 'btn', type: 'button', onClick: () => columnsDialog({ name, columns: cols, onApply: (next) => { if (!next) clearSavedWidths(widthKey); cols = next || ds.columns.map((c) => ({ ...c, visible: true })); rebuildTable(); } }) }, icon('settings'), 'Columns');
       tools.push(colsBtn);
       tools.push(h('button', { class: 'btn', type: 'button', title: 'Download everything matching the current search and filters as a CSV file (opens in Excel)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/' + name + '/export', paramsForServer(0, 0, false), name + '.csv'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('download'), 'Export CSV'));
-      if (name === 'assets') tools.push(h('button', { class: 'btn', type: 'button', title: 'Print Code128 barcode stickers for everything matching the current search and filters (one per asset, Asset (CI) number)',
+      if (name === 'assets' && !pick) tools.push(h('button', { class: 'btn', type: 'button', title: 'Print Code128 barcode stickers for everything matching the current search and filters (one per asset, Asset (CI) number)',
         onClick: async () => { try { const n = await downloadGet('/api/registers/assets/labels', paramsForServer(0, 0, false), 'asset_labels.pdf'); toast(`Downloaded ${n}`); } catch (e) { toast(e.message, 'bad'); } } }, icon('barcode'), 'Print barcode labels'));
-      if (!opts.embedded) holder.append(pageHead(ds.label, `${ds.label} — updates live as records change`, tools));
+      if (!opts.embedded) holder.append(pick ? pageHead(pick.title, pick.sub, tools) : pageHead(ds.label, `${ds.label} — updates live as records change`, tools));
       facets = createFacets({ facets: ds.facets, defaults: ds.defaults, onChange: (f, clearAll) => { filters = clearAll ? Object.fromEntries(ds.facets.map((x) => [x.key, []])) : f; applyFilters(); } });
       const myEngineerKey = name === 'engineers' ? sessionUser()?.engineer_key : null;
       const widthKey = `itam.colw.${sessionUser()?.username || sessionUser()?.id || ''}.${name}`;
       function buildTable() {
         return createTable({
-          columns: cols.filter((c) => c.visible), sort: { key: sort.key, dir: sort.dir }, ariaLabel: ds.label, search: () => q, fetchPage,
-          onSort: (key, dir) => { sort = { key, dir }; syncUrl(); requery(); }, onOpen: (row) => openDetail(row.id),
+          columns: [...(pick ? [{ key: '_pick', label: '', kind: 'mark', visible: true }] : []), ...cols.filter((c) => c.visible)], isMarked: pick ? (row) => pick.isPicked(row.id) : undefined, sort: { key: sort.key, dir: sort.dir }, ariaLabel: ds.label, search: () => q, fetchPage,
+          onSort: (key, dir) => { sort = { key, dir }; syncUrl(); requery(); }, onOpen: (row) => (pick ? pick.toggle(row) : openDetail(row.id)),
           widthKey,
           rowClass: (row) => (name === 'calls' && row.priority === 'P1' && (row.call_status === 'OPEN' || !row.call_status) ? 'row-p1' : (myEngineerKey && row.id === myEngineerKey ? 'row-self' : null)),
         });
@@ -188,6 +191,7 @@ export function mountRegister(root, name, opts = {}) {
         requery();
       }
       table = buildTable();
+      pick?.ready({ restyle: () => table.restyle(), refresh: () => table.refresh() });
       search.value = q; clearBtn.hidden = !q;
       const toolbar = h('div', { class: 'toolbar' }, h('div', { class: 'field' }, icon('search'), search, clearBtn), countEl);
       const results = h('section', { class: 'results', 'aria-label': `${ds.label} results` }, toolbar, chipsEl, table.el);

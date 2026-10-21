@@ -39,7 +39,7 @@ const VIEWS = {
   'reports/inventory': () => import('./views/inventory-mine.js').then((m) => m.mountInventoryMine),
   'reports/amc': () => import('./views/amc-mine.js').then((m) => m.mountAmcMine),
   'admin/amc-requests': () => import('./views/amc-requests.js').then((m) => m.mountAmcRequests),
-  'admin/amc': () => import('./views/amc-picker.js').then((m) => m.mountAmcPicker),
+  'admin/amc': () => import('./views/amc-basket.js').then((m) => m.mountAmcPick),
   'admin/match': () => import('./views/inventory-match.js').then((m) => m.mountInventoryMatch),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),
   'admin/backup': () => import('./views/admin-backup.js').then((m) => m.mountBackup),

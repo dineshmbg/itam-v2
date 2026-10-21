@@ -5,7 +5,7 @@ import { date, humanize, int, person } from '../core/format.js';
 import { badge, classDotVar } from './badge.js';
 import { entity } from './hovercard.js';
 
-const WIDTH = { name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['172px', '0.8fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
+const WIDTH = { mark: ['48px', '48px'], name: ['150px', '1fr'], mono: ['150px', '0.9fr'], date: ['112px', '0.5fr'], badge: ['172px', '0.8fr'], int: ['104px', '0.4fr'], text: ['168px', '1.4fr'] };
 
 const MIN_COL = 56;
 const readWidths = (k) => { try { return k ? JSON.parse(localStorage.getItem(k) || '{}') || {} : {}; } catch (_) { return {}; } };
@@ -13,7 +13,7 @@ const writeWidths = (k, v) => { try { if (k) { if (Object.keys(v).length) localS
 /** Forget a register's saved column widths (used by the Columns dialog's "Reset to default"). */
 export const clearSavedWidths = (k) => writeWidths(k, {});
 
-export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass, widthKey }) {
+export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage, onOpen, onSort, sort, search = () => '', ariaLabel = 'Results', rowClass, widthKey, isMarked }) {
   let total = 0;
   let epoch = 0;
   let sortState = { key: sort?.key, dir: sort?.dir || 'asc' };
@@ -98,6 +98,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
   const headCells = columns.map((c) => {
     const btn = h('button', { class: 'gt-th' + (c.align === 'right' ? ' right' : ''), role: 'columnheader', type: 'button', 'data-key': c.key, 'aria-label': `Sort by ${c.label}` }, c.label, icon('chevron--sort', 'sm'));
     btn.addEventListener('click', () => {
+      if (c.kind === 'mark') return;                          // the tick column is not data: nothing to sort by
       const dir = sortState.key === c.key && sortState.dir === 'asc' ? 'desc' : 'asc';
       setSort(c.key, dir);
       onSort?.(c.key, dir);
@@ -122,6 +123,10 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
   if (sort?.key) setSort(sort.key, sortState.dir);
 
   function cell(col, row) {
+    if (col.kind === 'mark') {                                // a pick list: a tick when the row is in the basket, a plus when it can be added
+      const on = !!isMarked?.(row);
+      return h('div', { class: 'gt-td', role: 'gridcell', title: on ? 'In the basket - click the row to take it out' : 'Click the row to add it to the basket' }, icon(on ? 'checkmark--filled' : 'add', on ? 'ok' : 'faint'), h('span', { class: 'sr-only' }, on ? 'In the basket' : 'Not in the basket'));
+    }
     const v = row[col.key];
     const td = h('div', { class: 'gt-td' + (col.align === 'right' ? ' right' : ''), role: 'gridcell' });
     if (col.key === 'hostname' && (v == null || v === '')) {
@@ -176,6 +181,7 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
       if (row.id === selected) el.setAttribute('aria-selected', 'true');
       const rc = rowClass?.(row);
       if (rc) el.classList.add(rc);
+      if (isMarked?.(row)) el.classList.add('row-picked');
       el.dataset.loaded = '1';
     } else columns.forEach(() => el.append(h('div', { class: 'gt-td', role: 'gridcell' })));
     if (i === active) el.classList.add('active');
@@ -300,6 +306,8 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
     },
     setSelected(id) { selected = id; rowEls.forEach((el, i) => { if (id != null && rowAt(itemAt(i).idx)?.id === id) el.setAttribute('aria-selected', 'true'); else el.removeAttribute('aria-selected'); }); },
     setEmpty(t) { emptyEl.replaceChildren(icon('search'), h('h3', null, t.title), h('div', null, t.hint || '')); },
+    /** The marked rows changed (see isMarked): draw the rows again from the pages already loaded. */
+    restyle() { rowEls.forEach((el) => el.remove()); rowEls.clear(); render(); },
     setSort,
     get total() { return total; },
     focus() { scroller.focus(); },
