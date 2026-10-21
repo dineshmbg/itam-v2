@@ -126,6 +126,7 @@
 .sw-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-2); min-width: 0; }
 .sw-card h4 { margin: 0; }
 .sw-card .btn { width: 100%; justify-content: flex-start; }
+.sw-card .btn.primary { width: auto; align-self: center; justify-content: center; }
 .sw-step { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c-text-3); }
 .sw-grow { flex: 1; }
 .sw-out:not(:empty) { border-top: 1px solid var(--c-border); padding-top: 8px; font-size: 13px; }
