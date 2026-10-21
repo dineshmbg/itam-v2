@@ -37,6 +37,12 @@ DDL = [
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_days INT",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS credit_amount NUMERIC(14,2)",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS skipped_reason TEXT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS reinstated_at DATE",         # back in AMC from this day; the credit kept is net_credit_*
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS reinstated_by TEXT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS reinstated_approved_by TEXT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS reinstate_reason TEXT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS net_credit_days INT",
+    "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS net_credit_amount NUMERIC(14,2)",
     "ALTER TABLE amc_removal_line ADD COLUMN IF NOT EXISTS via_parent TEXT",       # a component line removed together with this parent asset
 ]
 
@@ -390,10 +396,11 @@ def cancel(removal_no, editor, ip, only_own=False):
 
 
 def _with_lines(heads):
-    lines = db.query("SELECT removal_no, asset_key, reason, via_parent, credit_days, credit_amount, skipped_reason FROM amc_removal_line WHERE removal_no = ANY(%s) ORDER BY line_id", [[h["removal_no"] for h in heads]])
+    lines = db.query("""SELECT removal_no, asset_key, reason, via_parent, credit_days, credit_amount, skipped_reason, reinstated_at, reinstate_reason, net_credit_days, net_credit_amount
+                        FROM amc_removal_line WHERE removal_no = ANY(%s) ORDER BY line_id""", [[h["removal_no"] for h in heads]])
     for h in heads:
         h["lines"] = [x for x in lines if x["removal_no"] == h["removal_no"]]
-        h["credit_total"] = sum((x["credit_amount"] or 0 for x in h["lines"]), Decimal("0"))
+        h["credit_total"] = sum(((x["net_credit_amount"] if x["reinstated_at"] else x["credit_amount"]) or 0 for x in h["lines"]), Decimal("0"))      # what stands after any reinstatement
     return heads
 
 
@@ -412,6 +419,72 @@ def mine(engineer_key, username):
                           WHERE r.status = 'APPLIED' AND l.skipped_reason IS NULL AND a.is_current = 0 AND a.engineer_name = %s ORDER BY r.effective_date DESC, l.asset_key""", [engineer_key])
     return {"assets": candidates({"engineer": engineer_key, "all": True})["rows"] if engineer_key else [], "requests": _with_lines(heads), "removed": removed,
             "reasons": [{"value": k, "label": v} for k, v in REASONS.items()], "quarter": meta()["quarter"], "default_date": meta()["default_date"]}
+
+
+# ---------------------------------------------------------------- reinstatement
+def _num(v):
+    return None if v is None else Decimal(str(v))
+
+
+def reinstate(keys, body, editor, ip):
+    """Put assets that were removed from AMC back: un-archive them and restore the cover, rate and PM state saved when they were removed (their
+    parts come back with them). body: approved_by (portal username - the verbal approval), reason (at least 5 characters), effective_date (from
+    when the vendor bills them again: not before the removal or the running quarter, not in the future; default today). One transaction: all or none.
+    The removal request stays as the record; a request whose assets have all come back is marked REVERSED."""
+    body = body or {}
+    keys = _norm(keys)
+    if not keys:
+        raise Invalid("Choose at least one asset.", {"keys": "required"})
+    why = _text(body.get("reason"))
+    if not why or len(why) < 5:
+        raise Invalid("Give a reason for reinstating (at least 5 characters).", {"reason": "required"})
+    q = pm.quarter(TODAY())
+    try:
+        when = dt.date.fromisoformat(str(body.get("effective_date"))[:10]) if body.get("effective_date") else TODAY()
+    except ValueError:
+        raise Invalid("Enter a valid date.", {"effective_date": "enter a valid date (YYYY-MM-DD)"}) from None
+    if when > TODAY() or when < q["start"]:
+        raise Invalid(f"The date must be between the start of the running quarter ({q['start']}) and today.", {"effective_date": f"between {q['start']} and {TODAY()}"})
+    touched = set()
+    with db.write() as con:
+        approver = _approver(con, body.get("approved_by"))
+        problems = []
+        todo = []
+        for k in keys:
+            ln = edit._rows(con, """SELECT l.*, r.effective_date, r.created_at FROM amc_removal_line l JOIN amc_removal r USING (removal_no)
+                                    WHERE l.asset_key = %s AND l.via_parent IS NULL AND r.status = 'APPLIED' AND l.skipped_reason IS NULL AND l.snapshot IS NOT NULL
+                                      AND l.reinstated_at IS NULL ORDER BY r.created_at DESC, l.line_id DESC LIMIT 1 FOR UPDATE OF l""", (k,))
+            if not ln:
+                problems.append(f"{k}: it was not removed from AMC through a request, or it has already been reinstated")
+            elif when < ln[0]["effective_date"]:
+                problems.append(f"{k}: it cannot be reinstated from before it was removed ({ln[0]['effective_date']})")
+            else:
+                todo.append(ln[0])
+        if problems:
+            raise Conflict("Nothing was reinstated. " + "; ".join(problems))
+        for ln in todo:
+            parts = edit._rows(con, "SELECT * FROM amc_removal_line WHERE removal_no = %s AND via_parent = %s AND skipped_reason IS NULL AND snapshot IS NOT NULL AND reinstated_at IS NULL FOR UPDATE",
+                               (ln["removal_no"], ln["asset_key"]))
+            for x in [ln, *parts]:
+                s = x["snapshot"]
+                cols = {"is_current": 1, "asset_status": s.get("asset_status"), "cover_type": s.get("cover_type"), "pm_status": s.get("pm_status"),
+                        "cover_expiry_date": L.from_json("cover_expiry_date", s.get("cover_expiry_date")), "rate_value": _num(s.get("rate_value"))}
+                edit._update_row(con, "assets", x["asset_key"], cols)
+                con.execute("DELETE FROM portal_lock WHERE dataset = 'assets' AND record_key = %s AND field = %s", (x["asset_key"], L.ARCHIVED))
+                span = pm.quarter(ln["effective_date"])
+                # credit kept = the days it really was out: back in the same quarter -> up to the day it returned; later quarter -> all of the original credit
+                days = (when - ln["effective_date"]).days if when <= span["end"] else x["credit_days"]
+                net = None if s.get("rate_value") is None else (_num(s["rate_value"]) * days / ((span["end"] - span["start"]).days + 1)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                con.execute("UPDATE amc_removal_line SET reinstated_at = %s, reinstated_by = %s, reinstated_approved_by = %s, reinstate_reason = %s, net_credit_days = %s, net_credit_amount = %s WHERE line_id = %s",
+                            (when, editor, approver, why, days, net, x["line_id"]))
+                edit._audit(con, editor, ip, "assets", x["asset_key"], "AMC_REINSTATE",
+                            {"asset_status": {"old": "REMOVED_FROM_AMC", "new": s.get("asset_status")}, "rate_value": {"old": None, "new": s.get("rate_value")}, "removal_no": x["removal_no"],
+                             "effective_date": when.isoformat(), "approved_by": approver, "net_credit_days": days}, why)
+            touched.add(ln["removal_no"])
+        for no in touched:
+            if not edit._exists(con, "SELECT 1 FROM amc_removal_line WHERE removal_no = %s AND via_parent IS NULL AND skipped_reason IS NULL AND reinstated_at IS NULL", (no,)):
+                con.execute("UPDATE amc_removal SET status = 'REVERSED' WHERE removal_no = %s", (no,))
+    return {"reinstated": [ln["asset_key"] for ln in todo], "removals": sorted(touched)}
 
 
 # ---------------------------------------------------------------- a pasted / uploaded list
@@ -472,3 +545,58 @@ def match_list(tokens, owner=None):
             out.append({"input": t, "result": "BLOCKED" if why else "OK", "why": why, "row": row})
     n = lambda s: sum(1 for x in out if x["result"] == s)  # noqa: E731
     return {"rows": out, "ok": n("OK"), "blocked": n("BLOCKED"), "not_found": n("NOT_FOUND"), "ambiguous": n("AMBIGUOUS"), "capped": len(_norm(tokens)) >= LIST_CAP}
+
+
+# ---------------------------------------------------------------- reports
+_LIVE = "r.status IN ('APPLIED','REVERSED') AND l.skipped_reason IS NULL AND l.snapshot IS NOT NULL"
+
+
+def summary():
+    """Per quarter: how many assets (and parts) were removed, how many came back, what credit stands, and how many requests wait. Read only."""
+    rows = db.query(f"""SELECT r.quarter_label, min(r.created_at) AS first_at,
+                               count(*) FILTER (WHERE l.via_parent IS NULL AND {_LIVE}) AS assets,
+                               count(*) FILTER (WHERE l.via_parent IS NOT NULL AND {_LIVE}) AS parts,
+                               count(*) FILTER (WHERE l.via_parent IS NULL AND {_LIVE} AND l.reinstated_at IS NOT NULL) AS reinstated,
+                               coalesce(sum(CASE WHEN {_LIVE} THEN CASE WHEN l.reinstated_at IS NOT NULL THEN l.net_credit_amount ELSE l.credit_amount END END), 0) AS credit
+                        FROM amc_removal r JOIN amc_removal_line l USING (removal_no) GROUP BY r.quarter_label ORDER BY min(r.created_at) DESC""")
+    status = {x["status"]: x["n"] for x in db.query("SELECT status, count(*) AS n FROM amc_removal GROUP BY 1")}
+    return {"quarters": rows, "waiting": status.get("REQUESTED", 0), "pending": status.get("PENDING", 0)}
+
+
+def report_bytes(quarter=None):
+    """An Excel workbook of every removal line - the paper behind a credit note: request, dates, asset, reason, rate, days and credit, who asked
+    and who approved. `quarter`: one quarter label, or all."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    lines = db.query("""SELECT r.removal_no, r.quarter_label, r.status, r.effective_date, r.requested_by, r.approved_by, r.approved_on, r.decided_by, l.asset_key, l.via_parent, l.reason,
+                               a.asset_class, a.asset_type, a.make, a.model, a.serial_no, a.engineer_name, a.location_code, l.snapshot->>'rate_value' AS rate_value,
+                               l.credit_days, l.credit_amount, l.skipped_reason, l.reinstated_at, l.reinstated_approved_by, l.reinstate_reason, l.net_credit_days, l.net_credit_amount
+                        FROM amc_removal_line l JOIN amc_removal r USING (removal_no) LEFT JOIN asset a ON a.asset_key = l.asset_key
+                        WHERE r.status IN ('APPLIED','REVERSED') AND (%s::text IS NULL OR r.quarter_label = %s) ORDER BY r.created_at, r.removal_no, l.line_id""", [quarter, quarter])
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "AMC removals"
+    head = ["Request", "Quarter", "Effective date", "Asset (CI)", "Part of", "Class", "Type", "Make", "Model", "Serial no.", "Engineer", "Location", "Reason", "Rate per quarter",
+            "Days not covered", "Credit", "Skipped because", "Reinstated on", "Reinstated - approved by", "Reinstated - reason", "Days kept out", "Credit that stands",
+            "Requested by", "Verbal approval by", "Approved on"]
+    ws.append(head)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    for x in lines:
+        ws.append([x["removal_no"], x["quarter_label"], x["effective_date"], x["asset_key"], x["via_parent"], x["asset_class"], x["asset_type"], x["make"], x["model"], x["serial_no"], x["engineer_name"],
+                   x["location_code"], REASONS.get(x["reason"], x["reason"]), _num(x["rate_value"]), x["credit_days"], x["credit_amount"], x["skipped_reason"], x["reinstated_at"],
+                   x["reinstated_approved_by"], x["reinstate_reason"], x["net_credit_days"], x["net_credit_amount"] if x["reinstated_at"] else x["credit_amount"], x["requested_by"], x["approved_by"], x["approved_on"]])
+    for col, w in zip("ABCDEFGHIJKLMNOPQRSTUVWXY", [18, 18, 13, 24, 20, 14, 18, 14, 18, 18, 18, 18, 24, 12, 10, 12, 24, 13, 18, 28, 10, 14, 18, 18, 12]):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    s2 = wb.create_sheet("By quarter")
+    s2.append(["Quarter", "Assets removed", "Parts removed", "Reinstated", "Credit that stands"])
+    for c in s2[1]:
+        c.font = Font(bold=True)
+    for x in summary()["quarters"]:
+        if quarter in (None, x["quarter_label"]):
+            s2.append([x["quarter_label"], x["assets"], x["parts"], x["reinstated"], x["credit"]])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

@@ -44,3 +44,23 @@ export async function amcRemovalDialog({ asset, onDone }) {
     } }],
   });
 }
+
+/** Put assets that were removed from AMC back. keys: the removed assets (their parts return with them). onDone() runs after they are back. */
+export async function amcReinstateDialog({ keys, onDone }) {
+  let meta;
+  try { meta = await get('/api/amc-removal/meta'); } catch (e) { toast(e.message, 'bad'); return; }
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const who = h('select', { id: 'ri-who' }, h('option', { value: '' }, 'Choose who approved'), meta.approvers.map((a) => h('option', { value: a.username }, `${a.display_name} (${a.username})`)));
+  const when = h('input', { id: 'ri-date', type: 'date', value: today, min: meta.quarter.start, max: today });
+  const why = h('input', { id: 'ri-why', type: 'text', maxlength: '300', placeholder: 'Why is it going back into the AMC?' });
+  openModal({
+    title: `Reinstate ${keys.length === 1 ? keys[0] : keys.length + ' assets'} in AMC`,
+    lead: 'The asset leaves the archive and gets back the cover, rate and PM state it had. Its parts return with it. The removal request stays as the record.',
+    body: h('div', null, frow('ri-why', 'Reason (required)', why), frow('ri-date', 'Billed again from', when, 'The credit kept is only for the days it was out.'), frow('ri-who', 'Verbal approval given by', who)),
+    actions: [{ label: 'Cancel' }, { label: 'Reinstate', primary: true, onClick: async () => {
+      const r = await send('/api/amc-removal/reinstate', { keys, reason: why.value, effective_date: when.value, approved_by: who.value });
+      toast(`${r.reinstated.length} asset(s) back in the AMC`);
+      onDone?.(r);
+    } }],
+  });
+}

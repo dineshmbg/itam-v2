@@ -11,7 +11,7 @@ import { renderDetail } from './detail.js';
 import { engineerDocs } from './eng-docs.js';
 import { addObservationDialog, softwareTab } from './sw-tab.js';
 import { recordPmDialog } from './pm-record.js';
-import { amcRemovalDialog } from './amc-removal.js';
+import { amcReinstateDialog, amcRemovalDialog } from './amc-removal.js';
 import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
 const ACTIONS = { UPDATE: ['edit', 'Changed'], CREATE: ['add', 'Created'], ARCHIVE: ['archive', 'Archived'], RESTORE: ['renew', 'Restored'], RESET: ['undo', 'Override removed'], CASCADE: ['link', 'Follow-on update'], EVENT: ['user', 'Event'], VERIFY: ['checkmark--outline', 'Physical check'], REPLACE: ['restart', 'Took over the name of a replaced machine'], RETIRE: ['archive', 'Retired (replaced)'], REDEPLOY: ['play', 'Redeployed'] };
@@ -41,8 +41,10 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     const bar = h('div', { class: 'rec-bar' });
     if (p.archived) {
       const retired = name === 'assets' && p.row.asset_status === 'REPLACED';
-      bar.append(h('div', { class: 'rec-note warn' }, icon('archive'), retired ? `This machine was retired when it was replaced by ${p.row.replaced_by_key || 'another machine'}. Its history is kept here.` : 'This record is archived and hidden from the registers.'));
-      if (!spec.readonly && canArchiveThis && !retired) bar.append(h('button', { class: 'btn', type: 'button', onClick: restore }, icon('renew'), 'Restore'));
+      const amcOut = name === 'assets' && p.row.asset_status === 'REMOVED_FROM_AMC';
+      bar.append(h('div', { class: 'rec-note warn' }, icon('archive'), retired ? `This machine was retired when it was replaced by ${p.row.replaced_by_key || 'another machine'}. Its history is kept here.` : amcOut ? 'This asset was removed from the AMC. It is archived, so it is not counted in the registers or dashboards; its history is kept here.' : 'This record is archived and hidden from the registers.'));
+      if (!spec.readonly && canArchiveThis && !retired && !amcOut) bar.append(h('button', { class: 'btn', type: 'button', onClick: restore }, icon('renew'), 'Restore'));
+      if (amcOut && (admin || hasLeadTools())) bar.append(h('button', { class: 'btn', type: 'button', title: 'Put the asset back into the AMC with its cover and rate', onClick: () => amcReinstateDialog({ keys: [p.id], onDone: () => { onChange?.(); drawer.close(); } }) }, icon('renew'), 'Reinstate in AMC'));
       if (name === 'assets' && admin && p.row.record_level === 'ASSET') bar.append(h('button', { class: 'btn', type: 'button', title: 'Put this same physical machine back into service under a new name', onClick: redeploy }, icon('play'), 'Redeploy'));
     } else if (!spec.readonly) {
       if (canEditAny() && (name !== 'engineers' || isOwnEngineerRecord())) bar.append(h('button', { class: 'btn primary', type: 'button', onClick: edit }, icon('edit'), 'Edit'));

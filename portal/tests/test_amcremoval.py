@@ -198,13 +198,6 @@ def test_request_numbers_run_on_within_the_quarter(fleet):
     assert a[:-3] == b[:-3] and int(b[-3:]) == int(a[-3:]) + 1
 
 
-def test_restore_from_archive_still_possible_with_existing_mechanism(fleet):
-    from portal.app import edit
-    go(["TST-D-1"])
-    edit.restore("assets", "TST-D-1", ED, IP, "test")
-    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 1
-
-
 def test_route_is_for_administrators_and_team_leaders_only(fleet, monkeypatch):
     body = {"keys": ["TST-D-1"], "reason": "SURPLUS", "approved_by": "TST-APPROVER"}
     fake_user(monkeypatch, "USER")
@@ -486,3 +479,135 @@ def test_engineer_routes_and_permissions(mine_, monkeypatch):
         r = c.post("/api/amc-removal/approve", json={"removal_no": no2, "approved_by": "TST-APPROVER"}, headers=HDR)
         assert r.status_code == 200 and r.json()["status"] == "APPLIED", r.text
         assert len(c.post("/api/amc-removal/match", json={"text": "TST-U-1"}, headers=HDR).json()["rows"]) == 1                 # a team leader sees every asset
+
+
+# ---------------------------------------------------------------- T9: reinstatement
+def back(keys, **body):
+    return amcremoval.reinstate(keys, {"approved_by": "TST-APPROVER", "reason": "removed by mistake", **body}, ED, IP)
+
+
+def test_reinstating_restores_cover_rate_pm_and_unarchives(fleet):
+    fleet.execute("UPDATE asset SET pm_status = 'PENDING' WHERE asset_key = 'TST-D-1'")
+    no = go(["TST-D-1"])["removal_no"]
+    r = back(["TST-D-1"])
+    assert r == {"reinstated": ["TST-D-1"], "removals": [no]}
+    a = one(fleet, "SELECT * FROM asset WHERE asset_key = 'TST-D-1'")
+    assert (a["is_current"], a["asset_status"], a["cover_type"], float(a["rate_value"]), a["pm_status"]) == (1, "IN_USE", "AMC", 1500.0, "PENDING")
+    assert n(fleet, "SELECT count(*) FROM portal_lock WHERE dataset='assets' AND record_key='TST-D-1' AND field='__archived__'") == 0
+    assert one(fleet, "SELECT status FROM amc_removal WHERE removal_no = %s", (no,))["status"] == "REVERSED"             # the only asset came back
+    assert n(fleet, "SELECT count(*) FROM portal_audit WHERE record_key='TST-D-1' AND action='AMC_REINSTATE'") == 1
+    assert n(fleet, "SELECT count(*) FROM asset WHERE asset_key = 'TST-D-1' AND " + pm.IN_SCOPE) == 1                       # back in the PM list
+
+
+def test_reinstating_brings_its_parts_back_and_a_removal_with_other_assets_stays_applied(fleet):
+    with_parts(fleet)
+    no = go(["TST-D-1", "TST-S-1"])["removal_no"]
+    back(["TST-D-1"])
+    assert n(fleet, "SELECT count(*) FROM asset WHERE asset_key LIKE 'TST-D-1%%' AND is_current = 1") == 3
+    assert one(fleet, "SELECT status FROM amc_removal WHERE removal_no = %s", (no,))["status"] == "APPLIED"               # TST-S-1 is still out
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-S-1'")["is_current"] == 0
+
+
+def test_net_credit_after_reinstatement(fleet):
+    d = Q["start"]
+    go(["TST-D-1"], effective_date=d.isoformat())
+    back(["TST-D-1"])                                                       # back today, same quarter
+    line = one(fleet, "SELECT * FROM amc_removal_line WHERE asset_key = 'TST-D-1'")
+    days = (dt.date.today() - d).days
+    assert (line["net_credit_days"], line["reinstated_approved_by"]) == (days, "TST-APPROVER")
+    assert str(line["net_credit_amount"]) == str((amcremoval.Decimal("1500") * days / 92).quantize(amcremoval.Decimal("0.01"), amcremoval.ROUND_HALF_UP))
+    assert [x for x in amcremoval.requests() if x["removal_no"] == line["removal_no"]][0]["credit_total"] == line["net_credit_amount"]      # the figure that stands
+
+
+def test_reinstating_needs_approval_a_reason_and_a_removed_asset(fleet):
+    go(["TST-D-1"])
+    with pytest.raises(Invalid, match="verbal approval"):
+        back(["TST-D-1"], approved_by="NOBODY")
+    with pytest.raises(Invalid, match="reason"):
+        back(["TST-D-1"], reason="x")
+    with pytest.raises(Conflict, match="TST-S-1: it was not removed"):
+        back(["TST-D-1", "TST-S-1"])
+    assert one(fleet, "SELECT is_current FROM asset WHERE asset_key = 'TST-D-1'")["is_current"] == 0                       # all or none
+    back(["TST-D-1"])
+    with pytest.raises(Conflict, match="already been reinstated"):
+        back(["TST-D-1"])
+    with pytest.raises(Invalid, match="between"):
+        back(["TST-D-1"], effective_date=(dt.date.today() + dt.timedelta(days=1)).isoformat())
+
+
+def test_it_can_be_removed_again_after_a_reinstatement(fleet):
+    go(["TST-D-1"])
+    back(["TST-D-1"])
+    r2 = go(["TST-D-1"])["removal_no"]
+    assert n(fleet, "SELECT count(*) FROM amc_removal_line WHERE asset_key = 'TST-D-1' AND reinstated_at IS NULL") == 1
+    back(["TST-D-1"])
+    assert one(fleet, "SELECT status FROM amc_removal WHERE removal_no = %s", (r2,))["status"] == "REVERSED"
+
+
+def test_plain_restore_is_refused_for_an_asset_removed_from_amc(fleet):
+    from portal.app import edit
+    go(["TST-D-1"])
+    with pytest.raises(Conflict, match="Reinstate"):
+        edit.restore("assets", "TST-D-1", ED, IP, "test")
+
+
+# ---------------------------------------------------------------- T10: reports and alerts
+def test_summary_counts_assets_parts_reinstated_and_credit_per_quarter(fleet):
+    with_parts(fleet)
+    go(["TST-D-1", "TST-S-1"])
+    back(["TST-S-1"])
+    s = amcremoval.summary()
+    q = [x for x in s["quarters"] if x["quarter_label"] == Q["label"]][0]
+    assert q["assets"] >= 2 and q["parts"] >= 2 and q["reinstated"] >= 1
+    assert s["waiting"] >= 0
+
+
+def test_the_dashboard_removed_figure_counts_requests_not_asset_rows(fleet):
+    from portal.app import dashboards
+    base = dashboards.assets()["kpi"]["removed"]
+    go(["TST-D-1"])
+    assert dashboards.assets()["kpi"]["removed"] == base + 1
+    back(["TST-D-1"])
+    assert dashboards.assets()["kpi"]["removed"] == base
+    fleet.execute("UPDATE asset SET engineer_name = 'TST ENG' WHERE asset_key = 'TST-S-1'")
+    go(["TST-S-1"])
+    assert dashboards.assets(eng="TST ENG")["kpi"]["removed"] == 1 and dashboards.assets(eng="NOBODY ELSE")["kpi"]["removed"] == 0
+
+
+def test_excel_report_has_a_row_per_line_with_credit_and_people(fleet):
+    import io
+    from openpyxl import load_workbook
+    with_parts(fleet)
+    no = go(["TST-D-1"], note="x")["removal_no"]
+    wb = load_workbook(io.BytesIO(amcremoval.report_bytes(Q["label"])))
+    rows = [r for r in wb["AMC removals"].iter_rows(values_only=True) if r[0] == no]
+    assert [r[3] for r in rows] == ["TST-D-1", "TST-D-1/GPU1", "TST-D-1/MON1"] and rows[1][4] == "TST-D-1"
+    assert (rows[0][13], rows[0][15], rows[0][22], rows[0][23]) == (1500, 1500, ED, "TST-APPROVER")
+    assert wb["By quarter"].max_row >= 2
+
+
+def test_report_and_reinstate_routes(fleet, monkeypatch):
+    fake_user(monkeypatch, "USER", username="TST-ENG-USER", engineer_key="TST ENG")
+    with TestClient(app) as c:
+        assert c.get("/api/amc-removal/export", headers=HDR).status_code == 403
+        assert c.get("/api/amc-removal/summary", headers=HDR).status_code == 403
+        assert c.post("/api/amc-removal/reinstate", json={"keys": ["TST-D-1"]}, headers=HDR).status_code == 403
+    fake_user(monkeypatch, "ADMIN")
+    go(["TST-D-1"])
+    with TestClient(app) as c:
+        r = c.get("/api/amc-removal/export", headers=HDR)
+        assert r.status_code == 200 and r.content[:2] == b"PK" and "AMC_removals.xlsx" in r.headers["content-disposition"]
+        assert c.get("/api/amc-removal/summary", headers=HDR).status_code == 200
+        r = c.post("/api/amc-removal/reinstate", json={"keys": ["TST-D-1"], "approved_by": "TST-APPROVER", "reason": "needed again"}, headers=HDR)
+        assert r.status_code == 200 and r.json()["reinstated"] == ["TST-D-1"], r.text
+
+
+def test_waiting_requests_alert_administrators_and_team_leaders(mine_):
+    from portal.app import mailer
+    eng = one(mine_, "SELECT engineer_key FROM portal_engineer ORDER BY engineer_key LIMIT 1")["engineer_key"]
+    mine_.execute("INSERT INTO portal_user (username, display_name, role, password_hash, engineer_key) VALUES ('TST-BOSS','TST BOSS','ADMIN','x',%s) ON CONFLICT DO NOTHING", (eng,))
+    no = ask()["removal_no"]
+    got = mailer.detect("AMC_REQUEST", {})
+    assert eng in got and no in {r["removal_no"] for r in got[eng]["rows"]} and "waiting for your decision" in got[eng]["subject"]
+    amcremoval.reject(no, {"reason": "not now at all"}, "TST-LEAD", IP)
+    assert no not in {r["removal_no"] for r in mailer.detect("AMC_REQUEST", {}).get(eng, {"rows": []})["rows"]}              # decided: no longer announced

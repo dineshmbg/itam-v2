@@ -42,6 +42,8 @@ RULES = {
                        "Team Leader / Site In-charge (administrators) are copied. Re-sent only when the set of affected assets changes.", {}),
     "ONBOARDING_PENDING": ("Onboarding pending", "Every Monday, an engineer whose joining formalities are not complete gets the list of pending items and is asked to finish them as soon as possible. "
                            "Team Leader / Site In-charge (administrators) are copied.", {}),
+    "AMC_REQUEST": ("AMC removal request waiting", "An engineer has asked for assets to be removed from the AMC. Every administrator and Team Leader / Site In-charge is told, "
+                    "and again whenever the set of waiting requests changes.", {}),
     "PART_RECEIVED": ("Spare part received", "A part arrived for an engineer's call.", {"lookback_days": 3}),
 }
 
@@ -259,6 +261,18 @@ def detect(rule_key, params, today=None):
         for eng, items in _group(rows, "engineer_name").items():
             D[eng] = dict(event_key="|".join(sorted(i["asset_key"] for i in items))[:300], subject=f"{len(items)} asset(s) removed from your list", intro="These assets are no longer in the register.",
                           rows=items, columns=[("asset_key", "Asset"), ("asset_class", "Class"), ("model", "Model"), ("location_code", "Location")])
+    elif rule_key == "AMC_REQUEST":
+        waiting = db.query("""SELECT r.removal_no, r.requested_by, r.created_at::date AS since, r.note, count(*) FILTER (WHERE l.via_parent IS NULL) AS assets
+                              FROM amc_removal r JOIN amc_removal_line l USING (removal_no) WHERE r.status = 'REQUESTED' GROUP BY r.removal_no, r.requested_by, r.created_at, r.note ORDER BY r.created_at""")
+        if waiting:
+            from . import auth
+            who = db.query("""SELECT u.engineer_key, u.role, u.extended_access, u.read_only, e.designation FROM portal_user u JOIN v_engineer e ON e.engineer_key = u.engineer_key
+                              WHERE u.active AND u.engineer_key IS NOT NULL""")
+            for d in who:
+                if d["role"] == "ADMIN" or (not d["read_only"] and not d["extended_access"] and auth.is_lead_designation(d["designation"])):
+                    D[d["engineer_key"]] = dict(event_key="|".join(w["removal_no"] for w in waiting)[:300], subject=f"{len(waiting)} AMC removal request(s) waiting for your decision",
+                                                intro="Engineers have asked for these assets to be removed from the AMC. Decide them under Data tools > Remove from AMC.", rows=waiting,
+                                                columns=[("removal_no", "Request"), ("requested_by", "From"), ("assets", "Assets"), ("since", "Since"), ("note", "Note")])
     elif rule_key == "AMC_EXPIRED":
         rows = db.query("""SELECT asset_key, asset_class, trim(coalesce(make,'') || ' ' || coalesce(model,'')) AS model, cover_type, cover_expiry_date, engineer_name FROM asset
                            WHERE is_current = 1 AND record_level = 'ASSET' AND engineer_name IS NOT NULL AND cover_status = 'EXPIRED' AND cover_expiry_date >= %s ORDER BY cover_expiry_date""", [_lookback(params)])

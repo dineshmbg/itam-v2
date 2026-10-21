@@ -17,7 +17,7 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
   - Dep: T2. Needs open question 1.
 
 ### Checkpoint 1
-- [ ] All tests pass, front end builds, single removal and its billing figure shown to the user.
+- [x] All tests pass, front end builds, single removal and its billing figure shown to the user.
 
 ## Phase 2 - Many assets, any class/type
 
@@ -29,13 +29,13 @@ Plan: `tasks/plan-amc-removal.md`. Test: `cd portal; .\.venv\Scripts\python -m p
 - [x] **T7: Paste/upload list of CI names / serials / keys** (M) - unmatched and ineligible rows listed, nothing applied until confirmed. Dep: T6. Done 2026-10-21: matches asset key, CI, hostname, serial or ONGC ID; paste, .txt/.csv or .xlsx (first column); explains not found / ambiguous / already removed / same asset twice; adds the good ones to the basket.
 
 ### Checkpoint 2
-- [ ] Bulk removal of mixed classes verified in browser; PM counts for the quarter drop correctly.
+- [x] Bulk removal of mixed classes verified in browser; PM counts for the quarter drop correctly.
 
 ## Phase 3 - Roles, reversal, reporting
 
 - [x] **T8: Team leader/SI grant decides; engineers request; engineers view their removed assets read-only** (M) - new "AMC removal" grant, permission-matrix test updated; removed assets listed in the engineer account outside all counts; same person may approve. Dep: T6. Done 2026-10-21: no new grant (Team Leader/SI = existing `is_lead`). Engineer page `Reports > AMC removals` (own assets only, request -> REQUESTED, withdraw, see decisions, read-only list of removed assets); deciders see 'Waiting for a decision' on the picker and approve (verbal approver, date, override note) or turn down with a reason. Approval re-checks the assets.
-- [ ] **T9: Reinstatement request** (M) - un-archives and restores snapshot values, audited, original request marked REVERSED. Dep: T8.
-- [ ] **T10: Reports, dashboard tile, README section** (M) - removals per quarter with credit due; `portal/README.md` updated. Dep: T9.
+- [x] **T9: Reinstatement request** (M) - un-archives and restores snapshot values, audited, original request marked REVERSED. Dep: T8. Done 2026-10-21: per-asset (parts follow), approver + reason recorded, net credit kept for the days out, plain Restore refused for AMC-removed assets, all or nothing.
+- [x] **T10: Reports, dashboard tile, README section** (M) - removals per quarter with credit due; `portal/README.md` updated. Dep: T9. Done 2026-10-21: requests page (Data tools > AMC removal requests) with per-quarter totals and Excel report; Assets dashboard 'Out of AMC' now counts requests; e-mail rule 'AMC removal request waiting'; README section.
 
 ### Checkpoint 3
-- [ ] `..\check.ps1` clean; every acceptance item exercised and reported.
+- [ ] `..\check.ps1` clean; every acceptance item exercised and reported. (Full pytest run: 793 pass, 5 unrelated failures; check.ps1 and a live-server browser pass still to do.)

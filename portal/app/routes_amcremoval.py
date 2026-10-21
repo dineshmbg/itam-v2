@@ -1,5 +1,6 @@
 """Remove-from-AMC routes. Administrators and Team Leader/SI users decide and remove; an engineer can only request for their own assets and read what happened."""
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 from starlette.routing import Route
 
 from . import amcremoval, auth
@@ -115,6 +116,28 @@ async def match_file(request):
     return json_response(await run_in_threadpool(lambda: amcremoval.match_list(amcremoval.list_from_file(data, request.headers.get("x-filename", "")), owner)))
 
 
+async def reinstate(request):
+    b, u, ip = request.state.body, request.state.user, client_ip(request)
+    keys = b.get("keys")
+    if not isinstance(keys, list):
+        raise amcremoval.Invalid("Choose at least one asset.", {"keys": "required"})
+    def run():
+        r = amcremoval.reinstate(keys, b, u["username"], ip)
+        auth.log(u["username"], ip, "AMC_REINSTATE", ", ".join(r["removals"]), {"assets": r["reinstated"]})
+        return r
+    return json_response(await run_in_threadpool(run))
+
+
+async def summary(request):
+    return json_response(await run_in_threadpool(amcremoval.summary))
+
+
+async def export(request):
+    data = await run_in_threadpool(amcremoval.report_bytes, request.query_params.get("quarter") or None)
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="AMC_removals.xlsx"', "Cache-Control": "no-store"})
+
+
 async def approve(request):
     b, u, ip = request.state.body, request.state.user, client_ip(request)
     def run():
@@ -139,6 +162,9 @@ routes = [
     Route("/api/amc-removal/withdraw", write(withdraw), methods=["POST"]),
     Route("/api/amc-removal/match", write(match, mutates=False), methods=["POST"]),
     Route("/api/amc-removal/match-file", match_file, methods=["POST"]),
+    Route("/api/amc-removal/reinstate", write(reinstate, admin="lead"), methods=["POST"]),
+    Route("/api/amc-removal/summary", read(summary, admin="lead")),
+    Route("/api/amc-removal/export", read(export, admin="lead")),
     Route("/api/amc-removal/approve", write(approve, admin="lead"), methods=["POST"]),
     Route("/api/amc-removal/reject", write(reject, admin="lead"), methods=["POST"]),
     Route("/api/amc-removal/preflight", read(preflight, admin="lead")),

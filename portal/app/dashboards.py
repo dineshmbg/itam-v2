@@ -14,7 +14,6 @@ def assets(eng=None):
                count(*) FILTER (WHERE record_level='COMPONENT') AS components,
                count(*) FILTER (WHERE record_level='ASSET' AND asset_status='IN_USE') AS in_use,
                count(*) FILTER (WHERE record_level='ASSET' AND asset_status IN ('IN_STORE','SURPLUS','NOT_IN_USE','NOT_ON_NETWORK','STANDBY')) AS idle,
-               count(*) FILTER (WHERE record_level='ASSET' AND asset_status='REMOVED_FROM_AMC') AS removed,
                count(*) FILTER (WHERE cover_status='EXPIRED') AS cover_expired,
                count(*) FILTER (WHERE cover_status='EXPIRING_90D') AS cover_expiring,
                count(*) FILTER (WHERE cover_status='ACTIVE') AS cover_active,
@@ -24,6 +23,10 @@ def assets(eng=None):
                count(*) FILTER (WHERE dq_flags IS NOT NULL) AS dq_rows,
                max(snapshot_date) AS as_of, max(pm_quarter) AS pm_quarter
         FROM {A}""", p)
+    # Removed assets are archived, so no asset row says "removed" any more: count what the removal requests say (still out, not reinstated).
+    k["removed"] = db.one("""SELECT count(*) AS n FROM amc_removal_line l JOIN amc_removal r USING (removal_no) JOIN asset a ON a.asset_key = l.asset_key
+                             WHERE r.status = 'APPLIED' AND l.via_parent IS NULL AND l.skipped_reason IS NULL AND l.reinstated_at IS NULL AND a.is_current = 0"""
+                          + (" AND a.engineer_name = %(eng)s" if eng else ""), p)["n"]
     by_class = db.query(f"""
         SELECT asset_class AS label, count(*) AS total,
                count(*) FILTER (WHERE asset_status='IN_USE') AS in_use,

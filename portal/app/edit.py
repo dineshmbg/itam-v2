@@ -769,6 +769,8 @@ def restore(dataset, key, editor, ip, reason=None):
             raise NotFound("This record is not in the archive.")
         if dataset == "assets" and rows[0].get("asset_status") == "REPLACED":
             raise Conflict("This machine was retired when it was replaced. Use Redeploy to put it back into service under a new name.")
+        if dataset == "assets" and rows[0].get("asset_status") == "REMOVED_FROM_AMC":
+            raise Conflict("This asset was removed from AMC. Use Reinstate (Remove from AMC) - it puts the cover and rate back and records who approved it.")
         con.execute(f"UPDATE {sp['table']} SET is_current = 1 WHERE {sp['pk']} = %s", (key,))
         con.execute("DELETE FROM portal_lock WHERE dataset=%s AND record_key=%s AND field=%s", (dataset, key, L.ARCHIVED))
         _audit(con, editor, ip, dataset, key, "RESTORE", {}, reason)
