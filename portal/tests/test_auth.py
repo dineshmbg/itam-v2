@@ -443,6 +443,7 @@ def test_sign_out_other_sessions_keeps_only_the_current_one(sandbox):
 
 def test_demo_user_can_be_switched_off_for_production(sandbox, monkeypatch):
     auth.ensure_demo_user(sandbox)
+    sandbox.execute("UPDATE portal_user SET active = TRUE WHERE username = %s", (auth.DEMO_USERNAME,))      # whatever state the dev database is in (it may have been switched off for real)
     assert n(sandbox, "SELECT active FROM portal_user WHERE username = %s", (auth.DEMO_USERNAME,)) is True
     monkeypatch.setenv("PORTAL_DEMO_USER", "off")
     auth.ensure_demo_user(sandbox)

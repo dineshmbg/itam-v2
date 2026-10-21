@@ -90,7 +90,7 @@ def test_report_save_share_and_delete(box):
     with pytest.raises(reports.ReportError):
         reports.delete({"username": "OTHER", "role": "USER"}, saved[0]["id"])
     reports.delete(u, saved[0]["id"])
-    assert reports.list_saved(u) == []
+    assert all(r["id"] != saved[0]["id"] for r in reports.list_saved(u))          # other (real) saved reports may exist in the dev database
     with pytest.raises(reports.ReportError):
         reports.save(u, "x", {"dataset": "assets", "columns": ["nope"]}, False)
 
@@ -133,6 +133,7 @@ def test_export_and_share_endpoints(box, monkeypatch):
         assert r.status_code == 200 and r.content[:2] == b"PK"
         assert c.post("/api/dashboard/export", json={"pack": "calls", "format": "csv"}, headers=HDR).status_code == 400
         assert c.post("/api/dashboard/export", json={"pack": "nope", "format": "pdf"}, headers=HDR).status_code == 400
+        box.execute("INSERT INTO portal_setting (key, value) VALUES ('smtp', %s::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", ('{"enabled": false}',))      # e-mail may be on in the dev database
         r = c.post("/api/dashboard/share", json={"pack": "assets", "to": ["boss@example.com"], "formats": ["pdf", "xlsx"]}, headers=HDR)
         assert r.status_code == 400 and "not switched on" in r.json()["error"]               # nothing is mailed until e-mail is switched on
         box.execute("INSERT INTO portal_setting (key, value) VALUES ('smtp', %s::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
@@ -280,11 +281,12 @@ def test_mail_failures_are_logged_and_retried(box, monkeypatch):
         calls["n"] += 1
         raise mailer.MailError("server down")
     monkeypatch.setattr(mailer, "send", flaky)
+    failed_before = one(box, "SELECT count(*) FROM notify_log WHERE status = 'FAILED'")[0]            # the dev database has a real mail log
     out = mailer.run_rules(only="CALL_ASSIGNED")
-    assert out and all(x["status"] == "FAILED" for x in out) and one(box, "SELECT count(*) FROM notify_log WHERE status = 'FAILED'")[0] == len(out)
+    assert out and all(x["status"] == "FAILED" for x in out) and one(box, "SELECT count(*) FROM notify_log WHERE status = 'FAILED'")[0] - failed_before == len(out)
     monkeypatch.setattr(mailer, "send", lambda *a, **k: None)
     again = mailer.run_rules(only="CALL_ASSIGNED")
-    assert all(x["status"] == "SENT" for x in again) and one(box, "SELECT max(attempts) FROM notify_log")[0] == 2
+    assert all(x["status"] == "SENT" for x in again) and one(box, "SELECT count(*) FROM notify_log WHERE status = 'SENT' AND attempts = 2")[0] >= len(again)
 
 
 def test_smtp_settings_validation_and_secret_handling(box, tmp_path, monkeypatch):

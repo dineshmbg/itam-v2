@@ -297,6 +297,7 @@ def test_demo_user_state_is_ok_immediately(sandbox):
 
 
 def test_admin_count_excludes_read_only_demo_account(sandbox):
+    sandbox.execute("UPDATE portal_user SET active = TRUE WHERE read_only AND role = 'ADMIN'")           # the demo account may be switched off in the dev database
     n = one(sandbox, "SELECT count(*) c FROM portal_user WHERE role = 'ADMIN' AND active AND NOT read_only")["c"]
     n_incl = one(sandbox, "SELECT count(*) c FROM portal_user WHERE role = 'ADMIN' AND active")["c"]
     assert n_incl > n, "DEMOUSER (read_only) must not be the only thing making this count non-zero, and must be excluded from it"
