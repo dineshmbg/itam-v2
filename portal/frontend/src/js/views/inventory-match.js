@@ -6,7 +6,7 @@ import { toast } from '../ui/toast.js';
 import { int, pct, titleCase, when } from '../core/format.js';
 import { errorBlock, kpiStrip, pageHead, panel, barRows } from './common.js';
 import { openModal } from '../ui/modal.js';
-import { bulkBlock } from './sw-tab.js';
+import { bulkBlock, swCard } from './sw-tab.js';
 
 const SEV = { Critical: 'bad', 'Needs attention': 'warn', Good: 'ok', Information: 'info' };
 const FIELDS = [['name', 'Computer name', true], ['ip', 'IP address'], ['os', 'Operating system'], ['seen', 'Last report / check-in time'], ['type', 'Device type'], ['group', 'Group / domain']];
@@ -193,11 +193,9 @@ function checkScriptPanel() {
   const getScript = async () => {
     try { await download('/api/software/script', { rotate: rotate.checked }, 'ankcheck.bat'); rotate.checked = false; toast('Script downloaded. Put it on the share.'); } catch (e) { toast(e.message || 'Could not build the script.', 'bad'); }
   };
-  return panel('Software check script (no agent needed)', { cls: 'span-12' }, h('div', { class: 'stack-v' },
-    h('p', { class: 'muted' }, 'A small .bat file that reads one PC (Windows build, Trend Micro, BigFix, Zscaler, other VPNs, SAP GUI, Microsoft 365 account) and sends the result here. It installs nothing and needs no administrator rights. It creates one file, ankcheck_<PC name>.txt, in the folder it is run from (put the script on the share); only if that folder cannot be written does it save the file in the user Documents folder. When the PC cannot reach the portal, upload those files below.'),
+  return panel('Software data', { cls: 'span-12' }, bulkBlock(swCard('Option 1 · from the PC', 'Software check script',
+    h('p', { class: 'muted' }, 'A small .bat file that reads one PC (Windows build, Trend Micro, BigFix, Zscaler, other VPNs, SAP GUI, Microsoft 365 account) and sends the result here. It installs nothing and needs no administrator rights. It creates one file, ankcheck_<PC name>.txt, in the folder it is run from (put the script on the share); only if that folder cannot be written does it save the file in the user Documents folder.'),
     h('label', { class: 'opt', for: 'sw-rotate' }, rotate, icon('checkbox', 'glyph off'), icon('checkbox--checked--filled', 'glyph on'), h('span', { class: 'name' }, 'Make a new token (copies already on the share stop working)')),
-    h('div', { class: 'btn-row' }, h('button', { class: 'btn', type: 'button', onClick: getScript }, icon('download'), 'Download ankcheck.bat')),
-    h('h4', null, 'Enter many machines at once, and upload saved results'),
-    bulkBlock()));
+    h('div', { class: 'sw-grow' }), h('button', { class: 'btn primary', type: 'button', onClick: getScript }, icon('download'), 'Download ankcheck.bat'))));
 }
 const frow2 = (id, label, el) => h('div', { class: 'frow' }, h('label', { class: 'flabel', for: id }, label), el);

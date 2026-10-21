@@ -120,3 +120,12 @@
 .edoc-act { display: flex; gap: 8px; flex-wrap: wrap; }
 .edoc-old { margin-top: 14px; font-size: 13px; }
 .edoc-old ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Software data: three ways in, side by side */
+.sw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: stretch; }
+.sw-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-2); min-width: 0; }
+.sw-card h4 { margin: 0; }
+.sw-card .btn { width: 100%; justify-content: flex-start; }
+.sw-step { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c-text-3); }
+.sw-grow { flex: 1; }
+.sw-out:not(:empty) { border-top: 1px solid var(--c-border); padding-top: 8px; font-size: 13px; }
