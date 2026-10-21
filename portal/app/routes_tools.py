@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler
+from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler, web
 from .web import client_ip, current_user, error, guarded, json_response, read, write
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -335,6 +335,28 @@ async def backup_restore(request):
     return json_response(out)
 
 
+async def backup_upload(request):
+    """A dump from another machine as the raw request body (streamed to disk); its file name is in X-Filename."""
+    user = await web.current_user(request)
+    if not user or user["state"] != "ok" or not auth.is_full_admin(user):
+        return error(403, "This needs an administrator.")
+    if user.get("read_only"):
+        return error(403, "This is a read-only account. Nothing can be changed while signed in as it.", code="read_only")
+    if request.headers.get("x-requested-with") != "itam-portal":
+        return error(403, "Rejected: not a portal request.")
+    origin = request.headers.get("origin")
+    if origin and origin.split("://", 1)[-1] != request.headers.get("host"):
+        return error(403, "Rejected: cross-site request.")
+    if int(request.headers.get("content-length") or 0) > backup.MAX_UPLOAD_BYTES:
+        return error(413, "The file is too large.")
+    request.state.user = user
+    name = unquote(request.headers.get("x-filename", ""))
+    chunks = [c async for c in request.stream() if c]     # ponytail: held in memory, capped at 1 GB by MAX_UPLOAD_BYTES; stream to disk if dumps ever approach that
+    out = await run_in_threadpool(backup.accept_upload, name, chunks, user["username"])
+    await _log(request, "BACKUP_UPLOAD", out["file"], {"from": name, "bytes": out["size_bytes"]})
+    return json_response(out)
+
+
 async def backup_download(request):
     file = str(request.state.body.get("file") or "")
     p = backup._resolve(file)
@@ -577,6 +599,7 @@ routes = [
     Route("/api/admin/backups/create", W_(backup_now, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/verify", W_(backup_verify, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/settings", W_(backup_settings, admin="strict"), methods=["POST"]),
+    Route("/api/admin/backups/upload", _tool_errors(backup_upload), methods=["POST"]),
     Route("/api/admin/backups/restore", W_(backup_restore, admin="strict"), methods=["POST"]),
     Route("/api/admin/backups/download", W_(backup_download, admin="strict"), methods=["POST"]),
     Route("/api/match/meta", R_(match_meta, admin="lead_strict")),

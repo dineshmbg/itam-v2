@@ -147,3 +147,37 @@ def restore(file, by):
         con.execute("INSERT INTO portal_backup (kind, file, size_bytes, sha256, made_by, note) SELECT 'PRE_RESTORE', %s, %s, %s, %s, %s WHERE NOT EXISTS (SELECT 1 FROM portal_backup WHERE file = %s)",
                     (safety["file"], safety["size_bytes"], safety["sha256"], by, f"safety copy before restoring {file}", safety["file"]))
     return {"restored": file, "safety_backup": safety["file"]}
+
+
+MAX_UPLOAD_BYTES = 1024 ** 3
+
+
+def accept_upload(filename, chunks, by):
+    """Keep a custom-format dump made elsewhere (e.g. the production portal's "Back up now") as an UPLOADED backup. Nothing is restored here."""
+    stem = re.sub(r"[^\w.-]+", "_", Path(filename or "").name.rsplit(".", 1)[0])[:60] or "upload"
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{stem}_{dt.datetime.now():%Y%m%d_%H%M%S}_uploaded.dump"
+    tmp, dest = BACKUP_DIR / (name + ".part"), BACKUP_DIR / name
+    free, size, head = shutil.disk_usage(BACKUP_DIR).free, 0, b""
+    try:
+        with open(tmp, "wb") as f:
+            for c in chunks:
+                head = (head + c)[:5]
+                size += len(c)
+                if size > MAX_UPLOAD_BYTES or size > free - 300 * 1024 * 1024:
+                    raise BackupError("The file is too large for the free space on this machine.")
+                f.write(c)
+        if head != b"PGDMP":
+            raise BackupError("That is not a PostgreSQL custom-format backup. Use a .dump made by the portal's Back up now (plain .sql files are not supported).")
+        r = subprocess.run([pg_tool("pg_restore"), "--list", str(tmp)], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            raise BackupError("The archive cannot be read: " + (r.stderr or "")[-200:])
+        if not re.search(r"TABLE DATA \S+ portal_user ", r.stdout):
+            raise BackupError("That backup is not from an ITAM portal database (no portal_user table).")
+        sha = _sha(tmp)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)
+    with db.write() as con:
+        con.execute("INSERT INTO portal_backup (kind, file, size_bytes, sha256, made_by, note) VALUES ('UPLOADED',%s,%s,%s,%s,%s)", (name, size, sha, by, f"uploaded from {Path(filename).name}"[:200]))
+    return {"file": name, "size_bytes": size, "sha256": sha}

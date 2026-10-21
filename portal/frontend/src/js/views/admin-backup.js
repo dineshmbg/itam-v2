@@ -6,7 +6,7 @@ import { openModal } from '../ui/modal.js';
 import { errorBlock, pageHead, panel } from './common.js';
 import { when } from '../core/format.js';
 
-const KIND = { MANUAL: ['info', 'Manual'], AUTO: ['mute', 'Automatic'], PRE_RESTORE: ['warn', 'Before restore'], PRE_IMPORT: ['warn', 'Before import'] };
+const KIND = { MANUAL: ['info', 'Manual'], AUTO: ['mute', 'Automatic'], PRE_RESTORE: ['warn', 'Before restore'], PRE_IMPORT: ['warn', 'Before import'], UPLOADED: ['info', 'Uploaded'] };
 const bytes = (n) => (n < 1048576 ? `${Math.round((n || 0) / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
 export function mountBackup(root) {
@@ -14,7 +14,7 @@ export function mountBackup(root) {
   const holder = h('div', { class: 'page' });
   root.append(holder);
   const body = h('div', { class: 'grid' });
-  holder.append(pageHead('Backup and restore', 'Copies of the whole database. Keep at least one on another disk or machine.', [h('button', { class: 'btn primary', type: 'button', onClick: backupNow }, icon('data--base'), 'Back up now')]), body);
+  holder.append(pageHead('Backup and restore', 'Copies of the whole database. Keep at least one on another disk or machine.', [h('button', { class: 'btn', type: 'button', onClick: uploadDialog }, icon('upload'), 'Upload a backup'), h('button', { class: 'btn primary', type: 'button', onClick: backupNow }, icon('data--base'), 'Back up now')]), body);
 
   async function load() {
     try { data = await get('/api/admin/backups'); if (dead) return; draw(); } catch (e) { if (!dead) body.replaceChildren(errorBlock(e, load)); }
@@ -55,6 +55,26 @@ export function mountBackup(root) {
     openModal({ title: 'Back up now', body: h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'bk-note' }, 'Note'), note),
       actions: [{ label: 'Cancel' }, { label: 'Back up', primary: true, onClick: async () => { const r = await send('/api/admin/backups/create', { note: note.value }); toast(`Backup ready (${bytes(r.size_bytes)})`); load(); } }] });
   }
+  function uploadDialog() {
+    const f = h('input', { id: 'bk-file', type: 'file', accept: '.dump' });
+    const msg = h('p', { class: 'hint', role: 'status' });
+    openModal({ title: 'Upload a backup', lead: 'Use a .dump file made by Back up now on another portal (for example production). It is checked and added to the list; nothing is restored until you choose Restore.',
+      body: h('div', null, h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'bk-file' }, 'Backup file'), f), msg),
+      actions: [{ label: 'Cancel' }, { label: 'Upload', primary: true, onClick: () => new Promise((ok, no) => {
+        const file = f.files?.[0];
+        if (!file) return no(new Error('Choose the .dump file first.'));
+        const x = new XMLHttpRequest();
+        x.open('POST', '/api/admin/backups/upload');
+        x.setRequestHeader('X-Requested-With', 'itam-portal'); x.setRequestHeader('Content-Type', 'application/octet-stream'); x.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+        x.upload.onprogress = (e) => { if (e.lengthComputable) msg.textContent = `Uploading… ${bytes(e.loaded)} of ${bytes(e.total)}`; };
+        x.onload = () => {
+          let r = {}; try { r = JSON.parse(x.responseText); } catch (_) { /* ignore */ }
+          if (x.status === 200) { toast(`Backup added (${bytes(r.size_bytes)})`); load(); ok(); } else no(new Error(r.error || `Upload failed (${x.status})`));
+        };
+        x.onerror = () => no(new Error('The upload was interrupted. Try again.'));
+        x.send(file);
+      }) }] });
+  }
   async function verify(b) {
     try { const r = await send('/api/admin/backups/verify', { file: b.file }); toast(`Intact - ${r.tables} tables can be restored`); } catch (e) { toast(e.message, 'bad'); }
   }
@@ -68,6 +88,7 @@ export function mountBackup(root) {
       title: 'Restore this backup', lead: 'This REPLACES all current data - assets, calls, people, users, settings - with the contents of the backup. A safety backup of today\'s data is taken first, and the restore is all-or-nothing.',
       body: h('div', null, h('div', { class: 'kv' }, kv('Backup', b.file), kv('Taken', when(b.at)), kv('Size', bytes(b.size_bytes))),
         h('p', { class: 'rec-note warn' }, icon('warning--alt--filled'), 'Everyone is signed out afterwards if the backup holds different accounts. Work done after this backup was taken will only be in the safety copy.'),
+        b.kind === 'UPLOADED' ? h('p', { class: 'rec-note warn' }, icon('warning--alt--filled'), 'This file came from another machine: its user accounts, passwords, settings and backup list replace the ones on this portal. You will need to sign in with an account that exists in the file.') : null,
         h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'rs-c' }, 'Type RESTORE to confirm'), c)),
       actions: [{ label: 'Cancel' }, { label: 'Restore', danger: true, onClick: async () => {
         const r = await send('/api/admin/backups/restore', { file: b.file, confirm: c.value });
