@@ -11,6 +11,7 @@ import { renderDetail } from './detail.js';
 import { engineerDocs } from './eng-docs.js';
 import { addObservationDialog, softwareTab } from './sw-tab.js';
 import { recordPmDialog } from './pm-record.js';
+import { amcRemovalDialog } from './amc-removal.js';
 import { redeployDialog, replaceDialog } from './asset-lifecycle.js';
 
 const ACTIONS = { UPDATE: ['edit', 'Changed'], CREATE: ['add', 'Created'], ARCHIVE: ['archive', 'Archived'], RESTORE: ['renew', 'Restored'], RESET: ['undo', 'Override removed'], CASCADE: ['link', 'Follow-on update'], EVENT: ['user', 'Event'], VERIFY: ['checkmark--outline', 'Physical check'], REPLACE: ['restart', 'Took over the name of a replaced machine'], RETIRE: ['archive', 'Retired (replaced)'], REDEPLOY: ['play', 'Redeployed'] };
@@ -51,6 +52,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
       }
       if (canArchiveThis) bar.append(h('button', { class: 'btn', type: 'button', onClick: archive }, icon('archive'), 'Archive'));
       if (name === 'assets' && admin && p.row.record_level === 'ASSET') bar.append(h('button', { class: 'btn', type: 'button', title: 'A new machine takes over the name of this one; this one is retired with its history', onClick: replace }, icon('restart'), 'Replace'));
+      if (name === 'assets' && (admin || hasLeadTools()) && p.row.record_level === 'ASSET' && p.row.cover_type === 'AMC' && p.row.asset_class !== 'LAPTOP') bar.append(h('button', { class: 'btn', type: 'button', title: 'Take this asset out of the AMC: it is archived with a record of who approved it', onClick: removeFromAmc }, icon('close'), 'Remove from AMC'));
       if (name === 'calls' && p.row.call_status === 'OPEN' && !(p.related.inward || []).length) {
         bar.append(h('button', { class: 'btn primary', type: 'button', style: { marginLeft: 'auto' },
           onClick: () => newRecord({ name: 'inward', label: 'Inward', prefill: { sr_id: p.id, asset_key: p.row.asset_key || '' }, onCreated: () => reload().then(() => onChange?.()) }) }, icon('add'), 'Inward'));
@@ -171,6 +173,7 @@ export async function mountRecord({ drawer, name, payload, schema, onChange, onO
     });
   }
 
+  function removeFromAmc() { amcRemovalDialog({ asset: p.row, onDone: () => { onChange?.(); drawer.close(); } }); }
   function replace() { replaceDialog({ asset: p.row, onDone: (d) => { p = d; show(); onChange?.(); } }); }
   function renameEngineer() {
     const name = h('input', { id: 'rn-name', type: 'text', maxlength: '120', value: p.row.display_name || p.row.employee_name || '', class: 'upper' });
