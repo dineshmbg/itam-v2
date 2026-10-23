@@ -106,7 +106,7 @@ export function mountInventoryMatch(root) {
     try { result = await get('/api/match/runs/' + id); showResult(); out.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { out.replaceChildren(errorBlock(e)); }
   }
 
-  const MAILSTATE = { READY: ['info', 'Would be sent'], SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], ALREADY_SENT: ['mute', 'Already sent'], NO_ADDRESS: ['warn', 'No e-mail address'], NO_ENGINEER: ['warn', 'No engineer in the register'], NOTHING_URGENT: ['mute', 'Nothing urgent'] };
+  const MAILSTATE = { READY: ['info', 'Would be sent'], SENT: ['ok', 'Sent'], FAILED: ['bad', 'Failed'], ALREADY_SENT: ['mute', 'Already sent'], NO_ADDRESS: ['warn', 'No e-mail address'], NO_ENGINEER: ['warn', 'No engineer in the register'], NOTHING_URGENT: ['mute', 'Nothing urgent'], MAIL_OFF: ['warn', 'E-mail is off'] };
 
   // What happened automatically after the match: shared in the portal, and one e-mail per engineer. Read-only - there is nothing to press.
   function mailPanel(mail) {
@@ -117,6 +117,17 @@ export function mountInventoryMatch(root) {
     return panel('Sent to engineers', { cls: 'span-12', flush: true, hint: 'automatic' }, h('div', { style: { padding: '12px 16px 0' } }, note),
       mail.plan.length ? table([['name', 'Engineer', null, (r) => titleCase(r.name)], ['email', 'Address', null, (r) => r.email || '—'], ['machines', 'Machines', 'right'], ['missing', 'No agent', 'right'], ['silent', 'Need attention', 'right'],
         ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], mail.plan, 200) : null);
+  }
+
+  // A Trend Micro related report also gets its detailed investigation automatically: mailed to each engineer (their machines) and to whoever ran it (all), and downloadable under Software data.
+  function investigationPanel(inv) {
+    if (!inv) return null;
+    if (!inv.built) return panel('Detailed investigation', { cls: 'span-12', hint: 'automatic' }, h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), `The detailed investigation could not be made: ${inv.error || 'unknown problem'}`));
+    const sent = inv.plan.filter((x) => x.status === 'SENT').length;
+    return panel('Detailed investigation (Trend Micro)', { cls: 'span-12', flush: true, hint: 'automatic' },
+      h('div', { style: { padding: '12px 16px 0' } }, h('p', { class: 'hint' }, `Made for ${int(inv.machines)} machines and e-mailed to ${sent} recipient${sent === 1 ? '' : 's'}: each engineer gets their own machines (Excel and PDF), the person who ran the analysis gets everyone. Download it again under Software data below, next to the software report.`)),
+      inv.plan.length ? table([['engineer', 'For', null, (r) => titleCase(r.engineer)], ['email', 'Address', null, (r) => r.email || '—'],
+        ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], inv.plan, 200) : null);
   }
 
   const dl = (fmt) => async () => { try { await download('/api/match/export', { run_id: result.run_id, format: fmt }, 'coverage.' + fmt); } catch (e) { toast(e.message, 'bad'); } };
@@ -165,7 +176,7 @@ export function mountInventoryMatch(root) {
         panel('About this report', { cls: 'span-12', hint: s.reconciled === false ? 'a total did not reconcile' : 'every total reconciles to the file and the register' }, h('div', { class: 'kv' },
           kv('Product', `${s.product_label || t}${s.tool !== s.product_label ? ' (shown as ' + s.tool + ')' : ''}`), kv('File(s)', (s.files || []).map((f) => `${f.name} (${int(f.rows)} rows)`).join('; ') || result.filename), kv('Report date', s.report_as_of || s.as_of),
           kv('Checked', `${s.prefixes.join('/')} · ${s.classes.map(titleCase).join(', ')} · ${int(s.assets)} machines`))),
-        mailPanel(result.mail),
+        mailPanel(result.mail), investigationPanel(result.investigation),
         panel('Findings and what to do', { cls: 'span-12', flush: true }, h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Rating'), h('th', null, 'Finding'), h('th', null, 'What to do'))),
           h('tbody', null, s.findings.map((f) => h('tr', null, h('td', null, h('span', { class: 'badge ' + (SEV[f.severity] || 'mute') }, f.severity)), h('td', { class: 'wrap' }, f.finding), h('td', { class: 'wrap' }, f.action))))))),
         panel('By class', { cls: 'span-6', flush: true }, group('Class', s.by_class)), panel('By engineer', { cls: 'span-6', flush: true, hint: 'who has machines to fix' }, group('Engineer', s.by_engineer)),

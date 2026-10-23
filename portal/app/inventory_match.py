@@ -42,13 +42,15 @@ PRODUCTS = {
                    "sig": ("endpoint name", "protection manager", "agent runtime protection status", "endpoint guid", "agent connection status", "xdr for endpoints (edr)", "endpoint group"),
                    "map": {"name": "Endpoint name", "ip": "IP address", "os": "OS name", "seen": "Last agent status reported", "type": "Object type", "group": "Endpoint group"},
                    "extra": {"conn": "Agent connection status", "action": "Recommended actions", "av": "Anti-malware", "edr": "XDR for Endpoints (EDR)", "agent": "Agent version status",
-                             "scanned": "Last scanned", "user": "Last logged on user", "seen2": "Protection module last connected", "osver": "OS version", "runtime": "Agent runtime protection status"}},
+                             "scanned": "Last scanned", "user": "Last logged on user", "seen2": "Protection module last connected", "osver": "OS version", "runtime": "Agent runtime protection status",
+                             # kept for the detailed investigation (what is working on each machine): sensor state, package and agent version
+                             "sensor_conn": "Sensor connectivity", "sensor_ver": "Endpoint sensor version", "pkg": "Package", "pm_ver": "Protection module version"}},
     "bigfix": {"label": "BigFix", "min": 3, "sig": ("computer name", "device type", "last report time", "cpu", "os", "ip address"),
                "map": {"name": "Computer Name", "ip": "IP Address", "os": "OS", "seen": "Last Report Time", "type": "Device Type"}, "extra": {}},
 }
 # generic guesses for a product the portal does not know: header (lower-case, letters and digits only) -> field
 GUESS = {
-    "name": ("computername", "hostname", "devicename", "machinename", "endpointname", "assetci", "cino", "ci", "assetname", "computer", "nodename", "systemname", "name", "device", "asset"),
+    "name": ("computername", "hostname", "devicename", "machinename", "endpointname", "endpoint", "assetci", "cino", "ci", "assetname", "computer", "nodename", "systemname", "name", "device", "asset"),
     "ip": ("ipaddress", "ip", "ipv4", "ipv4address", "lastipaddress", "lastipused"),
     "os": ("os", "osname", "operatingsystem", "osversion", "platform"),
     "seen": ("lastreporttime", "lastreport", "lastseen", "lastcheckin", "lastcontact", "lastcommunication", "lastupdate", "lastscan", "lastconnected", "lastactivity", "lastagentstatusreported"),
@@ -196,9 +198,9 @@ def _staged(stage_id):
 
 # ---------------------------------------------------------------- understanding one row
 def key_of(v):
-    """A computer name as a match key: trimmed, upper-case, domain suffix dropped (host.domain.local -> HOST)."""
+    """A computer name as a match key: trimmed, upper-case, domain suffix and a trailing $ dropped (host.domain.local -> HOST, ANKAON01DT076$ -> ANKAON01DT076)."""
     s = str(v or "").strip().upper()
-    return s.split(".")[0] if re.search(r"[A-Z]", s) else s
+    return (s.split(".")[0] if re.search(r"[A-Z]", s) else s).rstrip("$")      # a trailing $ is Windows' form of a computer account name (ANKAON01DT076$)
 
 
 def _when(v):
@@ -273,6 +275,8 @@ def _entry(r, col, product):
         if str(g("runtime")).lower().startswith("requires attention"):
             e["advice"].append("Console flags 'requires attention'")
         e["scanned"] = _when(g("scanned")) if "scanned" in col else None
+        e["console"] = {"t_am": str(g("av")).split("|")[0].strip(), "t_edr": str(g("edr")).strip(), "t_sensor_conn": str(g("sensor_conn")).strip(), "t_sensor_ver": str(g("sensor_ver")).strip(),
+                        "t_pkg": str(g("pkg")).split("|")[0].strip(), "t_pm_ver": str(g("pm_ver")).strip(), "t_conn": str(g("conn")).strip(), "t_action": _install_reason(str(g("action"))) if str(g("action")) else ""}
     return e
 
 
@@ -449,6 +453,7 @@ def analyse(files, mapping, params, today=None):
                     advice.append(f"Last scan {(as_of - sc).days} days ago")
             row["health"] = "Needs attention" if fails else "Healthy"
             row["issues"], row["advice"] = "; ".join(fails), "; ".join(advice)
+            row.update(e.get("console") or {})
             if fails:
                 row["action"] = ("Repair or reinstall the agent: " if any("installation failed" in x or "communicating" in x or "Not reported" in x for x in fails) else "Fix: ") + "; ".join(fails) + "."
                 if row["reporting"] == "Dormant":

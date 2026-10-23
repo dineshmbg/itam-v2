@@ -99,11 +99,14 @@ export function bulkBlock(first) {
     }
     saved.replaceChildren(...lines);
   };
-  const dl = (path, name, label, ic, title) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, {}, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
+  const dl = (path, name, label, ic, title, body = {}) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, body, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
   return h('div', { class: 'sw-cards' }, first || null,
     card('Option 2 · by hand, in bulk', 'Enter many machines at once',
       h('p', { class: 'muted' }, 'One row per machine in Excel; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
       dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'),
+      h('div', { class: 'btn-row sw-inv', role: 'group', 'aria-label': 'Detailed Trend Micro investigation' },
+        dl('/api/investigation/trend', 'Trend_Micro_Investigation.xlsx', 'Detailed investigation (Excel)', 'document--export', 'Trend Micro: for each machine, agent and sensor present and working, what is missing and what to do. Made from the newest analysed reports and PC checks; engineers get their own machines.', { format: 'xlsx' }),
+        dl('/api/investigation/trend', 'Trend_Micro_Investigation.pdf', 'Detailed investigation (PDF)', 'document--pdf', 'The same, as a short PDF summary.', { format: 'pdf' })),
       dl('/api/software/template', 'Software_Observation_Upload_Template.xlsx', 'Download Excel template', 'download'),
       h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
       h('div', { class: 'sw-grow' }), h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template'), out),
