@@ -121,6 +121,20 @@
 .edoc-old { margin-top: 14px; font-size: 13px; }
 .edoc-old ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 
+/* Investigations: a finished Excel report read on screen */
+.mtabs.inv-tabs { flex-wrap: wrap; width: auto; border-radius: var(--r-2); }
+.inv-head { display: flex; gap: 12px 20px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
+.inv-head .frow { margin: 0; min-width: min(100%, 360px); }
+.inv-note { margin: 0; padding: 10px 14px; font-size: 13px; color: var(--c-text-2); overflow-wrap: anywhere; }
+.inv-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 4px 14px 10px; }
+.inv-search { min-width: min(100%, 280px); }
+.inv-scroll { max-height: 70vh; }
+.inv-tbl thead th { position: sticky; top: 0; z-index: 1; }
+.inv-tbl td, .inv-doc td { vertical-align: top; overflow-wrap: anywhere; }
+.inv-doc td { white-space: normal; min-width: 5rem; max-width: 46rem; padding: 4px 8px; border: 1px solid var(--c-border); font-size: 13px; line-height: 1.4; }
+.inv-doc tr.inv-gap td { height: 10px; padding: 0; border: 0; }
+.inv-more { padding: 10px 14px; }
+
 /* Software data: three ways in, side by side */
 .sw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: stretch; }
 .sw-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-2); min-width: 0; }
