@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
   <key>Label</key><string>com.ongc.itam-portal</string>
   <key>ProgramArguments</key><array>
-    <string>__PROJECT__/portal/run_portal.sh</string><string>--no-browser</string></array>
+    <string>__PROJECT__/portal/run_portal.sh</string><string>--no-browser</string><string>--host</string><string>0.0.0.0</string></array>
   <key>EnvironmentVariables</key><dict><key>PATH</key>
     <string>/opt/homebrew/opt/postgresql@18/bin:/Applications/Postgres.app/Contents/Versions/18/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
   <key>WorkingDirectory</key><string>__PROJECT__/portal</string>
