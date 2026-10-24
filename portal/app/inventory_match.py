@@ -45,6 +45,12 @@ PRODUCTS = {
                              "scanned": "Last scanned", "user": "Last logged on user", "seen2": "Protection module last connected", "osver": "OS version", "runtime": "Agent runtime protection status",
                              # kept for the detailed investigation (what is working on each machine): sensor state, package and agent version
                              "sensor_conn": "Sensor connectivity", "sensor_ver": "Endpoint sensor version", "pkg": "Package", "pm_ver": "Protection module version"}},
+    # Apex One console exports (no sensor/full column in them: that comes from the check script). The CSV "Security Agent List" and the old inventory workbook are
+    # given the same headings by `_canon` so that both are read as parts of one report.
+    "apex": {"label": "Trend Micro Apex One", "min": 4,
+             "sig": ("endpoint name", "os name", "ip address", "connection status", "last logged on user", "object type", "os type"),
+             "map": {"name": "Endpoint name", "ip": "IP address", "os": "OS name", "type": "Object type"},
+             "extra": {"conn": "Connection status", "user": "Last logged on user"}},
     "bigfix": {"label": "BigFix", "min": 3, "sig": ("computer name", "device type", "last report time", "cpu", "os", "ip address"),
                "map": {"name": "Computer Name", "ip": "IP Address", "os": "OS", "seen": "Last Report Time", "type": "Device Type"}, "extra": {}},
 }
@@ -58,6 +64,8 @@ GUESS = {
     "group": ("endpointgroup", "group", "domain", "domainhierarchy", "ou", "site"),
 }
 BASE_FIELDS = ("name", "ip", "os", "seen", "type", "group")
+TREND = ("trendmicro", "apex")          # products whose rows say "Trend Micro agent installed"
+_APEX_CSV = {"endpoint": "Endpoint name", "ip address": "IP address", "platform": "OS name", "logon user": "Last logged on user", "connection status": "Connection status"}
 
 
 class MatchError(Exception):
@@ -90,6 +98,14 @@ def _table(rows):
     return headers, body
 
 
+def _canon(headers, rows):
+    """The Apex One 'Security Agent List' CSV (Endpoint, Platform, Logon User...) gets the headings of the other Apex export, so both read as one product."""
+    low = {h.strip().lower() for h in headers}
+    if {"endpoint", "platform", "logon user", "connection status"} <= low and "endpoint name" not in low:
+        headers = [_APEX_CSV.get(h.strip().lower(), h) for h in headers]
+    return headers, rows
+
+
 def read_file(filename, data):
     """-> (headers, rows). Excel (.xlsx/.xlsm; the sheet with the most rows) or CSV."""
     low = filename.lower()
@@ -98,15 +114,20 @@ def read_file(filename, data):
             raise MatchError("That file is not an Excel workbook (it is damaged or a different format).")
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        best = []
+        sheets = []
         for ws in wb.worksheets:
             rows = [[_cell(c) for c in r] for r in ws.iter_rows(values_only=True)]
-            if len(rows) > len(best):
-                best = rows
+            if len(rows) > 1 and any(any(str(c).strip() for c in r) for r in rows[:20]):
+                sheets.append(_table(rows))
         wb.close()
-        if len(best) < 2:
+        if not sheets:
             raise MatchError("The workbook has no rows to read.")
-        return _table(best)
+        headers, body = max(sheets, key=lambda t: len(t[1]))
+        for h2, b2 in sheets:          # sheets with the very same headings (one per site) are more rows of the same report; repeats are found by the duplicate check
+            named = lambda hh: [x for x in hh if not x.startswith("Column ")]      # noqa: E731 - blank trailing headings do not make a different layout
+            if named(h2) == named(headers) and b2 is not body:
+                body = body + [(r + [""] * len(headers))[:len(headers)] for r in b2]
+        return _canon(headers, body)
     if low.endswith((".csv", ".txt")):
         text = data.decode("utf-8-sig", errors="replace")
         try:
@@ -117,7 +138,7 @@ def read_file(filename, data):
         rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), dialect)]
         if len(rows) < 2:
             raise MatchError("The file has no rows to read.")
-        return _table(rows)
+        return _canon(*_table(rows))
     raise MatchError("Upload an Excel workbook (.xlsx) or a CSV file.")
 
 
@@ -245,6 +266,16 @@ def _install_reason(text):
     return re.sub(r"\s+", " ", text)[:70]
 
 
+def _suite(av, edr):
+    """Trend Micro Vision One: which part of the product is on the machine. Anti-malware present (even if switched off) = Full suite; no anti-malware but the
+    EDR/XDR sensor on = Sensor only. Judged only from the console's own columns, so a file without them gives no answer ("")."""
+    a, x = str(av).strip().lower(), str(edr).strip().lower()
+    none = ("", "-", "n/a", "na", "none", "unknown")
+    has_av = a not in none and not a.startswith(("not ", "unavailable", "unsupported"))
+    has_edr = x not in none and not x.startswith(("disabled", "not ", "unavailable", "unsupported"))
+    return "Full suite" if has_av else "Sensor only" if has_edr else "Unclear"
+
+
 def _entry(r, col, product):
     """One report row -> a clean entry with its own findings: `fails` stop the agent doing its job, `advice` are things to improve."""
     g = lambda f: str(r[col[f]]).strip() if f in col and not isinstance(r[col[f]], (dt.datetime, dt.date)) else ("" if f not in col else r[col[f]])     # noqa: E731
@@ -261,6 +292,8 @@ def _entry(r, col, product):
         if str(g("conn")) and str(g("conn")).lower() != "communicating":
             e["fails"].append("Agent not communicating")
         av = str(g("av")).lower()
+        if "av" in col or "edr" in col:
+            e["suite"] = _suite(g("av"), g("edr"))
         if av.startswith("disabled"):
             e["fails"].append("Anti-malware disabled")
         if "pattern outdated" in av:
@@ -277,6 +310,10 @@ def _entry(r, col, product):
         e["scanned"] = _when(g("scanned")) if "scanned" in col else None
         e["console"] = {"t_am": str(g("av")).split("|")[0].strip(), "t_edr": str(g("edr")).strip(), "t_sensor_conn": str(g("sensor_conn")).strip(), "t_sensor_ver": str(g("sensor_ver")).strip(),
                         "t_pkg": str(g("pkg")).split("|")[0].strip(), "t_pm_ver": str(g("pm_ver")).strip(), "t_conn": str(g("conn")).strip(), "t_action": _install_reason(str(g("action"))) if str(g("action")) else ""}
+    elif product == "apex":
+        e["conn"] = str(g("conn"))
+        if e["conn"].lower() == "offline":
+            e["advice"].append("Offline in the Apex console when the report was taken")
     return e
 
 
@@ -388,8 +425,19 @@ def analyse(files, mapping, params, today=None):
             d = dup_detail.setdefault(e["key"], {"name": e["name"], "rows": [old]})
             d["rows"].append(e)
             if (e["seen"] or dt.datetime.min) < (old["seen"] or dt.datetime.min):
+                for f in ("ip", "os", "type", "user", "conn"):          # the older record still knows things the kept one does not
+                    if not old.get(f) and e.get(f):
+                        old[f] = e[f]
                 continue
+            for f in ("ip", "os", "type", "user", "conn"):
+                if not e.get(f) and old.get(f):
+                    e[f] = old[f]
         by_key[e["key"]] = e
+    files_of = {}
+    for e in raw:
+        files_of.setdefault(e["key"], set()).add(e["file"])
+    for e in by_key.values():
+        e["files"] = ", ".join(sorted(files_of[e["key"]]))
     for e in by_key.values():
         if e["ip"]:
             all_by_ip.setdefault(e["ip"], []).append(e)
@@ -433,12 +481,12 @@ def analyse(files, mapping, params, today=None):
         k = key_of(a["ci_no"])
         e = in_scope.get(k)
         row = {"ci": a["ci_no"], "class": a["asset_class"], "type": a["asset_type"], "make": a["make"] or "", "model": a["model"] or "", "serial": a["serial_no"] or "", "status": a["asset_status"] or "",
-               "user": a["user_name"] or "", "location": a["location_code"] or "", "engineer": a["engineer_name"] or "UNASSIGNED", "installed": e is not None, "health": "Not installed", "issues": "", "advice": "",
-               "r_name": "", "r_ip": "", "r_os": "", "r_os_family": "", "r_group": "", "r_user": "", "r_seen": None, "r_age": None, "reporting": "", "priority": "", "possible": "", "possible_by": "", "action": ""}
+               "user": a["user_name"] or "", "location": a["location_code"] or "", "engineer": a["engineer_name"] or "UNASSIGNED", "installed": e is not None, "health": "Not installed", "issues": "", "advice": "", "suite": "", "suite_pc": "",
+               "r_name": "", "r_files": "", "r_conn": "", "r_ip": "", "r_os": "", "r_os_family": "", "r_group": "", "r_user": "", "r_seen": None, "r_age": None, "reporting": "", "priority": "", "possible": "", "possible_by": "", "action": ""}
         if e:
             age = (as_of - e["seen"]).days if e["seen"] else None
             fails = list(e["fails"])
-            row.update(r_name=e["name"], r_ip=e["ip"], r_os=e["os"], r_os_family=_os_family(e["os"]), r_group=e["group"], r_user=e["user"], r_seen=e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, r_age=age,
+            row.update(r_name=e["name"], r_files=e["files"], r_conn=e.get("conn", ""), r_ip=e["ip"], r_os=e["os"], r_os_family=_os_family(e["os"]), r_group=e["group"], r_user=e["user"], r_seen=e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, r_age=age,
                        reporting="" if age is None else "Active" if age <= active_days else "Stale" if age <= stale_days else "Dormant")
             if row["reporting"] in ("Stale", "Dormant") and not any("not communicating" in x for x in fails):
                 fails.append(f"Not reported for {age} days")
@@ -451,6 +499,7 @@ def analyse(files, mapping, params, today=None):
                     advice.append("Never scanned")
                 elif (as_of - sc).days > 30:
                     advice.append(f"Last scan {(as_of - sc).days} days ago")
+            row["suite"] = e.get("suite", "")
             row["health"] = "Needs attention" if fails else "Healthy"
             row["issues"], row["advice"] = "; ".join(fails), "; ".join(advice)
             row.update(e.get("console") or {})
@@ -488,7 +537,7 @@ def analyse(files, mapping, params, today=None):
             kind, why, act = "mismatch", f"Probably register CI {ci} ({how})", f"Confirm it is {ci}; then rename the computer or correct the CI."
         else:
             kind, why, act = "unregistered", "Not in the asset register", "Find the device and add it to the register, or confirm it is not ours / retired."
-        unreg.append({"name": e["name"], "ip": e["ip"], "os": e["os"], "type": e["type"], "group": e["group"], "seen": e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, "age": age, "why": why, "action": act, "kind": kind})
+        unreg.append({"name": e["name"], "ip": e["ip"], "os": e["os"], "type": e["type"], "group": e["group"], "seen": e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, "age": age, "why": why, "action": act, "kind": kind, "files": e["files"]})
 
     # ---- group placement (Trend Micro 'Endpoint group', etc.): is the fleet where it should be?
     group_issues, foreign = [], []
@@ -610,6 +659,14 @@ def analyse(files, mapping, params, today=None):
     ]
     ok = [summary["report_rows"] - blank - dup_rows == len(by_key), inst + len(miss) == total, healthy + attn == inst, sum(x["total"] for x in summary["by_class"]) == total, sum(x["installed"] for x in summary["by_engineer"]) == inst, len(in_scope) == inst + len(unreg)]
     nx = swobs.cross_check(out, product)
+    if product in TREND:
+        swobs.suite_seen(out)
+        for r in out:
+            if not r["installed"] and r["suite_pc"]:
+                r["action"] = f"The PC itself reports {r['suite_pc']} but it is not in the console report: do not reinstall - check its connection to the Apex server and its console group."
+        sc = Counter(r["suite"] or r["suite_pc"] or "Not determined" for r in out if r["installed"])
+        summary["suite_counts"] = {k: sc.get(k, 0) for k in ("Full suite", "Sensor only", "Unclear", "Not determined")}
+        summary["suite_disagree"] = sum(1 for r in out if r["suite"] and r["suite_pc"] and r["suite"] != r["suite_pc"])
     if nx:
         summary["xcheck"] = nx
     summary["reconciled"] = all(ok)
@@ -648,6 +705,13 @@ def findings(s):
     if eng and len(s["by_engineer"]) > 1:
         f.append({"severity": "Needs attention", "finding": "Most machines to fix sit with: " + "; ".join(f"{x['label'].title()} ({x['missing'] + x['attention']:,})" for x in eng) + ".",
                   "action": "Share each engineer's list (e-mail or the Excel 'By engineer' sheet) and agree a completion date."})
+    sc = s.get("suite_counts")
+    if sc and sc["Sensor only"]:
+        f.append({"severity": "Needs attention", "finding": f"{sc['Sensor only']:,} installed machines have the Trend Micro sensor only (no anti-malware); {sc['Full suite']:,} have the full suite.",
+                  "action": "Sensor-only machines are detected but not protected against malware: deploy the full Apex One agent on them (see the field report for the list)."})
+    if sc and sc.get("Not determined"):
+        f.append({"severity": "Information", "finding": f"{sc['Not determined']:,} machines are in the console but nothing says whether they have the sensor only or the full suite.",
+                  "action": "Run ankcheck.bat on those PCs (Inventory match > Software data); the next consolidated report will then show Sensor only or Full suite for them."})
     if s["name_mismatch"]:
         f.append({"severity": "Needs attention", "finding": f"{s['name_mismatch']:,} machines counted as 'not installed' are probably in the report under a slightly different name (same IP, or a name differing by a character or two).",
                   "action": "Confirm each pair, then correct the CI or rename the computer. This raises coverage without installing anything."})
@@ -714,8 +778,8 @@ def run(stage_ids, mapping, params, user):
     label = files[0]["name"] if len(files) == 1 else f"{files[0]['name']} + {len(files) - 1} more"
     run_id = uuid.uuid4().hex[:12]
     with db.write() as con:
-        con.execute("INSERT INTO portal_match_run (run_id, username, tool, filename, params, summary, result) VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb)",
-                    (run_id, user, summary["tool"], label, json.dumps(params or {}), json.dumps(summary, default=str), json.dumps(result, default=str)))
+        con.execute("""INSERT INTO portal_match_run (run_id, username, tool, filename, params, summary, result, published_at, published_by) VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb, now(), %s)""",
+                    (run_id, user, summary["tool"], label, json.dumps(params or {}), json.dumps(summary, default=str), json.dumps(result, default=str), user))      # shared with engineers from the first moment: nothing later can leave it unshared
     return {"run_id": run_id, "filename": label, "summary": summary, **result}
 
 
@@ -830,6 +894,142 @@ def _titled(rows, *keys):
     return [{**r, **{k: (r[k].title() if k in r and isinstance(r[k], str) else r.get(k)) for k in keys}} for r in rows]
 
 
+SUITE_COLS = [("ci", "Asset (CI)"), ("state", "Sensor only / Full suite"), ("todo", "What to do"), ("class", "Class"), ("model", "Model"), ("serial", "Serial no"), ("user", "User"), ("location", "Location"),
+              ("engineer", "Engineer"), ("status", "Asset status"), ("suite", "Console says"), ("suite_pc", "PC check script says"), ("health", "Health"), ("issues", "Problems"), ("r_seen", "Last report"), ("priority", "Priority")]
+FIELD_COLS = [("ci", "Asset (CI) - computer name"), ("state", "Sensor only / Full suite"), ("todo", "What to do"), ("user", "User"), ("location", "Location"), ("model", "Model"), ("serial", "Serial no"),
+              ("class", "Class"), ("status", "Asset status"), ("priority", "Priority"), ("r_seen", "Last report")]
+GUIDE = [("Purpose", "This list shows, for every machine assigned to you, whether Trend Micro is missing, sensor only, or the full suite, and what to do about it."),
+         ("Step 1 - find the machine", "Use 'Asset (CI)' (the computer name), then User and Location to walk to the right desk. Serial no and Model confirm you have the right PC. To read a PC's name: right-click This PC > Properties > Device name."),
+         ("Step 2 - read the state", "Full suite = Trend Micro is installed with anti-malware: nothing to install. Sensor only = only the monitoring sensor is installed, there is NO anti-malware protection: the full agent must be installed. "
+                                     "Not installed = no Trend Micro at all. Not determined = the report did not say; run ankcheck.bat on the PC to find out."),
+         ("Step 3 - do the work", "Work top to bottom: High priority (PCs in use) first. Do what 'What to do' says. Afterwards run ankcheck.bat on the PC so the portal records the result."),
+         ("Step 4 - if it cannot be done", "PC retired, in store or not found: tell the Team Leader so the register can be corrected. Name differs from the report: the 'What to do' column says so."),
+         ("Where results appear", "After the next Trend Micro report is loaded in the portal, fixed machines move to Full suite. Reports > My inventory report always shows your latest list.")]
+
+
+def _with_state(rows):
+    out = []
+    for r in rows:
+        r = {"suite": "", "suite_pc": "", **r}          # an analysis stored before these fields existed has neither: blank, not an error
+        state = "Not installed" if not r["installed"] else (r["suite"] or r["suite_pc"] or "Not determined")
+        if not r["installed"] and r["suite_pc"]:
+            todo = f"The PC itself reports {r['suite_pc']}, but {r['ci']} is not in the console report. Do not reinstall: check the PC's connection to the Apex server and its console group."
+        elif not r["installed"]:
+            todo = f"Install the Trend Micro agent (full suite) on {r['ci']} at {r['location'] or 'its location'}" + (f" - user {r['user'].title()}" if r["user"] else "") + "."
+        elif state == "Sensor only":
+            todo = "Only the sensor is installed - no anti-malware. Install the full Trend Micro (Apex One) agent."
+        elif r["health"] == "Needs attention":
+            todo = r["action"] or "Repair the agent."
+        elif state == "Not determined":
+            todo = "Run ankcheck.bat on this PC to confirm what is installed."
+        else:
+            todo = "Nothing to do."
+        out.append({**r, "state": state, "todo": todo, "user": r["user"].title() if r["user"] else "", "engineer": r["engineer"].title()})
+    return out
+
+
+_ORDER = {"Not installed": 0, "Sensor only": 1, "Not determined": 2, "Full suite": 3}
+
+
+def _sorted(rows):
+    return sorted(rows, key=lambda r: (_ORDER.get(r["state"], 4), {HIGH: 0, MEDIUM: 1, LOW: 2}.get(r["priority"], 3), r["location"], r["ci"]))
+
+
+def suite_table(rows):
+    return _t("All machines - Sensor only / Full suite", SUITE_COLS, _sorted(_with_state(rows)))
+
+
+def _suite_summary(rows):
+    return _t("Sensor only vs Full suite", [("label", "State"), ("n", "Machines")], [{"label": k, "n": n} for k, n in Counter(r["state"] for r in _with_state(rows)).most_common()])
+
+
+def investigation(d, fmt, user, eng=None):
+    """The investigation report: administrators/team leads get everything; an engineer gets the same report for their own machines only."""
+    s = d["summary"]
+    if eng is None:
+        if fmt == "csv":
+            return export.render("csv", s["tool"], "", [suite_table(d["assets"])])
+        return render(d, fmt, user)
+    mine = [r for r in d["assets"] if r["engineer"] == eng]
+    sc = scoped(d, eng)
+    t = [_t("Key findings", [("severity", "Rating"), ("finding", "Finding"), ("action", "What to do")], sc["summary"]["findings"]), _suite_summary(mine), suite_table(mine)]
+    if fmt == "csv":
+        t = t[2:]
+    m = sc["summary"]
+    k = [("Machines assigned", m["machines"]), (f"In the {s['tool']} report", m["installed"]), ("Not installed", m["missing"]), ("Need attention", m["attention"]), ("Coverage (%)", m["coverage"])]
+    return export.render(fmt, f"{s['tool']} investigation - {eng.title()}", f"Report: {d['filename']} - issued {dt.date.today():%d %b %Y}", t, k, footer=user["username"])
+
+
+def field_report(d, fmt, user, eng=None):
+    """The light report for the people doing the work: which machine, what state, what to do, and a how-to-use sheet. eng=None: every engineer's machines."""
+    s = d["summary"]
+    rows = _with_state([r for r in d["assets"] if eng is None or r["engineer"] == eng])
+    work = _sorted([r for r in rows if r["todo"] != "Nothing to do."])
+    cols = FIELD_COLS if eng else FIELD_COLS[:5] + [("engineer", "Engineer")] + FIELD_COLS[5:]
+    t = [_t("Your work list" if eng else "Work list", cols, work), _t("All machines", cols, _sorted(rows)), _t("How to use this report", [("k", "Topic"), ("v", "Guidance")], [{"k": a, "v": b} for a, b in GUIDE])]
+    if fmt == "csv":
+        return export.render("csv", s["tool"], "", t[:1])
+    k = [("Machines", len(rows)), ("To do", len(work)), ("Not installed", sum(r["state"] == "Not installed" for r in rows)), ("Sensor only", sum(r["state"] == "Sensor only" for r in rows)),
+         ("Full suite", sum(r["state"] == "Full suite" for r in rows))]
+    if fmt == "xlsx":
+        t = [t[2], t[0], t[1]]          # the guide first: it is the first thing a new reader needs
+    return export.render(fmt, f"{s['tool']} field report" + (f" - {eng.title()}" if eng else ""), f"Report: {d['filename']} - issued {dt.date.today():%d %b %Y}", t, k, footer=user["username"])
+
+
+CONSOL_COLS = [("endpoint", "Endpoint (computer name)"), ("found", "Found in file"), ("registered", "In asset register"), ("state", "Sensor only / Full suite"), ("todo", "What to do"),
+               ("conn", "Console connection"), ("user", "User"), ("location", "Location"), ("engineer", "Engineer"), ("class", "Class"), ("model", "Model"), ("serial", "Serial no"),
+               ("os", "Operating system"), ("ip", "IP address"), ("pc", "PC check script says")]
+CONSOL_GUIDE = [("What this report is", "Every Trend Micro endpoint of this site from the console file(s), joined into ONE list with repeats removed, and compared with the asset register and with what the check script saw on the PC."),
+                ("Sensor only", "Only the Trend Micro sensor is on the PC. It is seen by the console but has NO anti-malware protection. Install the full Apex One agent."),
+                ("Full suite", "The full Apex One agent is on the PC (anti-malware plus sensor). Nothing to install."),
+                ("Not determined", "The console file does not say which of the two it is and the PC was never checked. Run ankcheck.bat on it (share \\\\10.205.64.203\\ank-helpdesk\\common-for-all\\)."),
+                ("Not installed", "The register has the machine but the console report does not. If 'What to do' says the PC itself reports an agent, do not reinstall - check its connection and group."),
+                ("Sheets", "Merged list = the working list. Sensor only = fix these first. Not in console = register machines with no agent in the console. Not in register = console names the register does not know. Duplicates = names repeated across the files (the latest record was kept).")]
+
+
+def _merged_rows(d, eng=None):
+    ws = _with_state([r for r in d["assets"] if eng is None or r["engineer"] == eng])
+    base = lambda r: {"registered": "Yes", "state": r["state"], "todo": r["todo"], "user": r["user"], "location": r["location"], "engineer": r["engineer"], "class": r["class"], "model": r["model"],   # noqa: E731
+                      "serial": r["serial"], "pc": r["suite_pc"]}
+    merged = [{**base(r), "endpoint": r["r_name"] or r["ci"], "found": r["r_files"], "conn": r["r_conn"], "os": r["r_os"], "ip": r["r_ip"]} for r in ws if r["installed"]]
+    if eng is None:
+        merged += [{"endpoint": u["name"], "found": u.get("files", ""), "registered": "No", "state": "Not in register", "todo": u["action"], "conn": "", "user": "", "location": "", "engineer": "",
+                    "class": "", "model": "", "serial": "", "os": u["os"], "ip": u["ip"], "pc": ""} for u in d["unregistered"] if u["kind"] != "outside"]
+    order = {"Sensor only": 0, "Not determined": 1, "Not in register": 2, "Full suite": 3}
+    merged.sort(key=lambda x: (order.get(x["state"], 4), x["endpoint"]))
+    absent = [{**base(r), "endpoint": r["ci"], "found": "", "conn": "", "os": "", "ip": ""} for r in ws if not r["installed"]]
+    return merged, absent
+
+
+def consolidated(d, fmt, user, eng=None):
+    """The consolidated comparison: all console files merged into one de-duplicated list, set against the register and the PC check script, each machine marked Sensor only /
+    Full suite / Not determined with a plain 'what to do'. Administrators and team leads get everything; an engineer only their own machines."""
+    s = d["summary"]
+    merged, absent = _merged_rows(d, eng)
+    sensor = [r for r in merged if r["state"] == "Sensor only"]
+    n = Counter(r["state"] for r in merged)
+    t = [_t("Merged list", CONSOL_COLS, merged)]
+    if fmt != "csv":
+        t = [_t("How to use this report", [("k", "Topic"), ("v", "Guidance")], [{"k": a, "v": b} for a, b in CONSOL_GUIDE]), t[0], _t("Sensor only", CONSOL_COLS, sensor),
+             _t("Not in console", CONSOL_COLS, absent)]
+        if eng is None:
+            t += [_t("Not in register", [("name", "Computer name"), ("ip", "IP address"), ("os", "OS"), ("files", "Found in file"), ("why", "Why"), ("action", "What to do")], [u for u in d["unregistered"] if u["kind"] != "outside"]),
+                  _t("Duplicates removed", [("name", "Computer name"), ("rows", "Rows in the files"), ("detail", "Records seen")], d["duplicates"])]
+    if fmt == "pdf":
+        t = [x for x in t if x["title"] not in ("Merged list", "Not in console")]          # key people get the headline and the problem lists; the full lists are in the Excel
+    k = [("Endpoints in merged list", len(merged)), ("Full suite", n["Full suite"]), ("Sensor only", n["Sensor only"]), ("Not determined", n["Not determined"]), ("Not in console", len(absent))]
+    if eng is None:
+        k.append(("Repeat rows removed", sum(x["rows"] - 1 for x in d["duplicates"])))
+    if fmt == "csv":
+        return export.render("csv", s["tool"], "", t)
+    return export.render(fmt, f"{s['tool']} consolidated comparison" + (f" - {eng.title()}" if eng else ""), f"Report: {d['filename']} - issued {dt.date.today():%d %b %Y}", t, k, footer=user["username"])
+
+
+def latest_trend_run(published_only):
+    r = db.one("SELECT run_id FROM portal_match_run WHERE summary->>'product' IN ('trendmicro', 'apex')" + (" AND published_at IS NOT NULL" if published_only else "") + " ORDER BY at DESC LIMIT 1")
+    return r["run_id"] if r else None
+
+
 def tables(d, management=False):
     s, a = d["summary"], d["assets"]
     miss = sorted((r for r in a if not r["installed"]), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["engineer"], r["ci"]))
@@ -842,6 +1042,8 @@ def tables(d, management=False):
     t = [_t("About this report", [("item", "Item"), ("value", "Detail")], about), _t("Key findings", [("severity", "Rating"), ("finding", "Finding"), ("action", "What to do")], s["findings"]),
          _t("Data checks on the report", [("status", "Result"), ("check", "Check"), ("detail", "What was found"), ("handled", "How it was handled")], [{**c, "status": {"ok": "OK", "warn": "Check", "info": "Note"}.get(c["status"], c["status"])} for c in s.get("checks", [])]),
          _group("Coverage by class", "Class", s["by_class"]), _group("Coverage by engineer", "Engineer", s["by_engineer"])]
+    if s.get("suite_counts"):
+        t.insert(2, _suite_summary(a))
     if management:                  # the PDF is the short version: findings, class, engineer and the worst machines; the Excel pack has everything
         t.append(_t(f"Top {min(25, len(miss))} machines to fix first (deployed, no agent)", [("ci", "Asset (CI)"), ("class", "Class"), ("model", "Model"), ("user", "User"), ("location", "Location"), ("engineer", "Engineer")],
                     [r for r in miss if r["priority"] == HIGH][:25]))
@@ -859,6 +1061,8 @@ def tables(d, management=False):
           _t("Duplicate names in report", [("name", "Computer name"), ("rows", "Rows"), ("detail", "Records")], d["duplicates"]),
           _t("How the totals add up", [("label", "Line"), ("n", "Count"), ("note", "Note")], s.get("recon", [])),
           _t("Full match", [("ci", "Asset (CI)"), ("installed", "In the report"), ("health", "Health")] + INSTALLED_COLS[1:13] + [("priority", "Priority")], _yn(a))]
+    if s.get("suite_counts"):
+        t.append(suite_table(a))
     return t
 
 
@@ -906,21 +1110,15 @@ UNASSIGNED = "UNASSIGNED"
 def _work(d, eng):
     """What one engineer has to do: machines without the agent (most urgent first), silent agents, wrong-name cases. Low-priority gaps (in store) are listed but do not by themselves trigger a mail."""
     mine = [r for r in d["assets"] if r["engineer"] == eng]
-    miss = sorted((r for r in mine if not r["installed"]), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["ci"]))
-    quiet = sorted((r for r in mine if r["health"] == "Needs attention"), key=lambda r: (-(r["r_age"] or 0), r["ci"]))
+    miss = sorted((r for r in mine if not r["installed"] and not r.get("suite_pc")), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["ci"]))
+    quiet = sorted((r for r in mine if r["health"] == "Needs attention" or (not r["installed"] and r.get("suite_pc"))), key=lambda r: (-(r["r_age"] or 0), r["ci"]))
     named = [r for r in miss if r["possible"]]
     needs = [r for r in miss if r["priority"] != LOW] + quiet
     return {"mine": mine, "miss": miss, "quiet": quiet, "named": named, "needs": bool(needs)}
 
 
 def engineer_workbook(d, eng, user):
-    s, w = d["summary"], _work(d, eng)
-    inst = len(w["mine"]) - len(w["miss"])
-    k = [("Machines assigned to you (checked)", len(w["mine"])), (f"{s['tool']} installed", inst), ("Not installed", len(w["miss"])), ("Coverage (%)", _pct(inst, len(w["mine"]))),
-         ("Deployed, no agent", sum(1 for r in w["miss"] if r["priority"] == HIGH)), ("Installed, need attention", len(w["quiet"])), ("Name differs from register", len(w["named"]))]
-    t = [_t("Not installed - your action list", ASSET_COLS, w["miss"]), _t("Installed - needs attention", INSTALLED_COLS, w["quiet"]),
-         _t("Probably the same machine", [("ci", "Asset (CI)"), ("possible", "Name in report"), ("possible_by", "Because"), ("action", "Action")], w["named"])]
-    return export.xlsx_bytes(t, f"{s['tool']} - {eng.title()}", k, f"Report file: {d['filename']} - {dt.date.today():%d %b %Y}", generated_by=user["username"])
+    return field_report(d, "xlsx", user, eng)[0]
 
 
 def engineer_plan(d):

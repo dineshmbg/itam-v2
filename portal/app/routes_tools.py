@@ -431,6 +431,15 @@ async def match_mine(request):
     return json_response(out)
 
 
+async def match_share(request):
+    """(Re)share an analysis with the engineers and e-mail each their list - for an analysis that was made before sharing was automatic, or whose sharing was switched off.
+    Mail is sent once per analysis and engineer, so pressing it again mails nobody twice."""
+    u, run_id = request.state.user, str(request.state.body.get("run_id") or "")
+    out = await run_in_threadpool(inventory_match.distribute, run_id, u)
+    await _log(request, "MATCH_SHARE", run_id, {"sent": sum(1 for x in out["plan"] if x["status"] == "SENT")})
+    return json_response(out)
+
+
 async def match_notice(request):
     return json_response({"notice": await run_in_threadpool(inventory_match.notice, request.state.user)})
 
@@ -461,6 +470,28 @@ async def match_mine_export(request):
     name = export.safe_name(f"{d['summary']['tool']}_{eng}_{d['summary']['as_of'].replace('-', '')}") + ".xlsx"
     await _log(request, "MATCH_MY_EXPORT", name, {"run": d["run_id"], "engineer": eng})
     return _file(data, export.MIME["xlsx"], name)
+
+
+async def match_pack(request):
+    """The latest Trend Micro run as the investigation report or the light field report, in Excel, CSV or PDF. An administrator or team lead gets every
+    machine; an engineer gets only the machines assigned to them (from the latest run shared with engineers)."""
+    b, u = request.state.body, request.state.user
+    kind, fmt = b.get("kind", "field"), b.get("format", "xlsx")
+    if kind not in ("investigation", "field", "consolidated") or fmt not in ("xlsx", "csv", "pdf") or (kind == "field" and fmt == "pdf"):
+        raise inventory_match.MatchError("Choose the investigation or consolidated report (Excel, CSV, PDF) or the field report (Excel, CSV).")
+    broad = auth.is_full_admin(u) or auth.is_lead(u) or u["role"] == "ADMIN"
+    eng = None if broad else u.get("engineer_key")
+    if not broad and not eng:
+        raise inventory_match.MatchError("Your account is not linked to an engineer record. Ask an administrator.", 403)
+    run_id = await run_in_threadpool(inventory_match.latest_trend_run, not broad)
+    if not run_id:
+        raise inventory_match.MatchError("No Trend Micro report has been matched" + ("" if broad else " and shared") + " yet.", 404)
+    d = await run_in_threadpool(inventory_match.get, run_id)
+    fn = {"investigation": inventory_match.investigation, "consolidated": inventory_match.consolidated}.get(kind, inventory_match.field_report)
+    data, mime, ext = await run_in_threadpool(fn, d, fmt, u, eng)
+    name = export.safe_name(f"Trend_{kind}_{eng or 'all'}_{d['summary']['as_of'].replace('-', '')}") + "." + ext
+    await _log(request, "MATCH_PACK", name, {"kind": kind, "format": fmt, "run": run_id, "scope": eng or "all"})
+    return _file(data, mime, name)
 
 
 async def match_get(request):
@@ -613,12 +644,14 @@ routes = [
     Route("/api/match/meta", R_(match_meta, admin="lead_strict")),
     Route("/api/match/upload", _tool_errors(match_upload), methods=["POST"]),
     Route("/api/match/run", W_(match_run, admin="lead_strict"), methods=["POST"]),
+    Route("/api/match/share", W_(match_share, admin="lead_strict"), methods=["POST"]),
     Route("/api/match/notice", R_(match_notice)),
     Route("/api/match/notice/seen", W_(match_notice_seen, mutates=False), methods=["POST"]),     # per-user "I have seen it", not a data change
     Route("/api/match/mine", R_(match_mine)),
     Route("/api/match/mine/export", W_(match_mine_export, mutates=False), methods=["POST"]),     # a download, not a write
     Route("/api/match/mine/{run}", R_(match_mine_run)),
     Route("/api/match/runs/{run}", R_(match_get, admin="lead_strict")),
+    Route("/api/match/pack", W_(match_pack, mutates=False), methods=["POST"]),
     Route("/api/match/export", W_(match_export, admin="lead_strict", mutates=False), methods=["POST"]),   # a download, not a write
     Route("/api/admin/import", R_(import_meta, admin="strict")),
     Route("/api/admin/import/upload", _tool_errors(import_upload), methods=["POST"]),

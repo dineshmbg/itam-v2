@@ -10,7 +10,7 @@ const SOURCES = { BIGFIX_REPORT: 'BigFix report', TREND_REPORT: 'Trend Micro rep
 const FIELDS = ['os_edition', 'os_build', 'os_feature_version', 'trend_installed', 'trend_version', 'trend_status', 'bigfix_installed', 'bigfix_version', 'vpn_name', 'vpn_version', 'vpn_other',
   'sap_gui_version', 'o365_account', 'o365_version', 'last_user', 'connection', 'bitlocker', 'tpm_secureboot', 'office_channel', 'domain_joined', 'last_boot', 'browser_version', 'local_admins',
   'os_product_raw', 'trend_services', 'trend_candidate', 'vpn_service_state', 'vpn_candidate', 'bigfix_service_state', 'o365_status', 'o365_account_source', 'os_update_title', 'os_update_at',
-  'defender_signature', 'defender_signature_at', 'chrome_version', 'firefox_version', 'remarks'];
+  'defender_signature', 'defender_signature_at', 'chrome_version', 'firefox_version', 'zenworks_installed', 'zenworks_version', 'zenworks_status', 'zenworks_services', 'remarks'];
 
 const cell = (v) => (v === true ? 'Yes' : v === false ? 'No' : v == null || v === '' ? h('span', { class: 'faint' }, '—') : String(v));
 
