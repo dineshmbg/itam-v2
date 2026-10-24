@@ -557,3 +557,18 @@ def test_full_suite_or_sensor_only_from_what_the_pc_runs():
     assert f("") == "" and f(None) == ""
     c = swobs.parse_check(CHECK2.replace("TREND_SCAN_STATE=", "TREND_BASECAMP_STATE=4\nTREND_PROCS=TmListen.exe,EndpointBasecamp.exe,\nTREND_SVC_SEEN=TmListen,EndpointBasecamp,\nTREND_SCAN_STATE=", 1))
     assert "EndpointBasecamp running" in c["facts"]["trend_services"] and "processes TmListen.exe,EndpointBasecamp.exe" in c["facts"]["trend_services"]
+
+
+def test_zenworks_status_is_read_and_stored(box):
+    c = swobs.parse_check(CHECK2 + "").get("facts")
+    assert "zenworks_installed" not in c                                                     # an older script run says nothing about ZENworks: nothing is invented
+    raw = CHECK2.replace("TREND_STATUS=", "ZEN_STATUS=DETECTED\nZEN_NAME=ZENworks Adaptive Agent\nZEN_VER=24.2.0\nZEN_PROCS=ZenworksWindowsService.exe,\nZEN_SVC_SEEN=zenloader,\nTREND_STATUS=", 1)
+    f = swobs.parse_check(raw)["facts"]
+    assert (f["zenworks_installed"], f["zenworks_status"], f["zenworks_version"]) == (True, "ZENworks Adaptive Agent", "24.2.0")
+    assert f["zenworks_services"] == "processes ZenworksWindowsService.exe; services seen zenloader"
+    none = swobs.parse_check(CHECK2.replace("TREND_STATUS=", "ZEN_STATUS=NOT_DETECTED\nTREND_STATUS=", 1))["facts"]
+    assert none["zenworks_installed"] is False and "zenworks_status" not in none
+    ci = box.execute("SELECT ci_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' LIMIT 1").fetchone()[0]
+    oid = swobs.record(ci, "SCRIPT", f, by="T")
+    row = box.execute("SELECT zenworks_installed, zenworks_version FROM portal_sw_obs WHERE obs_id = %s", (oid,)).fetchone()
+    assert tuple(row) == (True, "24.2.0")

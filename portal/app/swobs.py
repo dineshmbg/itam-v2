@@ -13,8 +13,10 @@ FIELDS = ("os_edition", "os_build", "os_feature_version", "trend_installed", "tr
           "bitlocker", "tpm_secureboot", "office_channel", "domain_joined", "last_boot", "browser_version", "local_admins", "remarks",
           # added with the richer check script: service states, how each product was found, the Office sign-in's origin, last Windows / Defender updates
           "os_product_raw", "trend_services", "trend_candidate", "vpn_service_state", "vpn_candidate", "bigfix_service_state", "o365_status", "o365_account_source",
-          "os_update_title", "os_update_at", "defender_signature", "defender_signature_at", "chrome_version", "firefox_version")
-BOOLS = {"trend_installed", "bigfix_installed", "vpn_other", "bitlocker", "tpm_secureboot", "domain_joined"}
+          "os_update_title", "os_update_at", "defender_signature", "defender_signature_at", "chrome_version", "firefox_version",
+          # ZENworks agent (check script only)
+          "zenworks_installed", "zenworks_version", "zenworks_status", "zenworks_services")
+BOOLS = {"trend_installed", "bigfix_installed", "zenworks_installed", "vpn_other", "bitlocker", "tpm_secureboot", "domain_joined"}
 INTERNAL = {"apps_count": "INTEGER", "apps_hash": "TEXT", "apps_obs_id": "BIGINT"}      # set by the check-script intake only, never by a person
 
 DDL = [
@@ -333,6 +335,15 @@ def parse_check(text):
         svc.append("services seen " + g("TREND_SVC_SEEN").strip(", ")[:300])
     if svc:
         facts["trend_services"] = "; ".join(svc)
+    if g("ZEN_STATUS"):
+        facts["zenworks_installed"] = bool(g("ZEN_NAME"))
+        if g("ZEN_NAME"):
+            facts["zenworks_status"] = g("ZEN_NAME")
+        if g("ZEN_VER"):
+            facts["zenworks_version"] = g("ZEN_VER")
+        zs = ([f"processes {g('ZEN_PROCS').strip(', ')}"] if g("ZEN_PROCS") else []) + ([f"services seen {g('ZEN_SVC_SEEN').strip(', ')[:300]}"] if g("ZEN_SVC_SEEN") else [])
+        if zs:
+            facts["zenworks_services"] = "; ".join(zs)
     if g("ZSCALER_SERVICE_STATE") in _SVC_WORD:
         facts["vpn_service_state"] = "ZSAService " + _SVC_WORD[g("ZSCALER_SERVICE_STATE")]
     if g("BIGFIX_SERVICE_STATE") in _SVC_WORD:
@@ -542,7 +553,8 @@ def ingest_workbook(data, by, engineer_key=None):
 _SRC = {"BIGFIX_REPORT": "BigFix report", "TREND_REPORT": "Trend Micro report", "SCRIPT": "Check script", "MANUAL": "Entered by hand"}
 _MACHINE_COLS = [("ci", "Asset (CI)"), ("class", "Class"), ("engineer", "Engineer"), ("user", "User"), ("source", "Source"), ("inspected", "Inspected"), ("data_as_of", "Data as of"),
                  ("os_edition", "Windows"), ("os_build", "Windows build"), ("os_feature_version", "Feature version"), ("trend_installed", "Trend Micro installed"), ("trend_version", "Trend Micro version"),
-                 ("trend_status", "Trend Micro status / name"), ("bigfix_installed", "BigFix installed"), ("bigfix_version", "BigFix version"), ("vpn_name", "VPN"), ("vpn_version", "VPN version"),
+                 ("trend_status", "Trend Micro status / name"), ("zenworks_installed", "ZENworks installed"), ("zenworks_version", "ZENworks version"), ("zenworks_status", "ZENworks status / name"),
+                 ("bigfix_installed", "BigFix installed"), ("bigfix_version", "BigFix version"), ("vpn_name", "VPN"), ("vpn_version", "VPN version"),
                  ("sap_gui_version", "SAP GUI version"), ("o365_account", "Microsoft 365 account"), ("o365_version", "Office version"), ("browser_version", "Edge version"),
                  ("chrome_version", "Chrome version"), ("firefox_version", "Firefox version"), ("last_user", "Last logged-on user"), ("os_update_title", "Last Windows update"),
                  ("os_update_at", "Last Windows update on"), ("defender_signature", "Defender signature"), ("remarks", "Remarks")]
