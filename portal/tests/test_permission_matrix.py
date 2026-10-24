@@ -65,8 +65,6 @@ ACTIONS = {
     "admin: activity log": ("GET", "/api/admin/activity", None, LEAD),
     "tools: inventory match": ("GET", "/api/match/meta", None, LEAD),
     "software: detailed Trend investigation download": ("POST", "/api/investigation/trend", {"format": "xlsx"}, who(*[p for p in PERSONAS if p not in ("user_no_engineer", "demo_readonly")])),    # admin / team lead: all machines; an engineer: their own; never the demo account
-    "tools: investigations": ("GET", "/api/investigations", None, who("admin", "user+lead")),                        # like inventory match, but never the public-password demo account
-    "tools: investigations, remove": ("POST", "/api/investigations/remove", {"inv_id": 0}, who("admin", "user+lead")),
     "tools: data import": ("GET", "/api/admin/import", None, FULL_ADMIN),                                # Data import / Backup / Software update / E-mail stay administrator-only
     "admin: e-mail and alerts": ("GET", "/api/admin/email", None, FULL_ADMIN),
     "admin: backups list": ("GET", "/api/admin/backups", None, FULL_ADMIN),

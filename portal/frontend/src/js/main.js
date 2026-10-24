@@ -18,7 +18,7 @@ let view = null;
 let running = false;
 let lastPath = '';
 
-const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', work: 'PM work orders', wo: 'PM work order', findings: 'PM findings', checklists: 'PM checklists', reports: 'Report builder', import: 'Data import', match: 'Inventory match', investigations: 'Investigations', amc: 'Remove from AMC', 'amc-requests': 'AMC removal requests', inventory: 'My inventory report', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
+const TITLES = { pm: 'Preventive maintenance', cycles: 'PM cycles', history: 'Past quarters', work: 'PM work orders', wo: 'PM work order', findings: 'PM findings', checklists: 'PM checklists', reports: 'Report builder', import: 'Data import', match: 'Inventory match', amc: 'Remove from AMC', 'amc-requests': 'AMC removal requests', inventory: 'My inventory report', backup: 'Backup and restore', update: 'Software update', email: 'E-mail and alerts', assets: 'Assets', calls: 'Call tracker', engineers: 'Engineers', inward: 'Inward', outward: 'Outward', rma: 'OEM RMA', employees: 'Employees',
   integrity: 'Data integrity', audit: 'Change log', users: 'Users and security', activity: 'Activity log' };
 
 // Views are loaded on demand so the first screen stays small.
@@ -41,7 +41,6 @@ const VIEWS = {
   'admin/amc-requests': () => import('./views/amc-requests.js').then((m) => m.mountAmcRequests),
   'admin/amc': () => import('./views/amc-basket.js').then((m) => m.mountAmcPick),
   'admin/match': () => import('./views/inventory-match.js').then((m) => m.mountInventoryMatch),
-  'admin/investigations': () => import('./views/investigations.js').then((m) => m.mountInvestigations),
   'admin/import': () => import('./views/admin-import.js').then((m) => m.mountImport),
   'admin/backup': () => import('./views/admin-backup.js').then((m) => m.mountBackup),
   'admin/update': () => import('./views/admin-update.js').then((m) => m.mountUpdate),
