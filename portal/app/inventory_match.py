@@ -421,7 +421,13 @@ def analyse(files, mapping, params, today=None):
             d = dup_detail.setdefault(e["key"], {"name": e["name"], "rows": [old]})
             d["rows"].append(e)
             if (e["seen"] or dt.datetime.min) < (old["seen"] or dt.datetime.min):
+                for f in ("ip", "os", "type", "user", "conn"):          # the older record still knows things the kept one does not
+                    if not old.get(f) and e.get(f):
+                        old[f] = e[f]
                 continue
+            for f in ("ip", "os", "type", "user", "conn"):
+                if not e.get(f) and old.get(f):
+                    e[f] = old[f]
         by_key[e["key"]] = e
     files_of = {}
     for e in raw:
@@ -650,6 +656,9 @@ def analyse(files, mapping, params, today=None):
     nx = swobs.cross_check(out, product)
     if product in TREND:
         swobs.suite_seen(out)
+        for r in out:
+            if not r["installed"] and r["suite_pc"]:
+                r["action"] = f"The PC itself reports {r['suite_pc']} but it is not in the console report: do not reinstall - check its connection to the Apex server and its console group."
         sc = Counter(r["suite"] or r["suite_pc"] or "Not determined" for r in out if r["installed"])
         summary["suite_counts"] = {k: sc.get(k, 0) for k in ("Full suite", "Sensor only", "Unclear", "Not determined")}
         summary["suite_disagree"] = sum(1 for r in out if r["suite"] and r["suite_pc"] and r["suite"] != r["suite_pc"])
@@ -1000,6 +1009,8 @@ def consolidated(d, fmt, user, eng=None):
         if eng is None:
             t += [_t("Not in register", [("name", "Computer name"), ("ip", "IP address"), ("os", "OS"), ("files", "Found in file"), ("why", "Why"), ("action", "What to do")], [u for u in d["unregistered"] if u["kind"] != "outside"]),
                   _t("Duplicates removed", [("name", "Computer name"), ("rows", "Rows in the files"), ("detail", "Records seen")], d["duplicates"])]
+    if fmt == "pdf":
+        t = [x for x in t if x["title"] not in ("Merged list", "Not in console")]          # key people get the headline and the problem lists; the full lists are in the Excel
     k = [("Endpoints in merged list", len(merged)), ("Full suite", n["Full suite"]), ("Sensor only", n["Sensor only"]), ("Not determined", n["Not determined"]), ("Not in console", len(absent))]
     if eng is None:
         k.append(("Repeat rows removed", sum(x["rows"] - 1 for x in d["duplicates"])))
@@ -1093,8 +1104,8 @@ UNASSIGNED = "UNASSIGNED"
 def _work(d, eng):
     """What one engineer has to do: machines without the agent (most urgent first), silent agents, wrong-name cases. Low-priority gaps (in store) are listed but do not by themselves trigger a mail."""
     mine = [r for r in d["assets"] if r["engineer"] == eng]
-    miss = sorted((r for r in mine if not r["installed"]), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["ci"]))
-    quiet = sorted((r for r in mine if r["health"] == "Needs attention"), key=lambda r: (-(r["r_age"] or 0), r["ci"]))
+    miss = sorted((r for r in mine if not r["installed"] and not r.get("suite_pc")), key=lambda r: ({HIGH: 0, MEDIUM: 1, LOW: 2}[r["priority"]], r["ci"]))
+    quiet = sorted((r for r in mine if r["health"] == "Needs attention" or (not r["installed"] and r.get("suite_pc"))), key=lambda r: (-(r["r_age"] or 0), r["ci"]))
     named = [r for r in miss if r["possible"]]
     needs = [r for r in miss if r["priority"] != LOW] + quiet
     return {"mine": mine, "miss": miss, "quiet": quiet, "named": named, "needs": bool(needs)}

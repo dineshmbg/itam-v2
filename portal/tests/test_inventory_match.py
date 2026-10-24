@@ -216,7 +216,7 @@ def test_each_engineer_gets_only_their_own_list_once(box, tmp_path, monkeypatch)
     for to, subject, att in sent:                                            # each attachment holds only that engineer's machines
         eng = next(p["engineer"] for p in ready if p["email"] == to)
         wb = load_workbook(io.BytesIO(att[0][1]))
-        ws = wb[next(n for n in wb.sheetnames if n.startswith("NOT INSTALLED"))]      # sheet names are upper-cased and cut to 31 characters
+        ws = wb[next(n for n in wb.sheetnames if n.startswith("YOUR WORK LIST"))]      # the attachment is the field report; sheet names are upper-cased and cut to 31 characters
         cis = [row[0] for row in ws.iter_rows(min_row=2, values_only=True) if row[0]]
         assert cis and all(next(a for a in r["assets"] if a["ci"] == c)["engineer"] == eng for c in cis) and "no agent" in subject
     again = m.send_to_engineers(r["run_id"], user)
@@ -311,3 +311,83 @@ def test_every_run_is_shared_and_mailed_automatically(box, tmp_path, monkeypatch
     monkeypatch.setattr(mailer, "get_smtp", lambda: {**mailer.DEFAULT_SMTP, "enabled": True, "host": "h", "from_addr": "a@b.c", "has_password": False})
     on = m.distribute(r["run_id"], user)
     assert on["error"] is None and sent and len(sent) == len({p["email"] for p in on["plan"] if p["status"] == "SENT"}) and m.get(r["run_id"])["mail"]["error"] is None
+
+
+APEX = ("Domain", "Endpoint", "IP Address", "Connection Status", "Platform", "Architecture", "Logon User")
+
+
+def test_apex_files_sensor_full_and_work_lists(box, tmp_path, monkeypatch):
+    """Apex One CSV + old inventory workbook as one report: a machine in both keeps the details of whichever file has them, the check script decides Sensor only / Full suite,
+    and a machine the PC says has an agent is a 'check' job, never a 'no agent' one."""
+    from openpyxl import Workbook
+    from portal.app import swobs
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                         AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 6""").fetchall()
+    if len(rows) < 6:
+        pytest.skip("needs six desktops")
+    full, sensor, unknown, both, offline, pc_only = [r[0] for r in rows]
+    c = io.StringIO()
+    w = csv.writer(c)
+    w.writerow(APEX)
+    for ci, st in ((full, "Online"), (sensor, "Online"), (unknown, "Online"), (both, "Online"), (offline, "Offline")):
+        w.writerow(["Workgroup_x\\", ci, "10.1.1.9", st, "Windows 11  10.0.26100", "x64", "ONGC\\123"])
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Endpoint name", "Object type", "Protection Manager", "OS name", "OS type"])
+    ws.append([both + "$", "Desktop", "Active Directory (on-premises)", "Windows 11 Pro 10.0 (26200)", "Windows"])
+    ws.append([both + "$", "Desktop", "Active Directory (on-premises)", "Windows 11 Pro 10.0 (26200)", "Windows"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    st1 = m.stage("list.csv", c.getvalue().encode(), "ADMIN1")
+    st2 = m.stage("old.xlsx", buf.getvalue(), "ADMIN1")
+    assert st1["product"] == st2["product"] == "apex"
+    swobs.record(full, "SCRIPT", {"trend_services": "ntrtscan; TmListen"}, "t")
+    swobs.record(sensor, "SCRIPT", {"trend_services": "TmListen"}, "t")
+    swobs.record(pc_only, "SCRIPT", {"trend_services": "ntrtscan"}, "t")
+    r = m.run([st2["stage_id"], st1["stage_id"]], st1["mapping"], {"prefix": _prefix(full), "classes": ["DESKTOP"]}, "ADMIN1")
+    by = {a["ci"]: a for a in m._with_state(r["assets"])}
+    assert [by[x]["state"] for x in (full, sensor, unknown, both)] == ["Full suite", "Sensor only", "Not determined", "Not determined"]
+    assert by[pc_only]["state"] == "Not installed" and "Do not reinstall" in by[pc_only]["todo"] and "do not reinstall" in by[pc_only]["action"]
+    assert by[both]["r_ip"] == "10.1.1.9" and by[both]["r_conn"] == "Online" and by[offline]["r_conn"] == "Offline"          # the file that has the details wins, in either upload order
+    assert r["summary"]["suite_counts"]["Sensor only"] >= 1 and r["summary"]["reconciled"]
+    eng = by[pc_only]["engineer"].upper()
+    assert pc_only not in {x["ci"] for x in m._work(r, eng)["miss"]} and pc_only in {x["ci"] for x in m._work(r, eng)["quiet"]}
+    d = m.get(r["run_id"])
+    merged, absent = m._merged_rows(d)
+    assert {x["endpoint"] for x in merged} >= {full, sensor, both} and any(x["endpoint"] == pc_only for x in absent)
+    for fmt in ("xlsx", "csv", "pdf"):
+        assert m.consolidated(d, fmt, {"username": "t"})[0]
+
+
+def test_pack_buttons_scope_by_role(box, tmp_path, monkeypatch):
+    """The Option 2 buttons: an engineer gets only their own machines and only from a shared Trend analysis; administrators/team leads get everything."""
+    from openpyxl import load_workbook
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
+                         AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 400""").fetchall()
+    engs = sorted({r[1] for r in rows})
+    if len(engs) < 2:
+        pytest.skip("needs desktops with at least two engineers")
+    me, other = engs[0], engs[1]
+    c_ = io.StringIO()
+    w = csv.writer(c_)
+    w.writerow(APEX)
+    for ci in {x[0] for x in rows}:
+        w.writerow(["Workgroup_x\\", ci, "10.1.1.9", "Online", "Windows 11  10.0.26100", "x64", "ONGC\\123"])
+    st = m.stage("list.csv", c_.getvalue().encode(), "ADMIN1")
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
+    ci_of = lambda who: {a["ci"] for a in r["assets"] if a["engineer"] == who}      # noqa: E731
+    sheet = lambda body: {x[0] for x in load_workbook(io.BytesIO(body))["MERGED LIST"].iter_rows(min_row=2, values_only=True) if x[0]}      # noqa: E731
+    fake_user(monkeypatch, "USER", username="ENG1", engineer_key=me)
+    with TestClient(app) as c:
+        m.publish(r["run_id"], "ADMIN1")
+        mine = c.post("/api/match/pack", json={"kind": "consolidated", "format": "xlsx"}, headers=HDR)
+        assert mine.status_code == 200 and sheet(mine.content) <= ci_of(me) and sheet(mine.content)
+        for kind, fmt in (("consolidated", "csv"), ("consolidated", "pdf"), ("investigation", "pdf"), ("field", "xlsx")):
+            assert c.post("/api/match/pack", json={"kind": kind, "format": fmt, "as": other}, headers=HDR).status_code == 200
+        assert c.post("/api/match/pack", json={"kind": "field", "format": "pdf"}, headers=HDR).status_code == 400
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        allx = c.post("/api/match/pack", json={"kind": "consolidated", "format": "xlsx"}, headers=HDR)
+        assert allx.status_code == 200 and sheet(allx.content) >= (ci_of(me) | ci_of(other)) & {x[0] for x in rows}          # every machine that is in the file, whoever owns it
