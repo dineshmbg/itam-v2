@@ -92,7 +92,7 @@ export function bulkBlock(first) {
   const dl = (path, name, label, ic, title, body = {}) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, body, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
   const pack = (kind, format, label, ic, title) => h('button', { class: 'btn', type: 'button', title, onClick: () => download('/api/match/pack', { kind, format }, `Trend_${kind}.${format}`).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
   return h('div', { class: 'sw-cards' }, first || null,
-    card('Option 2 · by hand, in bulk', 'Enter many machines at once',
+    card('Option 2 · reports', 'Software and Trend Micro reports',
       h('p', { class: 'muted' }, 'Every machine with its software and versions, as one Excel file.'),
       h('p', { class: 'hint' }, 'From the latest Trend Micro report (Apex One or Vision One files): each machine is marked Sensor only, Full suite, Not determined or Not installed. Engineers get only their own machines.'),
       h('div', { class: 'btn-row' }, pack('field', 'xlsx', 'Field report (Excel)', 'document--export', 'Light list for the person doing the work: machine, state, what to do, with a how-to-use sheet'), pack('field', 'csv', 'Field report (CSV)', 'download', 'Same work list as CSV')),
