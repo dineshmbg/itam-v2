@@ -75,16 +75,6 @@ const card = (step, title, ...kids) => h('section', { class: 'sw-card' }, h('spa
 
 /** Ways to get software data in, as side-by-side cards: [optional first card], fill many machines in Excel, upload files saved by the check script. All or nothing; an engineer can only fill their own machines. */
 export function bulkBlock(first) {
-  const file = h('input', { type: 'file', id: 'sw-bulk', accept: '.xlsx' });
-  const out = h('div', { class: 'sw-out', role: 'status' });
-  const go = async () => {
-    if (!file.files[0]) { toast('Choose the filled template.', 'bad'); return; }
-    try {
-      const r = await upload('/api/software/bulk', file.files[0]);
-      out.replaceChildren(r.errors.length ? h('div', null, h('span', { class: 'badge bad' }, 'Nothing saved'), h('ul', null, r.errors.slice(0, 30).map((t) => h('li', null, t))))
-        : h('div', null, h('span', { class: 'badge ok' }, 'Saved'), ` ${r.recorded} machine(s) recorded.`));
-    } catch (e) { out.replaceChildren(h('div', null, h('span', { class: 'badge bad' }, 'Refused'), ' ', e.message || 'unreadable')); }
-  };
   const picks = h('input', { type: 'file', id: 'sw-files', accept: '.txt', multiple: true });
   const saved = h('div', { class: 'sw-out', role: 'status' });
   const goSaved = async () => {
@@ -102,14 +92,9 @@ export function bulkBlock(first) {
   const dl = (path, name, label, ic, title, body = {}) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, body, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
   return h('div', { class: 'sw-cards' }, first || null,
     card('Option 2 · by hand, in bulk', 'Enter many machines at once',
-      h('p', { class: 'muted' }, 'One row per machine in Excel; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
-      dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'),
-      h('div', { class: 'btn-row sw-inv', role: 'group', 'aria-label': 'Detailed Trend Micro investigation' },
-        dl('/api/investigation/trend', 'Trend_Micro_Investigation.xlsx', 'Detailed investigation (Excel)', 'document--export', 'Trend Micro: for each machine, agent and sensor present and working, what is missing and what to do. Made from the newest analysed reports and PC checks; engineers get their own machines.', { format: 'xlsx' }),
-        dl('/api/investigation/trend', 'Trend_Micro_Investigation.pdf', 'Detailed investigation (PDF)', 'document--pdf', 'The same, as a short PDF summary.', { format: 'pdf' })),
-      dl('/api/software/template', 'Software_Observation_Upload_Template.xlsx', 'Download Excel template', 'download'),
-      h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
-      h('div', { class: 'sw-grow' }), h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template'), out),
+      h('p', { class: 'muted' }, 'Every machine with its software and versions, as one Excel file.'),
+      h('div', { style: { display: 'flex', justifyContent: 'center' } },      // the button is only as wide as its label, centred in the card
+        dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'))),
     card('Option 3 · saved by the script', 'Upload saved check-script results',
       h('p', { class: 'muted' }, 'When a PC could not reach the portal, ankcheck.bat saved ankcheck_<PC name>.txt (next to the script, or in the user Documents folder). Upload those files here; an engineer can upload the PCs assigned to them.'),
       h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-files' }, 'Saved result files (ankcheck_*.txt)'), picks),
