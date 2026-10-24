@@ -773,8 +773,8 @@ def run(stage_ids, mapping, params, user):
     label = files[0]["name"] if len(files) == 1 else f"{files[0]['name']} + {len(files) - 1} more"
     run_id = uuid.uuid4().hex[:12]
     with db.write() as con:
-        con.execute("INSERT INTO portal_match_run (run_id, username, tool, filename, params, summary, result) VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb)",
-                    (run_id, user, summary["tool"], label, json.dumps(params or {}), json.dumps(summary, default=str), json.dumps(result, default=str)))
+        con.execute("""INSERT INTO portal_match_run (run_id, username, tool, filename, params, summary, result, published_at, published_by) VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb, now(), %s)""",
+                    (run_id, user, summary["tool"], label, json.dumps(params or {}), json.dumps(summary, default=str), json.dumps(result, default=str), user))      # shared with engineers from the first moment: nothing later can leave it unshared
     return {"run_id": run_id, "filename": label, "summary": summary, **result}
 
 

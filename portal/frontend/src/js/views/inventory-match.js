@@ -176,11 +176,16 @@ export function mountInventoryMatch(root) {
     pick(0);
   }
 
+  async function share(r) {
+    try { await send('/api/match/share', { run_id: r.run_id }); toast('Shared with the engineers; their e-mails were sent where e-mail is on.'); r.published_at = new Date().toISOString(); load(); } catch (e) { toast(e.message, 'bad'); }
+  }
+
   function history() {
     if (!meta.history.length) return h('div', { class: 'muted', style: { padding: '16px' } }, 'No analyses yet.');
     return h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['When', 'Tool', 'File', 'Machines', 'Installed', 'Coverage', 'By', ''].map((x) => h('th', null, x)))),
       h('tbody', null, meta.history.map((r) => h('tr', null, h('td', { class: 'nowrap' }, when(r.at)), h('td', null, r.tool), h('td', { class: 'wrap' }, r.filename), h('td', { class: 'right' }, int(+r.assets)), h('td', { class: 'right' }, int(+r.installed)),
-        h('td', { class: 'right' }, pct(+r.coverage)), h('td', null, r.username, r.published_at ? h('span', { class: 'badge ok', style: { marginLeft: '6px' } }, 'Shared') : null), h('td', null, h('button', { class: 'link-btn', type: 'button', onClick: () => open(r.run_id) }, 'Open')))))));
+        h('td', { class: 'right' }, pct(+r.coverage)), h('td', null, r.username, r.published_at ? h('span', { class: 'badge ok', style: { marginLeft: '6px' } }, 'Shared') : h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Not shared')),
+        h('td', { class: 'nowrap' }, h('button', { class: 'link-btn', type: 'button', onClick: () => open(r.run_id) }, 'Open'), r.published_at ? null : [' · ', h('button', { class: 'link-btn', type: 'button', onClick: () => share(r) }, 'Share with engineers')]))))));
   }
 
   load();

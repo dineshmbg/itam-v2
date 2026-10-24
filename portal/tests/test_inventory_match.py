@@ -237,6 +237,7 @@ def test_engineers_see_only_their_own_machines_and_only_once_shared(box, tmp_pat
     st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")
     r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")
     rid = r["run_id"]
+    m.publish(rid, "ADMIN1", on=False)                                    # a run is shared on creation now; start from the unshared state this test is about
     mine = {a["ci"] for a in r["assets"] if a["engineer"] == me}
     theirs = {a["ci"] for a in r["assets"] if a["engineer"] == other}
     assert mine and theirs
@@ -275,6 +276,7 @@ def test_engineer_gets_a_sign_in_notice_for_a_shared_run_until_opened(box, tmp_p
     me = rows[0][1]
     st = m.stage("c.csv", _csv([_bf(rows[0][0])]), "ADMIN1")
     rid = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(rows[0][0]), "classes": ["DESKTOP"]}, "ADMIN1")["run_id"]
+    m.publish(rid, "ADMIN1", on=False)
     fake_user(monkeypatch, "USER", username="ENG1", engineer_key=me)
     with TestClient(app) as c:
         assert c.get("/api/match/notice").json()["notice"] in (None,) or c.get("/api/match/notice").json()["notice"]["run_id"] != rid      # not shared yet
@@ -391,3 +393,21 @@ def test_pack_buttons_scope_by_role(box, tmp_path, monkeypatch):
     with TestClient(app) as c:
         allx = c.post("/api/match/pack", json={"kind": "consolidated", "format": "xlsx"}, headers=HDR)
         assert allx.status_code == 200 and sheet(allx.content) >= (ci_of(me) | ci_of(other)) & {x[0] for x in rows}          # every machine that is in the file, whoever owns it
+
+
+def test_a_run_is_shared_the_moment_it_exists_and_can_be_shared_again(box, tmp_path, monkeypatch):
+    """Engineers must never find 'nothing shared' after an analysis: run() publishes it itself; the share route repairs an older unshared run."""
+    monkeypatch.setattr(m, "STAGE", tmp_path)
+    ci = box.execute("SELECT ci_no FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND ci_no ~ '^[A-Z]{3,4}' LIMIT 1").fetchone()[0]
+    st = m.stage("c.csv", _csv([_bf(ci)]), "ADMIN1")
+    r = m.run([st["stage_id"]], st["mapping"], {"prefix": _prefix(ci), "classes": ["DESKTOP"]}, "ADMIN1")
+    assert any(x["run_id"] == r["run_id"] for x in m.published(50))
+    m.publish(r["run_id"], "ADMIN1", on=False)                                            # how an older / unshared run looks
+    assert not any(x["run_id"] == r["run_id"] for x in m.published(50))
+    fake_user(monkeypatch, "ADMIN")
+    with TestClient(app) as c:
+        assert c.post("/api/match/share", json={"run_id": r["run_id"]}, headers=HDR).status_code == 200
+    assert any(x["run_id"] == r["run_id"] for x in m.published(50))
+    fake_user(monkeypatch, "USER", username="ENG1", engineer_key="X")
+    with TestClient(app) as c:
+        assert c.post("/api/match/share", json={"run_id": r["run_id"]}, headers=HDR).status_code == 403          # an engineer cannot share
