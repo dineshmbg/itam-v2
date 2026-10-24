@@ -93,6 +93,7 @@ export function bulkBlock(first) {
   return h('div', { class: 'sw-cards' }, first || null,
     card('Option 2 · by hand, in bulk', 'Enter many machines at once',
       h('p', { class: 'muted' }, 'Every machine with its software and versions, as one Excel file.'),
+      h('div', { class: 'sw-grow' }),      // pushes the button to the bottom, level with the buttons of the other cards
       h('div', { class: 'sw-center' },      // the button is only as wide as its label, centred in the card
         dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'))),
     card('Option 3 · saved by the script', 'Upload saved check-script results',
