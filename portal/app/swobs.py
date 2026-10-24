@@ -213,9 +213,22 @@ def cross_check(rows, product):
     return n
 
 
+def suite_from_services(text):
+    """What the check script saw on the PC -> 'Full suite', 'Sensor only' or '' (cannot tell).
+    Per Trend Micro's documentation the Apex One Security Agent always runs TmListen (its link to the server), so TmListen says nothing about the sensor.
+    The real-time scan service/process (ntrtscan / NTRtScan.exe) means the anti-malware agent is there: Full suite. The Vision One endpoint agent
+    (EndpointBasecamp) without it carries only the Endpoint Sensor: Sensor only. Anything else is left undecided rather than guessed."""
+    t = (text or "").lower()
+    if "ntrtscan" in t:
+        return "Full suite"
+    if "endpointbasecamp" in t:
+        return "Sensor only"
+    return ""
+
+
 def suite_seen(rows):
     """Add `suite_pc` to inventory-match rows: what the check script saw on the PC itself. The real-time scan service (ntrtscan) means the full agent;
-    only the listener (TmListen) means just the sensor part. Rows the script never checked are left blank."""
+    EndpointBasecamp without it means just the sensor (see suite_from_services). Rows the script never checked are left blank."""
     keys = [r["ci"] for r in rows]
     if not keys:
         return
@@ -224,7 +237,7 @@ def suite_seen(rows):
     for r in rows:
         t = seen.get(r["ci"])
         if t:
-            r["suite_pc"] = "Full suite" if "ntrtscan" in t else "Sensor only" if "TmListen" in t else ""
+            r["suite_pc"] = suite_from_services(t)
 
 
 # ---------------------------------------------------------------- the check script (a .bat: reads the PC, installs nothing)
@@ -312,6 +325,12 @@ def parse_check(text):
     if g("TREND_NAME"):
         facts["trend_status"] = g("TREND_NAME")
     svc = [f"{n} {_SVC_WORD[g(k)]}" for n, k in (("TmListen", "TREND_LISTENER_STATE"), ("ntrtscan", "TREND_SCAN_STATE")) if g(k) in _SVC_WORD]
+    if g("TREND_BASECAMP_STATE") in _SVC_WORD:
+        svc.append(f"EndpointBasecamp {_SVC_WORD[g('TREND_BASECAMP_STATE')]}")
+    if g("TREND_PROCS"):
+        svc.append("processes " + g("TREND_PROCS").strip(", "))
+    if g("TREND_SVC_SEEN"):
+        svc.append("services seen " + g("TREND_SVC_SEEN").strip(", ")[:300])
     if svc:
         facts["trend_services"] = "; ".join(svc)
     if g("ZSCALER_SERVICE_STATE") in _SVC_WORD:

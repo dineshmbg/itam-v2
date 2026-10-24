@@ -343,7 +343,7 @@ def test_apex_files_sensor_full_and_work_lists(box, tmp_path, monkeypatch):
     st2 = m.stage("old.xlsx", buf.getvalue(), "ADMIN1")
     assert st1["product"] == st2["product"] == "apex"
     swobs.record(full, "SCRIPT", {"trend_services": "ntrtscan; TmListen"}, "t")
-    swobs.record(sensor, "SCRIPT", {"trend_services": "TmListen"}, "t")
+    swobs.record(sensor, "SCRIPT", {"trend_services": "TmListen running; EndpointBasecamp running"}, "t")
     swobs.record(pc_only, "SCRIPT", {"trend_services": "ntrtscan"}, "t")
     r = m.run([st2["stage_id"], st1["stage_id"]], st1["mapping"], {"prefix": _prefix(full), "classes": ["DESKTOP"]}, "ADMIN1")
     by = {a["ci"]: a for a in m._with_state(r["assets"])}

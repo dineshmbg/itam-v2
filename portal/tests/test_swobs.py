@@ -545,3 +545,15 @@ def test_engineer_uploads_result_files_for_their_own_pcs_only(box, monkeypatch):
     u = fake_user(monkeypatch, role="USER", username="NOBODY", engineer_key=None)
     monkeypatch.setattr(routes_swobs, "current_user", me)
     assert c.post("/api/software/check-upload", content=CHECK, headers=H).status_code == 403
+
+
+def test_full_suite_or_sensor_only_from_what_the_pc_runs():
+    f = swobs.suite_from_services
+    assert f("TmListen running; ntrtscan running") == "Full suite"
+    assert f("TmListen running; ntrtscan stopped") == "Full suite"                          # installed but stopped is still the full agent
+    assert f("TmListen running; processes TmListen.exe,NTRtScan.exe,ESClient.exe") == "Full suite"
+    assert f("EndpointBasecamp running; processes EndpointBasecamp.exe") == "Sensor only"
+    assert f("TmListen running") == ""                                                       # TmListen is part of every Apex One agent: it proves nothing about the sensor
+    assert f("") == "" and f(None) == ""
+    c = swobs.parse_check(CHECK2.replace("TREND_SCAN_STATE=", "TREND_BASECAMP_STATE=4\nTREND_PROCS=TmListen.exe,EndpointBasecamp.exe,\nTREND_SVC_SEEN=TmListen,EndpointBasecamp,\nTREND_SCAN_STATE=", 1))
+    assert "EndpointBasecamp running" in c["facts"]["trend_services"] and "processes TmListen.exe,EndpointBasecamp.exe" in c["facts"]["trend_services"]
