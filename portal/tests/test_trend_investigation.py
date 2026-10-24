@@ -187,3 +187,20 @@ def test_analysis_keeps_what_the_investigation_needs(fleet, box):
     assert (row["t_am"], row["t_edr"], row["t_pm_ver"], row["t_pkg"]) == ("Disabled", "Enabled", "14.0.20958", "Endpoint Security Essentials")
     assert m.key_of("ANKAON01DT076$") == "ANKAON01DT076" and m.key_of("ankaon01dt076.ongc.net") == "ANKAON01DT076"
     assert m.profile_file(["Domain", "Endpoint", "IP Address"])["mapping"]["name"] == "Endpoint"
+
+
+def test_version_mismatch_and_duplicate_console_records(fleet, box):
+    ci = fleet["ci"]
+    key = {r[0]: r[1] for r in box.execute("SELECT ci_no, asset_key FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND ci_no = ANY(%s)", (ci,)).fetchall()}
+    for c, ver in ((ci[0], "14.0.21008"), (ci[1], "14.0.20000"), (ci[2], "14.0.20958")):         # newer than, older than, and equal to the console's 14.0.20958
+        swobs.record(key[c], "SCRIPT", {"trend_installed": True, "trend_version": ver, "trend_status": "Apex One Security Agent"}, "T", con=box)
+    assert [ti.version_gap(a, b) for a, b in (("14.0.21008", "14.0.20958"), ("14.0.20000", "14.0.20958"), ("14.0.20958", "14.0.20958"), ("", "14.0.20958"), ("14.0.x", "14.0.1"))] == ["newer", "older", "", "", ""]
+    g = ti.gather()
+    g["dups"][m.key_of(ci[0])] = {"name": ci[0], "rows": 2, "detail": "two records"}
+    by = {x["ci"]: x for x in ti.machines(g)}
+    assert [by[c]["ver_gap"] for c in ci[:3]] == ["newer", "older", ""]
+    assert "Agent version on PC (14.0.21008) differs from console (14.0.20958" in by[ci[0]]["notes"] and "differs" not in by[ci[2]]["notes"]
+    assert by[ci[0]]["v1_dup"] and "two records" in by[ci[0]]["notes"] and not by[ci[1]]["v1_dup"] and "two records" not in by[ci[1]]["notes"]
+    rows = next(t for t in ti.tables({**ti.build(), "machines": list(by.values())}) if t["title"] == "PC vs centre")["rows"]
+    vr = {r["ci"]: r for r in rows if r["t"].startswith("Agent version")}
+    assert set(vr) == {ci[0], ci[1]} and "upgraded" in vr[ci[0]]["hint"] and "older agent" in vr[ci[1]]["hint"]

@@ -22,6 +22,7 @@ CATS = ["Not installed - confirmed on the PC", "Sensor only - anti-malware disab
         "Installed - per Vision One console, not checked on the PC", "Only in older centre lists - not verified", "Not found in any centre report, not checked on the PC"]
 PROT = ["Both (anti-malware + sensor)", "Anti-malware only (no sensor)", "Sensor only (anti-malware off)", "Neither (all disabled)", "Not in Vision One", "Not known (report analysed before this was kept)"]
 PCTXT = {"Y": "Installed", "N": "Not installed", "-": "Not checked"}
+VER_HINT = {"newer": "Information: the agent was probably upgraded after the console export.", "older": "The PC has an older agent than the console shows: check that the agent updates itself."}
 NEED = (CATS[0], CATS[1], CATS[2], CATS[5], CATS[6])          # statuses that need someone to act
 
 
@@ -76,6 +77,30 @@ def _day(v):
     return v.strftime("%d-%b-%Y") if isinstance(v, (dt.datetime, dt.date)) else (v or "")
 
 
+def _short_day(s):
+    """'2026-10-06 10:39' -> '6 Oct'."""
+    try:
+        return dt.datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d %b").lstrip("0")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _vkey(v):
+    """'14.0.21008' -> (14, 0, 21008), so versions compare by number; None when it is not a plain dotted number."""
+    try:
+        return tuple(int(x) for x in (v or "").strip().split("."))
+    except ValueError:
+        return None
+
+
+def version_gap(pc_ver, console_ver):
+    """'newer' / 'older' when the PC agent differs from the console's registered one, '' when equal or either is unknown."""
+    a, b = _vkey(pc_ver), _vkey(console_ver)
+    if not a or not b or a == b:
+        return ""
+    return "newer" if a > b else "older"
+
+
 def gather():
     vision, lists, bigfix = _pick()
     if not vision and not lists:
@@ -92,7 +117,8 @@ def gather():
     obs = {r["asset_key"]: r for r in db.query("SELECT DISTINCT ON (asset_key) asset_key, trend_installed, trend_version, trend_status, inspected_at FROM portal_sw_obs WHERE source = 'SCRIPT' AND asset_key = ANY(%s) "
                                                 "ORDER BY asset_key, obs_id DESC", [list(asset_key.values())])}
     by = lambda run: {im.key_of(a["ci"]): a for a in run["assets"]} if run else {}      # noqa: E731
-    return {"register": register, "vision": (vrun, by(vrun)), "lists": [(r, by(r)) for r in lruns], "bigfix": (brun, by(brun)), "pc": {k: obs.get(asset_key.get(ci)) for k, ci in keys.items()}, "prefixes": prefixes}
+    dups = {im.key_of(x["name"]): x for x in (vrun or {}).get("duplicates", [])}          # names the console lists more than once
+    return {"dups": dups, "v1_day": _short_day(((vrun or {}).get("summary", {}).get("files") or [{}])[0].get("report_time")), "register": register, "vision": (vrun, by(vrun)), "lists": [(r, by(r)) for r in lruns], "bigfix": (brun, by(brun)), "pc": {k: obs.get(asset_key.get(ci)) for k, ci in keys.items()}, "prefixes": prefixes}
 
 
 # ---------------------------------------------------------------- one row per machine
@@ -144,12 +170,15 @@ def machines(g):
         if pc == "N" and (in_v or any_list): notes.append("PC check found NO Trend Micro, but a centre report lists the machine")
         if pc == "Y" and not in_v and any_list: notes.append("PC check found Trend Micro; the centre lists it only in an older report")
         if pc == "Y" and (sensor_only or all_off): notes.append("PC has the agent; the console shows protection disabled")
+        gap = version_gap((o or {}).get("trend_version") if pc == "Y" else "", t.get("t_pm_ver"))
+        if gap: notes.append(f"Agent version on PC ({o['trend_version']}) differs from console ({t['t_pm_ver']}{', ' + g['v1_day'] if g.get('v1_day') else ''})")
         if t.get("t_action"): notes.append("Console has an install/upgrade error pending: " + t["t_action"])
+        if in_v and k in g.get("dups", {}): notes.append("Console had two records for this name; the newest was used")
         if vrun and k not in vby: notes.append("Not in the register when the Vision One report was analysed")
         out.append({"ci": a["ci_no"], "class": a["asset_class"].title(), "status": (a["asset_status"] or "").replace("_", " ").capitalize(), "engineer": a["engineer_name"] or "UNASSIGNED", "user": a["user_name"] or "",
                     "location": a["location_code"] or "", "make": a["make"] or "", "model": a["model"] or "", "final": cat, "prot": prot, "missing": _missing(prot, t) if in_v else _missing(prot, {}),
                     "pc": PCTXT[pc], "pc_product": (o or {}).get("trend_status") or "" if pc != "-" else "", "pc_version": (o or {}).get("trend_version") or "" if pc != "-" else "",
-                    "pc_date": _day(o["inspected_at"]) if o and pc != "-" else "", "v1": "Yes" if in_v else "No", "v1_conn": t.get("t_conn", ""), "v1_seen": (v or {}).get("r_seen") or "" if in_v else "",
+                    "pc_date": _day(o["inspected_at"]) if o and pc != "-" else "", "v1": "Yes" if in_v else "No", "v1_conn": t.get("t_conn", ""), "v1_ver": t.get("t_pm_ver", ""), "ver_gap": gap, "v1_day": g.get("v1_day", ""), "v1_dup": bool(in_v and k in g.get("dups", {})), "v1_seen": (v or {}).get("r_seen") or "" if in_v else "",
                     "v1_sensor": (t.get("t_sensor_conn") or "No sensor record") if in_v and "t_am" in t else "", "v1_xdr": t.get("t_edr", ""), "v1_am": t.get("t_am", ""), "v1_pkg": t.get("t_pkg", "") or "Not shown" if in_v and "t_am" in t else "",
                     "lists": ["Yes" if x else "No" for x in lists], "bigfix": "Yes" if (a["ci_no"] and im.key_of(a["ci_no"]) in bby and bby[im.key_of(a["ci_no"])]["installed"]) else "No", "notes": "; ".join(notes),
                     "in_use": a["asset_status"] == "IN_USE", "sensor_disc": prot == PROT[0] and (t.get("t_sensor_conn") or "").lower() == "disconnected"})
@@ -252,7 +281,7 @@ def tables(d, full=True):
         tabs.append({"title": "Machine status", "columns": [("ci", "Asset (CI)"), ("class", "Class"), ("status", "Asset status"), ("engineer", "Engineer"), ("user", "User"), ("location", "Location"), ("make", "Make"), ("model", "Model"),
                                                          ("final", "Trend Micro status"), ("prot", "Protection working"), ("missing", "What is missing (console)"), ("pc", "PC check"), ("pc_product", "PC: product found"),
                                                          ("pc_version", "PC: agent version"), ("pc_date", "PC check recorded"), ("v1", "In Vision One"), ("v1_conn", "Console: agent connection"), ("v1_seen", "Console: last status"),
-                                                         ("v1_sensor", "Console: sensor connectivity"), ("v1_xdr", "Console: EDR sensor"), ("v1_am", "Console: anti-malware"), ("v1_pkg", "Console: package"), *lc,
+                                                         ("v1_sensor", "Console: sensor connectivity"), ("v1_xdr", "Console: EDR sensor"), ("v1_am", "Console: anti-malware"), ("v1_pkg", "Console: package"), ("v1_ver", "Console: agent version"), *lc,
                                                          ("bigfix", "In BigFix report"), ("notes", "Notes")], "rows": rows})
     diff = []
     for m in ms:
@@ -261,9 +290,10 @@ def tables(d, full=True):
         if m["pc"] == "Installed" and m["v1"] == "No" and "Yes" in m["lists"]: diff.append(("PC has the agent, only an older centre list has the machine", m))
         if m["pc"] == "Installed" and m["final"] in (CATS[1], CATS[2]): diff.append(("PC has the agent, console shows protection disabled", m))
         if m["pc"] == "Installed" and (m["v1_conn"] or "").lower() == "not communicating": diff.append(("PC has the agent, console shows 'Not communicating'", m))
+        if m["ver_gap"]: diff.append(("Agent version differs between PC and console", m))
     if full and diff:
-        tabs.append({"title": "PC vs centre", "columns": [("t", "Difference"), ("ci", "Asset (CI)"), ("engineer", "Engineer"), ("user", "User"), ("status", "Asset status"), ("pc_version", "PC: agent version")],
-                     "rows": [{"t": t, **m} for t, m in sorted(diff, key=lambda x: (x[0], x[1]["engineer"], x[1]["ci"]))]})
+        tabs.append({"title": "PC vs centre", "columns": [("t", "Difference"), ("ci", "Asset (CI)"), ("engineer", "Engineer"), ("user", "User"), ("status", "Asset status"), ("pc_version", "PC: agent version"), ("v1_ver", "Console: agent version"), ("hint", "Note")],
+                     "rows": [{"t": t, **m, "hint": VER_HINT.get(m["ver_gap"], "") if t.startswith("Agent version") else ""} for t, m in sorted(diff, key=lambda x: (x[0], x[1]["engineer"], x[1]["ci"]))]})
     if full and not d["scope"]:
         names = []
         for r, _ in ([g["vision"]] if g["vision"][0] else []) + g["lists"]:
