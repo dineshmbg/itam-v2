@@ -45,10 +45,28 @@ if not defined ZSCALER_NAME call :prog "ZSA" ZSCALER_CANDIDATE
 rem Generic-name candidates are diagnostics only, not confirmed product identities.
 call :service TmListen TREND_LISTENER_STATE
 call :service ntrtscan TREND_SCAN_STATE
+call :service EndpointBasecamp TREND_BASECAMP_STATE
+rem Evidence for telling Full suite from Sensor only: which Trend processes run, and every Trend-looking service name on this PC (so a wrong service name can be corrected from real data).
+set "TREND_PROCS="
+for %%P in (NTRtScan.exe TmListen.exe TMBMSRV.exe EndpointBasecamp.exe ESClient.exe) do tasklist /nh /fi "imagename eq %%P" 2>nul | findstr /i /b /c:"%%P" >nul && set "TREND_PROCS=!TREND_PROCS!%%P,"
+set "TREND_SVC_SEEN="
+for /f "tokens=2" %%S in ('sc query state^= all 2^>nul ^| findstr /i /c:"SERVICE_NAME: Tm" /c:"SERVICE_NAME: ntrt" /c:"SERVICE_NAME: Trend" /c:"SERVICE_NAME: Endpoint" /c:"SERVICE_NAME: ESE" /c:"SERVICE_NAME: ESC"') do set "TREND_SVC_SEEN=!TREND_SVC_SEEN!%%S,"
 call :service ZSAService ZSCALER_SERVICE_STATE
 call :service BESClient BIGFIX_SERVICE_STATE
 if not defined TREND_NAME if defined TREND_LISTENER_STATE set "TREND_NAME=Trend Micro - detected by TmListen service"
 if not defined TREND_NAME if defined TREND_SCAN_STATE set "TREND_NAME=Trend Micro - detected by ntrtscan service"
+rem ZENworks (the endpoint management agent): the program, its running processes and every ZENworks-looking service name, so the record shows what is really on the PC.
+call :prog "ZENworks Adaptive Agent" ZEN
+if not defined ZEN_NAME call :prog "ZENworks Agent" ZEN
+if not defined ZEN_NAME call :prog "ZENworks" ZEN
+set "ZEN_PROCS="
+for %%P in (ZenworksWindowsService.exe ZESNETCOM.exe zmd.exe) do tasklist /nh /fi "imagename eq %%P" 2>nul | findstr /i /b /c:"%%P" >nul && set "ZEN_PROCS=!ZEN_PROCS!%%P,"
+set "ZEN_SVC_SEEN="
+for /f "tokens=2" %%S in ('sc query state^= all 2^>nul ^| findstr /i /c:"SERVICE_NAME: zen" /c:"SERVICE_NAME: zes" /c:"SERVICE_NAME: novell" /c:"SERVICE_NAME: zmd"') do set "ZEN_SVC_SEEN=!ZEN_SVC_SEEN!%%S,"
+if not defined ZEN_NAME if defined ZEN_PROCS set "ZEN_NAME=ZENworks - detected by running process"
+if not defined ZEN_NAME if defined ZEN_SVC_SEEN set "ZEN_NAME=ZENworks - detected by service"
+set "ZEN_STATUS=NOT_DETECTED"
+if defined ZEN_NAME set "ZEN_STATUS=DETECTED"
 if not defined ZSCALER_NAME if defined ZSCALER_SERVICE_STATE set "ZSCALER_NAME=Zscaler - detected by ZSAService service"
 if not defined TREND_VER call :rv "HKLM\SOFTWARE\TrendMicro\PC-cillinNTCorp\CurrentVersion" ProgramVer TREND_VER
 if not defined TREND_VER call :rv "HKLM\SOFTWARE\WOW6432Node\TrendMicro\PC-cillinNTCorp\CurrentVersion" ProgramVer TREND_VER
@@ -91,7 +109,7 @@ rem Everything is written straight into this one file - no other file is created
   echo ANKCHECK=1
   echo(COMPUTER=%COMPUTERNAME%
   echo(RUN_AT_RAW=%DATE% %TIME%
-  for %%V in (WIN_PRODUCT_RAW WIN_PRODUCT WIN_BUILD WIN_UBR WIN_DISPLAY WIN_INSTALLTYPE TREND_STATUS TREND_NAME TREND_VER TREND_LISTENER_STATE TREND_SCAN_STATE TREND_CANDIDATE_NAME TREND_CANDIDATE_VER BIGFIX_SVC BIGFIX_NAME BIGFIX_VER BIGFIX_SERVICE_STATE ZSCALER_STATUS ZSCALER_NAME ZSCALER_VER ZSCALER_SERVICE_STATE ZSCALER_CANDIDATE_NAME ZSCALER_CANDIDATE_VER VPN_OTHER SAP_VER O365_STATUS O365_ACCOUNT O365_ACCOUNT_SOURCE OFFICE_VER OFFICE_CHANNEL EDGE_VER CHROME_NAME CHROME_VER FIREFOX_NAME FIREFOX_VER DOMAIN SECUREBOOT LAST_USER) do echo(%%V=!%%V!
+  for %%V in (WIN_PRODUCT_RAW WIN_PRODUCT WIN_BUILD WIN_UBR WIN_DISPLAY WIN_INSTALLTYPE TREND_STATUS TREND_NAME TREND_VER TREND_LISTENER_STATE TREND_SCAN_STATE TREND_BASECAMP_STATE TREND_PROCS TREND_SVC_SEEN ZEN_STATUS ZEN_NAME ZEN_VER ZEN_PROCS ZEN_SVC_SEEN TREND_CANDIDATE_NAME TREND_CANDIDATE_VER BIGFIX_SVC BIGFIX_NAME BIGFIX_VER BIGFIX_SERVICE_STATE ZSCALER_STATUS ZSCALER_NAME ZSCALER_VER ZSCALER_SERVICE_STATE ZSCALER_CANDIDATE_NAME ZSCALER_CANDIDATE_VER VPN_OTHER SAP_VER O365_STATUS O365_ACCOUNT O365_ACCOUNT_SOURCE OFFICE_VER OFFICE_CHANNEL EDGE_VER CHROME_NAME CHROME_VER FIREFOX_NAME FIREFOX_VER DOMAIN SECUREBOOT LAST_USER) do echo(%%V=!%%V!
   echo [UPDATES]
 ) > "%OUT%"
 wevtutil qe System /q:"*[System[Provider[@Name='Microsoft-Windows-WindowsUpdateClient'] and (EventID=19)]]" /rd:true /c:300 /f:text >> "%OUT%" 2>nul
