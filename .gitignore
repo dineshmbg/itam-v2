@@ -37,3 +37,6 @@ graphify-out/
 
 # Internal network data (router names, IPs, site names): never commit - this repository is public
 templates/Leased_MPLS_Circuit_Details_Request.xlsx
+
+# Trend Micro / inventory reports: real machine and engineer data, never for a public repository
+reports/

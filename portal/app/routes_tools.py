@@ -1,5 +1,6 @@
 """Routes for the working tools: preventive maintenance, reports and exports, data import, backup and restore, e-mail and sharing."""
 import datetime as dt
+import logging
 import re
 from urllib.parse import unquote
 
@@ -7,8 +8,10 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler, web
+from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler, trend_investigation, web
 from .web import client_ip, current_user, error, guarded, json_response, read, write
+
+log = logging.getLogger("itam.tools")
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -395,6 +398,11 @@ async def match_run(request):
     out["mail"] = await run_in_threadpool(inventory_match.distribute, out["run_id"], u)          # shared with the engineers and mailed to each, automatically
     await _log(request, "MATCH_MAIL", out["filename"], {"run": out["run_id"], "sent": sum(1 for x in out["mail"]["plan"] if x["status"] == "SENT"), "failed": sum(1 for x in out["mail"]["plan"] if x["status"] == "FAILED"),
                                                        "error": out["mail"]["error"]})
+    try:         # a Trend Micro related report also gets its detailed investigation, mailed to each engineer; whatever goes wrong here never loses the analysis
+        out["investigation"] = await run_in_threadpool(trend_investigation.on_run, out["run_id"], u)
+    except Exception as e:      # noqa: BLE001
+        log.exception("trend investigation failed")
+        out["investigation"] = {"built": False, "error": str(e)[:200]}
     return json_response(out)
 
 

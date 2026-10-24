@@ -127,6 +127,8 @@
 .sw-card h4 { margin: 0; }
 .sw-card .btn { width: 100%; justify-content: flex-start; }
 .sw-card .btn.primary { width: auto; align-self: center; justify-content: center; }
+.sw-card .sw-center { display: flex; justify-content: center; }
+.sw-card .sw-center .btn { width: auto; justify-content: center; }
 .sw-step { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--c-text-3); }
 .sw-grow { flex: 1; }
 .sw-out:not(:empty) { border-top: 1px solid var(--c-border); padding-top: 8px; font-size: 13px; }

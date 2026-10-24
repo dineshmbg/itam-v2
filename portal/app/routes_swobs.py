@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, db, swobs
+from . import auth, db, swobs, trend_investigation
 from .web import client_ip, current_user, error, guarded, json_response, write
 
 
@@ -102,7 +102,24 @@ async def report_download(request):
                     headers={"Content-Disposition": f'attachment; filename="Software_Report_{dt.date.today():%Y%m%d}.xlsx"', "Cache-Control": "no-store"})
 
 
+async def trend_investigation_download(request):
+    """The detailed Trend Micro investigation (Excel or PDF), made from the newest analysed reports and PC checks. An administrator or team lead gets every machine; an engineer gets
+    the machines assigned to them. Never for the read-only demo account (it has a public password)."""
+    u = request.state.user
+    broad = auth.is_full_admin(u) or auth.is_lead(u)
+    if u.get("read_only") or not (broad or u.get("engineer_key")):
+        return error(403, "Only an administrator, a team lead or an engineer can download this.")
+    fmt = str(request.state.body.get("format") or "xlsx")
+    if fmt not in ("xlsx", "pdf"):
+        return error(400, "Download it as Excel or PDF.")
+    d = await run_in_threadpool(trend_investigation.build, None if broad else u["engineer_key"])
+    data, mime, ext = await run_in_threadpool(trend_investigation.render, d, fmt, u["username"])
+    await run_in_threadpool(auth.log, u["username"], client_ip(request), "TREND_INVESTIGATION_DOWNLOAD", None, {"scope": "all" if broad else u["engineer_key"], "format": fmt})
+    return Response(data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{trend_investigation.filename(d, ext)}"', "Cache-Control": "no-store"})
+
+
 routes = [
+    Route("/api/investigation/trend", write(trend_investigation_download, mutates=False), methods=["POST"]),
     Route("/api/software/report", write(report_download, mutates=False), methods=["POST"]),
     Route("/api/software/manual", write(manual_post), methods=["POST"]),
     Route("/api/software/template", write(template_download, mutates=False), methods=["POST"]),
