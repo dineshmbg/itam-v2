@@ -213,6 +213,20 @@ def cross_check(rows, product):
     return n
 
 
+def suite_seen(rows):
+    """Add `suite_pc` to inventory-match rows: what the check script saw on the PC itself. The real-time scan service (ntrtscan) means the full agent;
+    only the listener (TmListen) means just the sensor part. Rows the script never checked are left blank."""
+    keys = [r["ci"] for r in rows if r.get("installed")]
+    if not keys:
+        return
+    seen = {o["asset_key"]: o["trend_services"] for o in db.query("""SELECT DISTINCT ON (asset_key) asset_key, trend_services FROM portal_sw_obs
+                  WHERE asset_key = ANY(%s) AND source = 'SCRIPT' AND trend_services IS NOT NULL ORDER BY asset_key, obs_id DESC""", [keys])}
+    for r in rows:
+        t = seen.get(r["ci"])
+        if t:
+            r["suite_pc"] = "Full suite" if "ntrtscan" in t else "Sensor only" if "TmListen" in t else ""
+
+
 # ---------------------------------------------------------------- the check script (a .bat: reads the PC, installs nothing)
 import hmac      # noqa: E402
 import secrets   # noqa: E402

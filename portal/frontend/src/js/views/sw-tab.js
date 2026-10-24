@@ -100,11 +100,18 @@ export function bulkBlock(first) {
     saved.replaceChildren(...lines);
   };
   const dl = (path, name, label, ic, title) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, {}, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
+  const pack = (kind, format, label, ic, title) => h('button', { class: 'btn', type: 'button', title, onClick: () => download('/api/match/pack', { kind, format }, `Trend_${kind}.${format}`).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
+  const packs = h('div', { class: 'stack-v' },
+    h('p', { class: 'hint' }, 'From the latest Trend Micro report: each machine is marked Sensor only, Full suite or Not installed. Engineers get only their own machines.'),
+    h('div', { class: 'btn-row' }, pack('field', 'xlsx', 'Field report (Excel)', 'document--export', 'Light list for the person doing the work: machine, state, what to do, with a how-to-use sheet'), pack('field', 'csv', 'Field report (CSV)', 'download', 'Same work list as CSV')),
+    h('div', { class: 'btn-row' }, pack('investigation', 'xlsx', 'Investigation report (Excel)', 'document--export', 'Full analysis with every machine and the Sensor only / Full suite state'), pack('investigation', 'csv', 'Investigation (CSV)', 'download', 'Every machine with its state as CSV'),
+      pack('investigation', 'pdf', 'Investigation (PDF)', 'document--pdf', 'Short version for key people')));
   return h('div', { class: 'sw-cards' }, first || null,
     card('Option 2 · by hand, in bulk', 'Enter many machines at once',
       h('p', { class: 'muted' }, 'One row per machine in Excel; blank means not checked. If any row has a problem nothing is saved, and the problem rows are listed.'),
       dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'),
       dl('/api/software/template', 'Software_Observation_Upload_Template.xlsx', 'Download Excel template', 'download'),
+      packs,
       h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-bulk' }, 'Filled template (.xlsx)'), file),
       h('div', { class: 'sw-grow' }), h('button', { class: 'btn primary', type: 'button', onClick: go }, icon('upload'), 'Upload filled template'), out),
     card('Option 3 · saved by the script', 'Upload saved check-script results',
