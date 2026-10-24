@@ -90,9 +90,16 @@ export function bulkBlock(first) {
     saved.replaceChildren(...lines);
   };
   const dl = (path, name, label, ic, title, body = {}) => h('button', { class: 'btn', type: 'button', title, onClick: () => download(path, body, name).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
+  const pack = (kind, format, label, ic, title) => h('button', { class: 'btn', type: 'button', title, onClick: () => download('/api/match/pack', { kind, format }, `Trend_${kind}.${format}`).catch((e) => toast(e.message, 'bad')) }, icon(ic), label);
   return h('div', { class: 'sw-cards' }, first || null,
     card('Option 2 · by hand, in bulk', 'Enter many machines at once',
       h('p', { class: 'muted' }, 'Every machine with its software and versions, as one Excel file.'),
+      h('p', { class: 'hint' }, 'From the latest Trend Micro report (Apex One or Vision One files): each machine is marked Sensor only, Full suite, Not determined or Not installed. Engineers get only their own machines.'),
+      h('div', { class: 'btn-row' }, pack('field', 'xlsx', 'Field report (Excel)', 'document--export', 'Light list for the person doing the work: machine, state, what to do, with a how-to-use sheet'), pack('field', 'csv', 'Field report (CSV)', 'download', 'Same work list as CSV')),
+      h('div', { class: 'btn-row' }, pack('investigation', 'xlsx', 'Investigation report (Excel)', 'document--export', 'Full analysis with every machine and the Sensor only / Full suite state'), pack('investigation', 'csv', 'Investigation (CSV)', 'download', 'Every machine with its state as CSV'),
+        pack('investigation', 'pdf', 'Investigation (PDF)', 'document--pdf', 'Short version for key people')),
+      h('div', { class: 'btn-row' }, pack('consolidated', 'xlsx', 'Consolidated comparison (Excel)', 'document--export', 'All Apex files merged without repeats and compared with the register and the PC check: Sensor only, Full suite, what to do'),
+        pack('consolidated', 'csv', 'Consolidated (CSV)', 'download', 'The merged list as CSV'), pack('consolidated', 'pdf', 'Consolidated (PDF)', 'document--pdf', 'For key people')),
       h('div', { class: 'sw-grow' }),      // pushes the button to the bottom, level with the buttons of the other cards
       h('div', { class: 'sw-center' },      // the button is only as wide as its label, centred in the card
         dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'))),
