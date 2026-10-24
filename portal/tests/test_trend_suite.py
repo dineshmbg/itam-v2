@@ -39,3 +39,36 @@ def test_field_report_is_scoped_and_sorted():
 def test_investigation_for_one_engineer():
     for fmt in ("xlsx", "csv", "pdf"):
         assert m.investigation(D, fmt, U, "P")[0]
+
+
+def test_apex_files_read_as_one_product(tmp_path):
+    csv_ = b"Domain,Endpoint,IP Address,Connection Status,Platform,Architecture,Logon User\nWorkgroup_ank\\,ANKAA1,10.1.1.1,Offline,Windows 11,x64,ONGC\\123\n"
+    from openpyxl import Workbook
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Endpoint name", "Object type", "Protection Manager", "OS name", "OS type"])
+    ws.append(["ANKBB2$", "Desktop", "Active Directory (on-premises)", "Windows 11 Pro 10.0 (26200)", "Windows"])
+    ws2 = wb.create_sheet("Ankleshwar")
+    ws2.append(["Endpoint name", "Object type", "Protection Manager", "OS name", "OS type"])
+    ws2.append(["ANKBB2$", "Desktop", "Active Directory (on-premises)", "Windows 11 Pro 10.0 (26200)", "Windows"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    h1, r1 = m.read_file("list.csv", csv_)
+    h2, r2 = m.read_file("old.xlsx", buf.getvalue())
+    assert m.profile_file(h1)["product"] == "apex" and m.profile_file(h2)["product"] == "apex"
+    assert len(r2) == 2 and m.key_of(r2[0][0]) == "ANKBB2"          # same-heading sheets are joined; the trailing $ is not part of the name
+    col = {"name": 0, "ip": h1.index("IP address"), "os": h1.index("OS name"), "conn": h1.index("Connection status"), "user": h1.index("Last logged on user")}
+    e = m._entry(r1[0], col, "apex")
+    assert e["advice"] and e["user"].endswith("123") and "suite" not in e
+
+
+def test_consolidated_report():
+    d = {**D, "unregistered": [{"name": "ANKZZ9", "ip": "", "os": "", "files": "a.csv", "why": "x", "action": "Add it", "kind": "unregistered"}], "duplicates": [{"name": "ANK2", "rows": 2, "detail": ""}]}
+    for r in d["assets"]:
+        r.update(r_name=r["ci"], r_files="a.csv", r_conn="Online", r_ip="", r_os="")
+    merged, absent = m._merged_rows(d)
+    assert [r["state"] for r in merged] == ["Sensor only", "Not in register", "Full suite", "Full suite"] and [r["endpoint"] for r in absent] == ["ANK1"]
+    assert "ANKZZ9" not in m.consolidated(d, "csv", U, "P")[0].decode()                                  # an engineer never sees other people's rows
+    for fmt in ("xlsx", "csv", "pdf"):
+        assert m.consolidated(d, fmt, U)[0] and m.consolidated(d, fmt, U, "P")[0]

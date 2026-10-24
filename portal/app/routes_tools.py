@@ -460,8 +460,8 @@ async def match_pack(request):
     machine; an engineer gets only the machines assigned to them (from the latest run shared with engineers)."""
     b, u = request.state.body, request.state.user
     kind, fmt = b.get("kind", "field"), b.get("format", "xlsx")
-    if kind not in ("investigation", "field") or fmt not in ("xlsx", "csv", "pdf") or (kind == "field" and fmt == "pdf"):
-        raise inventory_match.MatchError("Choose the investigation report (Excel, CSV, PDF) or the field report (Excel, CSV).")
+    if kind not in ("investigation", "field", "consolidated") or fmt not in ("xlsx", "csv", "pdf") or (kind == "field" and fmt == "pdf"):
+        raise inventory_match.MatchError("Choose the investigation or consolidated report (Excel, CSV, PDF) or the field report (Excel, CSV).")
     broad = auth.is_full_admin(u) or auth.is_lead(u) or u["role"] == "ADMIN"
     eng = None if broad else u.get("engineer_key")
     if not broad and not eng:
@@ -470,7 +470,7 @@ async def match_pack(request):
     if not run_id:
         raise inventory_match.MatchError("No Trend Micro report has been matched" + ("" if broad else " and shared") + " yet.", 404)
     d = await run_in_threadpool(inventory_match.get, run_id)
-    fn = inventory_match.investigation if kind == "investigation" else inventory_match.field_report
+    fn = {"investigation": inventory_match.investigation, "consolidated": inventory_match.consolidated}.get(kind, inventory_match.field_report)
     data, mime, ext = await run_in_threadpool(fn, d, fmt, u, eng)
     name = export.safe_name(f"Trend_{kind}_{eng or 'all'}_{d['summary']['as_of'].replace('-', '')}") + "." + ext
     await _log(request, "MATCH_PACK", name, {"kind": kind, "format": fmt, "run": run_id, "scope": eng or "all"})

@@ -216,7 +216,7 @@ def cross_check(rows, product):
 def suite_seen(rows):
     """Add `suite_pc` to inventory-match rows: what the check script saw on the PC itself. The real-time scan service (ntrtscan) means the full agent;
     only the listener (TmListen) means just the sensor part. Rows the script never checked are left blank."""
-    keys = [r["ci"] for r in rows if r.get("installed")]
+    keys = [r["ci"] for r in rows]
     if not keys:
         return
     seen = {o["asset_key"]: o["trend_services"] for o in db.query("""SELECT DISTINCT ON (asset_key) asset_key, trend_services FROM portal_sw_obs
