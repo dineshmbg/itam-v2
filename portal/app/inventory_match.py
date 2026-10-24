@@ -1080,10 +1080,6 @@ def distribute(run_id, user):
         mail["error"] = None
     except mailer.MailError as e:
         mail = {**send_to_engineers(run_id, user, dry_run=True), "error": str(e)}          # still show who would have been mailed
-    try:
-        mail["leaders"] = send_pdf_to_leaders(run_id, user)
-    except Exception as e:      # noqa: BLE001 - key people not reached must never lose the analysis or the engineers' mail
-        mail["leaders"] = {"sent": 0, "failed": 0, "error": str(e)[:200]}
     with db.write() as con:
         con.execute("UPDATE portal_match_run SET result = result || jsonb_build_object('mail', %s::jsonb) WHERE run_id = %s", (json.dumps(mail, default=str), run_id))
     return mail
@@ -1092,48 +1088,6 @@ def distribute(run_id, user):
 # ---------------------------------------------------------------- each engineer's own list, by e-mail
 MAIL_RULE = "MATCH_REPORT"      # notify_log.rule_key: a re-send of the same analysis never mails the same engineer twice
 UNASSIGNED = "UNASSIGNED"
-
-
-PDF_RULE = "MATCH_PDF"
-
-
-def send_pdf_to_leaders(run_id, user):
-    """Trend Micro analyses only: e-mail the investigation report (PDF) to every active administrator and Team Leader/SI, once per analysis and person."""
-    from . import auth, mailer
-    d = get(run_id)
-    s = d["summary"]
-    if s.get("product") not in TREND:
-        return {"sent": 0, "failed": 0, "skipped": "not a Trend Micro analysis"}
-    cfg = mailer.get_smtp()
-    if not cfg["enabled"]:
-        return {"sent": 0, "failed": 0, "skipped": "e-mail is switched off"}
-    who = db.query("""SELECT u.engineer_key, u.role, u.extended_access, u.read_only, e.designation FROM portal_user u JOIN v_engineer e ON e.engineer_key = u.engineer_key
-                      WHERE u.active AND u.engineer_key IS NOT NULL""")
-    done = {r["recipient"] for r in db.query("SELECT recipient FROM notify_log WHERE rule_key = %s AND event_key = %s AND status = 'SENT'", [PDF_RULE, run_id])}
-    pdf, _, _ = investigation(d, "pdf", user)
-    sc = s.get("suite_counts") or {}
-    subject = f"{s['tool']} investigation report - {dt.date.today():%d %b %Y}"
-    intro = (f"The {s['tool']} report ({d['filename']}) was matched with the asset register: {s['installed']:,} of {s['assets']:,} machines appear ({s['coverage']}%). "
-             f"Full suite {sc.get('Full suite', 0):,}, sensor only {sc.get('Sensor only', 0):,}, not determined {sc.get('Not determined', 0):,}. The full investigation report is attached as PDF.")
-    sent = failed = 0
-    for w in who:
-        if not (w["role"] == "ADMIN" or (not w["read_only"] and not w["extended_access"] and auth.is_lead_designation(w["designation"]))):
-            continue
-        to = mailer.engineer_email(w["engineer_key"])
-        if not to or to in done:
-            continue
-        status, err = "SENT", None
-        try:
-            body, text = mailer.page(subject, intro, footer="Automatic message from the ITAM Portal (inventory match).")
-            mailer.send(to, subject, text, body, [(f"{export.safe_name(s['tool'])}_investigation_{s['as_of'].replace('-', '')}.pdf", pdf, "application/pdf")], cfg=cfg)
-        except mailer.MailError as e:
-            status, err = "FAILED", str(e)[:300]
-        with db.write() as con:
-            con.execute("""INSERT INTO notify_log (rule_key, event_key, recipient, subject, status, error) VALUES (%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT (rule_key, event_key, recipient) DO UPDATE SET status = EXCLUDED.status, error = EXCLUDED.error, at = now(), attempts = notify_log.attempts + 1""",
-                        (PDF_RULE, run_id, to, subject, status, err))
-        sent, failed = sent + (status == "SENT"), failed + (status == "FAILED")
-    return {"sent": sent, "failed": failed}
 
 
 def _work(d, eng):
