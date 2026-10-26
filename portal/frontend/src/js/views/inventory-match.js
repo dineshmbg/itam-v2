@@ -120,12 +120,22 @@ export function mountInventoryMatch(root) {
   }
 
   // A Trend Micro related report also gets its detailed investigation automatically: mailed to each engineer (their machines) and to whoever ran it (all), and downloadable under Software data.
+  // The detailed endpoint report is attached to the same e-mail; if its own check found a difference it is NOT attached and this says so.
+  function endpointNote(er) {
+    if (!er) return null;
+    const text = !er.built ? 'The detailed endpoint report could not be made for this analysis.'
+      : er.verified ? `The detailed endpoint report (${int(er.machines)} endpoints compared with the PC check, Sensor only / Full suite for each) was attached to the same e-mails (${int(er.attached)} e-mail${er.attached === 1 ? "" : "s"} carried it). Everyone can download their own copy under Software data below.`
+        : `The detailed endpoint report was NOT attached or sent: its own check found ${int((er.differences || []).length)} conclusion(s) that differ when recomputed (${(er.differences || []).join('; ')}). It can still be downloaded, marked DO NOT CIRCULATE.`;
+    return h('p', { class: er.built && er.verified ? 'hint' : 'rec-note warn', style: { margin: '8px 16px' } }, text);
+  }
+
   function investigationPanel(inv) {
     if (!inv) return null;
     if (!inv.built) return panel('Detailed investigation', { cls: 'span-12', hint: 'automatic' }, h('p', { class: 'rec-note warn', role: 'alert' }, icon('warning--alt--filled'), `The detailed investigation could not be made: ${inv.error || 'unknown problem'}`));
     const sent = inv.plan.filter((x) => x.status === 'SENT').length;
     return panel('Detailed investigation (Trend Micro)', { cls: 'span-12', flush: true, hint: 'automatic' },
       h('div', { style: { padding: '12px 16px 0' } }, h('p', { class: 'hint' }, `Made for ${int(inv.machines)} machines and e-mailed to ${sent} recipient${sent === 1 ? '' : 's'}: each engineer gets their own machines (Excel and PDF), the person who ran the analysis gets everyone. Download it again under Software data below, next to the software report.`)),
+      endpointNote(inv.endpoint_report),
       inv.plan.length ? table([['engineer', 'For', null, (r) => titleCase(r.engineer)], ['email', 'Address', null, (r) => r.email || '—'],
         ['status', 'Status', null, (r) => h('span', { class: 'badge ' + (MAILSTATE[r.status] || MAILSTATE.READY)[0], title: r.error || '' }, (MAILSTATE[r.status] || MAILSTATE.READY)[1])]], inv.plan, 200) : null);
   }

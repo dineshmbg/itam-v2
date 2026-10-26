@@ -95,7 +95,8 @@ export function bulkBlock(first) {
       h('p', { class: 'muted' }, 'Every machine with its software and versions, as one Excel file.'),
       h('div', { class: 'sw-grow' }),      // pushes the button to the bottom, level with the buttons of the other cards
       h('div', { class: 'sw-center' },      // the button is only as wide as its label, centred in the card
-        dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'))),
+        dl('/api/software/report', 'Software_Report.xlsx', 'Download software report (Excel)', 'document--export', 'Every machine with its Windows, Trend Micro, BigFix, VPN, SAP, Microsoft 365 and browser versions, plus the installed-software list'),
+        dl('/api/match/pack', 'Endpoint_Report.xlsx', 'Download detailed endpoint report (Excel)', 'document--export', 'The latest analysed endpoint report compared machine by machine with the PC check: Sensor only / Full suite, what is confirmed, what to verify, which PCs to check. Your own machines only, unless you are an administrator or team lead.', { kind: 'endpoint', format: 'xlsx' }))),
     card('Option 3 · saved by the script', 'Upload saved check-script results',
       h('p', { class: 'muted' }, 'When a PC could not reach the portal, ankcheck.bat saved ankcheck_<PC name>.txt (next to the script, or in the user Documents folder). Upload those files here; an engineer can upload the PCs assigned to them.'),
       h('div', { class: 'frow' }, h('label', { class: 'flabel', for: 'sw-files' }, 'Saved result files (ankcheck_*.txt)'), picks),

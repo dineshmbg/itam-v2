@@ -147,7 +147,7 @@ def test_automatic_mail_after_a_trend_analysis(monkeypatch, fleet):
     assert out["built"] and out["mail_enabled"]
     assert {s[0] for s in sent} == {"eng@example.com", "boss@example.com"}
     for to, subject, names, files in sent:
-        assert len(names) == 2 and names[0].endswith(".xlsx") and names[1].endswith(".pdf") and "Trend Micro detailed investigation" in subject
+        assert len(names) == 3 and names[0].endswith(".xlsx") and names[1].endswith(".pdf") and names[2].startswith("Endpoint_Report") and "Trend Micro detailed investigation" in subject      # + the detailed endpoint report
     mine = next(s for s in sent if s[0] == "eng@example.com")
     sheet = load_workbook(io.BytesIO(mine[3][mine[2][0]]), data_only=True)["MACHINE STATUS"]
     assert {x[3] for x in sheet.iter_rows(min_row=2, values_only=True)} == {fleet["eng"]}               # the engineer's copy holds only their machines

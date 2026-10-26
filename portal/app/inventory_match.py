@@ -50,7 +50,7 @@ PRODUCTS = {
     "apex": {"label": "Trend Micro Apex One", "min": 4,
              "sig": ("endpoint name", "os name", "ip address", "connection status", "last logged on user", "object type", "os type"),
              "map": {"name": "Endpoint name", "ip": "IP address", "os": "OS name", "type": "Object type"},
-             "extra": {"conn": "Connection status", "user": "Last logged on user"}},
+             "extra": {"conn": "Connection status", "user": "Last logged on user", "mgr": "Protection Manager"}},
     "bigfix": {"label": "BigFix", "min": 3, "sig": ("computer name", "device type", "last report time", "cpu", "os", "ip address"),
                "map": {"name": "Computer Name", "ip": "IP Address", "os": "OS", "seen": "Last Report Time", "type": "Device Type"}, "extra": {}},
 }
@@ -312,6 +312,7 @@ def _entry(r, col, product):
                         "t_pkg": str(g("pkg")).split("|")[0].strip(), "t_pm_ver": str(g("pm_ver")).strip(), "t_conn": str(g("conn")).strip(), "t_action": _install_reason(str(g("action"))) if str(g("action")) else ""}
     elif product == "apex":
         e["conn"] = str(g("conn"))
+        e["mgr"] = str(g("mgr"))
         if e["conn"].lower() == "offline":
             e["advice"].append("Offline in the Apex console when the report was taken")
     return e
@@ -482,11 +483,11 @@ def analyse(files, mapping, params, today=None):
         e = in_scope.get(k)
         row = {"ci": a["ci_no"], "class": a["asset_class"], "type": a["asset_type"], "make": a["make"] or "", "model": a["model"] or "", "serial": a["serial_no"] or "", "status": a["asset_status"] or "",
                "user": a["user_name"] or "", "location": a["location_code"] or "", "engineer": a["engineer_name"] or "UNASSIGNED", "installed": e is not None, "health": "Not installed", "issues": "", "advice": "", "suite": "", "suite_pc": "",
-               "r_name": "", "r_files": "", "r_conn": "", "r_ip": "", "r_os": "", "r_os_family": "", "r_group": "", "r_user": "", "r_seen": None, "r_age": None, "reporting": "", "priority": "", "possible": "", "possible_by": "", "action": ""}
+               "r_name": "", "r_files": "", "r_conn": "", "r_type": "", "r_mgr": "", "r_ip": "", "r_os": "", "r_os_family": "", "r_group": "", "r_user": "", "r_seen": None, "r_age": None, "reporting": "", "priority": "", "possible": "", "possible_by": "", "action": ""}
         if e:
             age = (as_of - e["seen"]).days if e["seen"] else None
             fails = list(e["fails"])
-            row.update(r_name=e["name"], r_files=e["files"], r_conn=e.get("conn", ""), r_ip=e["ip"], r_os=e["os"], r_os_family=_os_family(e["os"]), r_group=e["group"], r_user=e["user"], r_seen=e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, r_age=age,
+            row.update(r_name=e["name"], r_files=e["files"], r_conn=e.get("conn", ""), r_type=e.get("type", ""), r_mgr=e.get("mgr", ""), r_ip=e["ip"], r_os=e["os"], r_os_family=_os_family(e["os"]), r_group=e["group"], r_user=e["user"], r_seen=e["seen"].strftime("%Y-%m-%d %H:%M") if e["seen"] else None, r_age=age,
                        reporting="" if age is None else "Active" if age <= active_days else "Stale" if age <= stale_days else "Dormant")
             if row["reporting"] in ("Stale", "Dormant") and not any("not communicating" in x for x in fails):
                 fails.append(f"Not reported for {age} days")

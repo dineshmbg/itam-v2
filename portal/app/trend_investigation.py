@@ -17,7 +17,7 @@ from . import db, export
 from . import inventory_match as im
 
 RULE = "TREND_INVESTIGATION"          # notify_log.rule_key
-TREND_RE = re.compile(r"apex|trend|officescan|worry|vision", re.I)
+TREND_RE = re.compile(r"apex|trend|officescan|worry|vision|endpoint", re.I)
 CATS = ["Not installed - confirmed on the PC", "Sensor only - anti-malware disabled (console)", "Agent registered - all protection disabled (console)", "Installed - confirmed on the PC",
         "Installed - per Vision One console, not checked on the PC", "Only in older centre lists - not verified", "Not found in any centre report, not checked on the PC"]
 PROT = ["Both (anti-malware + sensor)", "Anti-malware only (no sensor)", "Sensor only (anti-malware off)", "Neither (all disabled)", "Not in Vision One", "Not known (report analysed before this was kept)"]
@@ -37,6 +37,8 @@ class InvError(Exception):
 # ---------------------------------------------------------------- which analyses count
 def _is_trend(r):
     s = r["summary"] or {}
+    if s.get("product") == "bigfix":
+        return False
     names = [r["tool"] or "", r["filename"] or ""] + [f.get("name", "") for f in s.get("files", [])]
     return s.get("product") == "trendmicro" or bool(TREND_RE.search(" ".join(names)))
 
@@ -360,6 +362,9 @@ def on_run(run_id, user):
         full = build()
     except InvError as e:
         return {"built": False, "error": str(e)}
+    from . import endpoint_report as er       # the detailed endpoint report travels in the same e-mail (imported here: it imports this module)
+    erd = er.build_safe(run_id)
+    attached = 0
     cfg = mailer.get_smtp()
     plan = []
     people = sorted({m["engineer"] for m in full["all"] if m["engineer"] != im.UNASSIGNED})
@@ -384,6 +389,9 @@ def on_run(run_id, user):
             intro = ("Dear " + (_engineer_name(eng) if eng else "colleague") + ", a Trend Micro report was analysed. The attached detailed investigation shows, for "
                      + ("every machine" if eng is None else "each machine assigned to you") + ", whether the agent and the sensor are there and working, what is missing and what to do. The most urgent are below. "
                      "You can download it again at any time under Inventory match / My inventory report, next to the software report.")
+            if erd and erd["verified"]:
+                intro += (" A second attachment, the detailed endpoint report, compares the machines of the analysed endpoint report with what the PC check found on each PC and says, for each, whether it has the full suite"
+                          " or the sensor only, and what is still to be checked.")
             urgent = next(t for t in tables(d, full=False) if t["title"].startswith("Action list"))["rows"][:12]
             body, text = mailer.page(subject, intro, urgent, [("ci", "Asset (CI)"), ("status", "Asset status"), ("final", "Trend Micro status"), ("next", "Suggested next step")],
                                      footer=f"Automatic message from the ITAM Portal (Trend Micro investigation, analysis run by {user['username']})." + (f" {cfg['portal_url']}" if cfg["portal_url"] else ""))
@@ -391,6 +399,10 @@ def on_run(run_id, user):
             for fmt in ("xlsx", "pdf"):
                 data, mime, ext = render(d, fmt, user["username"])
                 files.append((filename(d, ext), data, mime))
+            extra = er.file(erd, eng, user["username"]) if erd and erd["verified"] else None
+            if extra:
+                files.append(extra)
+                attached += 1
             mailer.send(item["email"], subject, text, body, files, cfg=cfg)
             status, err = "SENT", None
         except Exception as e:      # noqa: BLE001 - one person's failure never stops the rest
@@ -400,7 +412,8 @@ def on_run(run_id, user):
             con.execute("""INSERT INTO notify_log (rule_key, event_key, recipient, subject, status, error) VALUES (%s,%s,%s,%s,%s,%s)
                            ON CONFLICT (rule_key, event_key, recipient) DO UPDATE SET status = EXCLUDED.status, error = EXCLUDED.error, at = now(), attempts = notify_log.attempts + 1""",
                         (RULE, f"{run_id}:{who}", item["email"], "Trend Micro detailed investigation", status, err))
-    out = {"built": True, "machines": len(full["all"]), "mail_enabled": cfg["enabled"], "plan": [p[0] for p in plan]}
+    out = {"built": True, "machines": len(full["all"]), "mail_enabled": cfg["enabled"], "plan": [p[0] for p in plan],
+           "endpoint_report": ({"built": True, "verified": erd["verified"], "machines": len(erd["listed"]), "differences": erd["bad"][:5], "attached": attached} if erd else {"built": False})}
     with db.write() as con:          # kept with the analysis, so reopening it later still says what was done
         con.execute("UPDATE portal_match_run SET result = result || jsonb_build_object('investigation', %s::jsonb) WHERE run_id = %s", (json.dumps(out, default=str), run_id))
     return out

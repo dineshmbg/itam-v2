@@ -8,7 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 from starlette.routing import Route
 
-from . import auth, backup, db, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler, trend_investigation, web
+from . import auth, backup, db, endpoint_report, export, importer, inventory_match, mailer, packs, pm, pmwo, reports, scheduler, trend_investigation, web
 from .web import client_ip, current_user, error, guarded, json_response, read, write
 
 log = logging.getLogger("itam.tools")
@@ -477,12 +477,23 @@ async def match_pack(request):
     machine; an engineer gets only the machines assigned to them (from the latest run shared with engineers)."""
     b, u = request.state.body, request.state.user
     kind, fmt = b.get("kind", "field"), b.get("format", "xlsx")
-    if kind not in ("investigation", "field", "consolidated") or fmt not in ("xlsx", "csv", "pdf") or (kind == "field" and fmt == "pdf"):
-        raise inventory_match.MatchError("Choose the investigation or consolidated report (Excel, CSV, PDF) or the field report (Excel, CSV).")
+    if kind not in ("investigation", "field", "consolidated", "endpoint") or fmt not in ("xlsx", "csv", "pdf") or (kind == "field" and fmt == "pdf") or (kind == "endpoint" and fmt != "xlsx"):
+        raise inventory_match.MatchError("Choose the investigation or consolidated report (Excel, CSV, PDF), the field report (Excel, CSV) or the detailed endpoint report (Excel).")
     broad = auth.is_full_admin(u) or auth.is_lead(u) or u["role"] == "ADMIN"
     eng = None if broad else u.get("engineer_key")
     if not broad and not eng:
         raise inventory_match.MatchError("Your account is not linked to an engineer record. Ask an administrator.", 403)
+    if kind == "endpoint":          # built live from the newest analyses and PC checks; an engineer gets the machines assigned to them
+        erun = await run_in_threadpool(endpoint_report.latest_run, not broad)
+        if not erun:
+            raise inventory_match.MatchError("No endpoint report has been analysed" + ("" if broad else " and shared") + " yet.", 404)
+        ed = await run_in_threadpool(lambda: endpoint_report.scoped(endpoint_report.build(erun), eng))
+        if ed is None:
+            raise inventory_match.MatchError("No machine assigned to you is in the endpoint report.", 404)
+        data, mime, _ = await run_in_threadpool(endpoint_report.render, ed, u["username"])
+        name = endpoint_report.filename(ed)
+        await _log(request, "MATCH_PACK", name, {"kind": kind, "format": fmt, "run": erun, "scope": eng or "all", "verified": ed["verified"]})
+        return _file(data, mime, name)
     run_id = await run_in_threadpool(inventory_match.latest_trend_run, not broad)
     if not run_id:
         raise inventory_match.MatchError("No Trend Micro report has been matched" + ("" if broad else " and shared") + " yet.", 404)
