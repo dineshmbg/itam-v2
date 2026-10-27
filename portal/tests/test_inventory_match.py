@@ -325,7 +325,8 @@ def test_apex_files_sensor_full_and_work_lists(box, tmp_path, monkeypatch):
     from portal.app import swobs
     monkeypatch.setattr(m, "STAGE", tmp_path)
     rows = box.execute("""SELECT ci_no, engineer_name FROM asset WHERE is_current = 1 AND record_level = 'ASSET' AND asset_class = 'DESKTOP' AND asset_status = 'IN_USE' AND engineer_name IS NOT NULL
-                         AND ci_no ~ '^[A-Z]{3,4}' ORDER BY ci_no LIMIT 6""").fetchall()
+                         AND ci_no ~ '^[A-Z]{3,4}' AND NOT EXISTS (SELECT 1 FROM portal_sw_obs o WHERE o.asset_key = asset.asset_key)
+                         ORDER BY ci_no LIMIT 6""").fetchall()  # real PC-check observations would turn 'unknown'/'both' into Full suite
     if len(rows) < 6:
         pytest.skip("needs six desktops")
     full, sensor, unknown, both, offline, pc_only = [r[0] for r in rows]
