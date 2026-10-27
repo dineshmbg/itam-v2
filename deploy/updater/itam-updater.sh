@@ -15,6 +15,7 @@ PUB="${ITAM_RELEASE_KEY:-/etc/itam/release-public.pem}"
 UNIT="${ITAM_UNIT:-itam-portal}"
 IMAGE="${ITAM_IMAGE:-localhost/itam-portal}"
 HEALTH_WAIT="${ITAM_HEALTH_WAIT:-300}"
+CRASH_LIMIT="${ITAM_CRASH_LIMIT:-3}"      # give up waiting once the portal has crashed on start this many times in a row (systemd restarts it every ~10 s)
 STATUS="$DIR/status.json"; LOG="$DIR/update.log"; WORK="$DIR/work"
 umask 022
 
@@ -74,10 +75,12 @@ PY
 
 label() { podman image inspect --format '{{index .Config.Labels "itam.version"}}' "$1" 2>/dev/null || echo ""; }
 running_version() { label "$IMAGE:latest"; }
-healthy() {   # healthy IMAGE_ID - the container must be healthy AND started from that image
-  local end=$((SECONDS + HEALTH_WAIT))
+restarts() { systemctl show -p NRestarts --value "$UNIT" 2>/dev/null | head -1 | grep -E '^[0-9]+$' || echo 0; }
+healthy() {   # healthy IMAGE_ID - the container must be healthy AND started from that image. A portal that keeps crashing on start is given up on early, not waited for the full time.
+  local end=$((SECONDS + HEALTH_WAIT)) base; base="$(restarts)"
   while [ $SECONDS -lt $end ]; do
     if podman healthcheck run "$UNIT" >/dev/null 2>&1 && [ "$(podman inspect --format '{{.Image}}' "$UNIT" 2>/dev/null)" = "$1" ]; then return 0; fi
+    if [ $(( $(restarts) - base )) -ge "$CRASH_LIMIT" ]; then log "the portal crashed $CRASH_LIMIT times in a row right after starting - not waiting any longer"; return 1; fi
     sleep 3
   done
   return 1

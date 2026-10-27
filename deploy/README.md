@@ -141,3 +141,11 @@ If the log says *"reachable but has no inventory tables yet"*, the backup has no
 * Only the VM's address can reach PostgreSQL (`pg_hba.conf` line + firewall rule); the portal connects as the ordinary role `ank_app`, never as `postgres`. Use `DB_SSLMODE=require` (and enable `ssl = on` in `postgresql.conf`) if you want that link encrypted too.
 * The database password is a Podman secret - not in the image, not in the unit file. Ports opened on the VM: 443 and 80 (redirect only).
 * The portal records every PC's real address in the activity log (rootful Podman does not mask them).
+
+## If an update is rolled back automatically (Software update page says "Rolled back")
+
+The previous version is running again and nothing was lost. Read the log shown on the page (or `/var/lib/itam-updates/update.log` on the VM) and look at the lines just before "rolling back":
+
+- **`exec /usr/local/bin/itam-entrypoint: no such file or directory`** (or `missing dynamic library?` ... `No such file or directory`) = the entrypoint script has Windows line endings (`#!/bin/sh` followed by a carriage return), so Linux cannot find the interpreter. Release 20261027-0850 failed this way. It is prevented three ways since 2026-10-27: `.gitattributes` keeps `*.sh` and the `deploy/updater`, `deploy/quadlet` files in Unix format; the `Containerfile` strips any CR from the entrypoint when the image is built; `build-release.ps1` refuses to build while a Linux file under `deploy/` has CRLF. If you see the message again, the release was built from a copy of the project that does not have these fixes (`git pull` it) - rebuild it.
+- **The portal restarting again and again** (`Scheduled restart job, restart counter is at N`): the updater now gives up after 3 crashes in a row (about 35 seconds) instead of waiting the full 300 seconds (`ITAM_CRASH_LIMIT` changes the 3). The updater runs outside the container, so the new `itam-updater.sh` has to be copied to the VM once (`sudo install -m 755 itam-updater.sh /opt/itam/itam-updater.sh`); a release package does not replace it.
+- Tests for the updater (fake podman/systemctl, run inside a container): `docker run --rm -u 0 -v <project>/deploy/updater:/t --entrypoint bash localhost/itam-portal:latest /t/test/run-tests.sh`.

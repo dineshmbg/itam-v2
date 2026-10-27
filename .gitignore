@@ -40,3 +40,6 @@ templates/Leased_MPLS_Circuit_Details_Request.xlsx
 
 # Trend Micro / inventory reports: real machine and engineer data, never for a public repository
 reports/
+
+# Ruflo tooling state (local agent memory and daemon files)
+.swarm/

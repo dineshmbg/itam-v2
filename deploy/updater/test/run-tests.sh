@@ -32,6 +32,15 @@ check "status is rolled_back" "[ \"\$(field result)\" = rolled_back ]"
 check "the OLD version is running again" "[ \"\$($SIMPY container)\" = 20260925-2256 ]"
 check ":latest points to the old version" "[ \"\$($SIMPY running)\" = 20260925-2256 ]"
 
+echo "2b. a new version that crashes over and over on start is given up on quickly, not waited for the full time"
+$SIMPY reset; mk /sim/pkgs 20260926-1010 crash
+t0=$SECONDS; ITAM_HEALTH_WAIT=90 run --package /sim/pkgs/itam-release-20260926-1010.itamrel; rc=$?; took=$((SECONDS - t0))
+check "exit code non-zero" "[ $rc -ne 0 ]"
+check "status is rolled_back" "[ \"\$(field result)\" = rolled_back ]"
+check "it gave up long before the 90 s wait (took ${took} s)" "[ $took -lt 45 ]"
+check "the log says the portal crashed 3 times" "grep -q 'crashed 3 times' $ITAM_UPDATE_DIR/update.log"
+check "the OLD version is running again" "[ \"\$($SIMPY container)\" = 20260925-2256 ]"
+
 echo "3. a package signed with the wrong key is refused and nothing changes"
 $SIMPY reset; mk /sim/pkgs 20260926-1010 yes badsig
 run --package /sim/pkgs/itam-release-20260926-1010.itamrel

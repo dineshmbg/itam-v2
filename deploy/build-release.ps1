@@ -50,6 +50,15 @@ if ($commit) {
   Write-Host "Building from commit $commit$(if ($dirty.Count -gt 0) { ' (plus uncommitted changes, -AllowDirty)' })" -ForegroundColor Cyan
 }
 
+# Linux scripts and unit files must have Unix line endings: a carriage return after '#!/bin/sh' made release 20261027-0850 fail to start on the VM
+# ('no such file or directory') and be rolled back. The Containerfile strips it from the container entrypoint as well; this stops the build early, naming the file.
+$crlf = @(Get-ChildItem (Join-Path $root 'deploy') -Recurse -File -Include '*.sh', '*.service', '*.path', '*.timer', '*.container', '*.volume' |
+  Where-Object { [IO.File]::ReadAllBytes($_.FullName) -contains 13 })
+if ($crlf.Count -gt 0) {
+  Write-Host 'These Linux files have Windows line endings (CRLF):' -ForegroundColor Yellow
+  $crlf | ForEach-Object { Write-Host "    $($_.FullName)" }
+  throw 'Not building: convert them to Unix line endings first (git checkout -- <file> restores them: .gitattributes keeps them LF), then build again.'
+}
 if (-not (Test-Path $KeyFile)) { throw "Release signing key not found: $KeyFile`nCreate it once with  .\deploy\make-release-key.ps1  (and back it up)." }
 $openssl = Find-OpenSsl
 if ($Engine -eq 'auto') {

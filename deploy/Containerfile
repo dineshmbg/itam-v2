@@ -36,7 +36,10 @@ COPY portal/static/ /app/portal/static/
 COPY portal/serve.py /app/portal/serve.py
 COPY ongc-logo.png /app/ongc-logo.png
 COPY deploy/entrypoint.sh /usr/local/bin/itam-entrypoint
-RUN chmod 0755 /usr/local/bin/itam-entrypoint \
+# A Windows checkout can give the script CRLF line endings ('#!/bin/sh' + CR): the container then dies at start with "no such file or directory"
+# (release 20261027-0850 did). Strip any CR so the image starts whatever the line endings of the file on the build PC.
+RUN sed -i 's/\r$//' /usr/local/bin/itam-entrypoint \
+ && chmod 0755 /usr/local/bin/itam-entrypoint \
  && ln -s /data/masters /app/masters && ln -s /data/uploads /app/uploads
 
 USER 10001

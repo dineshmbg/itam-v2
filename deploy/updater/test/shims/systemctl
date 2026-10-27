@@ -1,11 +1,39 @@
 #!/usr/bin/env python3
-"""Fake systemctl: "restart" makes the container run whatever image :latest points to now."""
+"""Fake systemctl: "restart" makes the container run whatever image :latest points to now (and resets the restart counter);
+"show -p NRestarts --value UNIT" counts one more restart per call while the container runs a crash-looping image (HEALTHY=crash)."""
+import glob
 import os
 import sys
 
 SIM = os.environ.get("SIM", "/sim")
+COUNTER = f"{SIM}/container/restarts"
+
+
+def running_image_flag():
+    try:
+        cid = open(f"{SIM}/container/image").read().strip()
+    except OSError:
+        return ""
+    for p in glob.glob(f"{SIM}/images/*"):
+        d = dict(line.split("=", 1) for line in open(p).read().split())
+        if d.get("id") == cid:
+            return d.get("healthy", "")
+    return ""
+
+
 if sys.argv[1:2] == ["restart"]:
     d = dict(line.split("=", 1) for line in open(f"{SIM}/images/localhost_itam-portal:latest").read().split())
     os.makedirs(f"{SIM}/container", exist_ok=True)
     open(f"{SIM}/container/image", "w").write(d["id"])
+    open(COUNTER, "w").write("0")
+elif sys.argv[1:2] == ["show"]:
+    try:
+        n = int(open(COUNTER).read())
+    except (OSError, ValueError):
+        n = 0
+    if running_image_flag() == "crash":
+        n += 1
+    os.makedirs(f"{SIM}/container", exist_ok=True)
+    open(COUNTER, "w").write(str(n))
+    print(n)
 sys.exit(0)
