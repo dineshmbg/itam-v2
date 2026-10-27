@@ -2,5 +2,6 @@
 # makes the container (or the update service on the VM) fail to start with "no such file or directory" (release 20261027-0850 did).
 *.sh text eol=lf
 deploy/entrypoint.sh text eol=lf
+deploy/Containerfile text eol=lf
 deploy/updater/** text eol=lf
 deploy/quadlet/** text eol=lf
