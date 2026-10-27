@@ -156,6 +156,16 @@ def _tail(path, n=80):
         return []
 
 
+def log_bundle():
+    def whole(name):
+        try:
+            return (UPDATES / name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return "(not present)\n"
+    return (f"ITAM portal {current_version()} - updater diagnostics\n\n== status.json ==\n{whole('status.json')}\n"
+            f"== history.jsonl ==\n{whole('history.jsonl')}\n== update.log ==\n{whole('update.log')}")
+
+
 def state():
     if not enabled():
         return {"enabled": False, "current_version": current_version()}

@@ -161,6 +161,13 @@ def test_state_reports_agent_packages_history_and_log(upd, tmp_path):
     assert st["current_version"] == "20260925-2256"
 
 
+def test_log_bundle_holds_the_whole_log_and_survives_missing_files(upd):
+    assert "(not present)" in update.log_bundle()
+    (upd / "update.log").write_text("\n".join(f"line {i}" for i in range(200)) + "\n")
+    out = update.log_bundle()
+    assert "line 0\n" in out and "line 199" in out and "== status.json ==" in out
+
+
 def test_disabled_when_the_folder_does_not_exist(tmp_path, monkeypatch):
     monkeypatch.setattr(update, "UPDATES", tmp_path / "nope")
     assert update.state() == {"enabled": False, "current_version": update.current_version()}

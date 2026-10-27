@@ -89,7 +89,8 @@ export function mountUpdate(root) {
     return panel(`${st.version_from || '?'} → ${st.version_to || '?'}`, { hint: `requested by ${st.requested_by || '?'}${st.requested_at ? ' · ' + when(st.requested_at) : ''}` },
       h('div', { class: 'panel-b' }, h('div', { style: { marginBottom: '8px' } }, badge(tone, ic, label)), h('p', null, st.message || ''), list,
         rolled ? h('p', { class: 'muted small' }, 'The new version did not start correctly, so the previous version was restored automatically.') : null,
-        data.log?.length ? h('details', { open: active }, h('summary', null, 'Detailed log'), h('pre', { class: 'mono small', style: { maxHeight: '260px', overflow: 'auto' } }, data.log.join('\n'))) : null));
+        data.log?.length ? h('details', { open: active }, h('summary', null, 'Detailed log'), h('pre', { class: 'mono small', style: { maxHeight: '260px', overflow: 'auto' } }, data.log.join('\n'))) : null,
+        h('div', { class: 'btn-row' }, h('a', { class: 'btn', href: '/api/admin/update/log', download: 'itam-update-log.txt' }, icon('download'), 'Download update log'))));
   }
 
   function packagesPanel() {

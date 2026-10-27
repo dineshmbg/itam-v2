@@ -2,6 +2,7 @@
 from urllib.parse import unquote
 
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
 from starlette.routing import Route
 
 from . import auth, update, web
@@ -19,6 +20,13 @@ def _log(request, action, target=None, detail=None):
 
 async def state(request):
     return json_response(await run_in_threadpool(update.state))
+
+
+async def log_download(request):
+    """The whole updater log plus the last status and history, as one text file to send for diagnosis."""
+    text = await run_in_threadpool(update.log_bundle)
+    return Response(text, media_type="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="itam-update-log.txt"'})
 
 
 @guarded
@@ -90,6 +98,7 @@ async def discard(request):
 
 routes = [
     Route("/api/admin/update", read(state, admin="strict")),
+    Route("/api/admin/update/log", read(log_download, admin="strict")),
     Route("/api/admin/update/upload", upload, methods=["POST"]),
     Route("/api/admin/update/start", write(start, admin="strict"), methods=["POST"]),
     Route("/api/admin/update/rollback", write(rollback, admin="strict"), methods=["POST"]),
