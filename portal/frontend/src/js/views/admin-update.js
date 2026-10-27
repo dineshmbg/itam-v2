@@ -72,14 +72,20 @@ export function mountUpdate(root) {
   function progressPanel(st, active) {
     const [tone, ic, label] = RESULT[st.result] || RESULT.running;
     const seenIdx = Math.max(-1, ...(st.steps || []).map((x) => STEPS.findIndex(([k]) => k === x.name)));
-    const list = h('ol', { class: 'timeline' }, STEPS.map(([key, text], i) => {
+    const rolled = (st.steps || []).some((s) => s.name === 'rollback');       // the new version was given up on: its health step has failed, whatever is still going on
+    const row = (state, text, note) => h('li', null, h('span', { class: 'tl-ico ' + state }, icon(state === 'done' ? 'checkmark--filled' : state === 'failed' ? 'error--filled' : state === 'now' ? 'time' : 'circle-dash')),
+      h('div', null, h('strong', null, text), note ? h('span', { class: state === 'failed' ? 'tl-bad' : 'faint' }, note) : state === 'now' ? h('span', { class: 'faint' }, ' …') : null));
+    const items = STEPS.map(([key, text], i) => {
       const done = st.result === 'success' || i < seenIdx;
       const here = i === seenIdx && st.result !== 'success';
-      const state = done ? 'done' : here ? (active ? 'now' : 'failed') : 'todo';
-      return h('li', null, h('span', { class: 'tl-ico' }, icon(state === 'done' ? 'checkmark--filled' : state === 'failed' ? 'error--filled' : state === 'now' ? 'time' : 'circle-dash')),
-        h('div', null, h('strong', null, text), state === 'now' ? h('span', { class: 'faint' }, ' …') : null));
-    }));
-    const rolled = (st.steps || []).some((s) => s.name === 'rollback');
+      const failed = (rolled && key === 'health') || (here && !active);
+      return row(done ? 'done' : failed ? 'failed' : here ? 'now' : 'todo', text, failed ? (key === 'health' ? ' - the new version never became healthy' : ' - stopped here') : '');
+    });
+    if (rolled) {
+      items.push(row(st.result === 'rolled_back' ? 'done' : st.result === 'failed' ? 'failed' : active ? 'now' : 'todo', 'Put the previous version back',
+        st.result === 'rolled_back' ? ' - restored and healthy, nothing was lost' : st.result === 'failed' ? ' - it did not come back healthy either' : ''));
+    }
+    const list = h('ol', { class: 'timeline' }, items);
     return panel(`${st.version_from || '?'} → ${st.version_to || '?'}`, { hint: `requested by ${st.requested_by || '?'}${st.requested_at ? ' · ' + when(st.requested_at) : ''}` },
       h('div', { class: 'panel-b' }, h('div', { style: { marginBottom: '8px' } }, badge(tone, ic, label)), h('p', null, st.message || ''), list,
         rolled ? h('p', { class: 'muted small' }, 'The new version did not start correctly, so the previous version was restored automatically.') : null,

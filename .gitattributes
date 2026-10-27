@@ -1,0 +1,6 @@
+# Linux scripts and unit files must keep Unix line endings whatever core.autocrlf says on a Windows PC: a carriage return after '#!/bin/sh'
+# makes the container (or the update service on the VM) fail to start with "no such file or directory" (release 20261027-0850 did).
+*.sh text eol=lf
+deploy/entrypoint.sh text eol=lf
+deploy/updater/** text eol=lf
+deploy/quadlet/** text eol=lf
