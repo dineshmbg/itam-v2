@@ -87,3 +87,9 @@
 /* menu bar (sidebar): item labels and group headings in Proper Case, no all-caps */
 .nav a.nav-item, .nav a.nav-item *, .nav-group > h2, .nav-foot { text-transform: capitalize; }
 .nav-group > h2 { letter-spacing: 0.02em; font-size: 12px; }
+
+/* filter bar: headings, option labels, chips and toolbar filters in Proper Case, site-wide */
+.facets-h h2, .facets-h button, .facet > button.f-h, .facets .opt, .facets .opt *, .chips, .chips *, .chip,
+.toolbar label, .toolbar .flabel, .rp-filter, .rp-filter *, .rp-side label, .rp-side .flabel, .pill-toggle { text-transform: capitalize; }
+.facets-h h2, .facet > button.f-h { letter-spacing: 0.02em; }
+.facets input, .facets select, .toolbar input, .toolbar select, .rp-filter input, .rp-filter select { text-transform: none; }
