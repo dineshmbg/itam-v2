@@ -59,3 +59,12 @@
 .login-page::before, .login-page::after { display: none; }
 .hdr, .app-foot { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--c-surface); }
 .frow::after { background: var(--c-accent); }
+
+/* radii back to a tight scale; modern.css had pushed them to 8-14px */
+:root { --r-1: 4px; --r-2: 4px; --r-3: 6px; --r-pill: 6px; --c-bg: #f8fafc; }
+:root[data-theme="dark"] { --c-bg: #0b1220; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --c-bg: #0b1220; } }
+.nav a.nav-item, .nav a.nav-item .ico { border-radius: var(--r-2); }
+.kpi:not(a)::after { display: none; }
+.panel-h h2 { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.hdr { box-shadow: 0 1px 0 var(--c-border); }
