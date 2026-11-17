@@ -68,3 +68,8 @@
 .kpi:not(a)::after { display: none; }
 .panel-h h2 { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .hdr { box-shadow: 0 1px 0 var(--c-border); }
+
+/* record forms and drawers: section headers are a neutral bar with a thin module-colour rule, not a solid colour block */
+.drawer .dsec > h3, .drawer .eform .fgroup > h3, dialog.modal.large .eform .fgroup > h3 { background: var(--c-surface-3); color: var(--c-text); box-shadow: inset 3px 0 0 var(--hc); font-weight: 600; letter-spacing: 0.03em; }
+.drawer .dsec > h3::before, .drawer .eform .fgroup > h3::before, dialog.modal.large .eform .fgroup > h3::before { display: none; }
+.drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { border-radius: var(--r-3); }
