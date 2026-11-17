@@ -110,3 +110,14 @@
 .page .kpis > .kpi[data-tone="warn"] { --kc: var(--c-warn); }
 .page .kpis > .kpi[data-tone="bad"] { --kc: var(--c-bad); }
 .page .kpis > .kpi .kpi-v, .page .kpis > .kpi[data-tone] .kpi-v { color: var(--c-text); }
+
+/* dashboards: the first KPI is the headline figure - wider, larger, lightly tinted (six-tile strips on screens wider than 900px) */
+@media (min-width: 901px) {
+  .page .kpis:has(> .kpi:nth-child(6):last-child) { grid-template-columns: minmax(0, 1.5fr) repeat(5, minmax(0, 1fr)); }
+  .page .kpis > .kpi:first-child { background: var(--c-accent-bg); border-color: transparent; }
+  .page .kpis > .kpi:first-child .kpi-v { font-size: 44px; line-height: 52px; color: var(--c-accent); }
+}
+
+/* dark mode: pull the brightest chart hues back so large bars stop glaring */
+:root[data-theme="dark"] { --chart-3: #3aa6bd; --chart-2: #e08a4a; --chart-5: #d1a84a; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --chart-3: #3aa6bd; --chart-2: #e08a4a; --chart-5: #d1a84a; } }
