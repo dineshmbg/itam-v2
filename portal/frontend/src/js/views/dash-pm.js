@@ -77,13 +77,16 @@ export function mountPmDash(root) {
     const cBurn = canvas('PM completed per day, with running total', 'tall');
     timeline = h('div', { class: 'contents' });
     body.append(h('div', { class: 'span-12' }, progress(d)),
-      panel('Completion per day', { cls: 'span-8', hint: 'bars: PM dated that day · line: running total' }, cBurn),
+      panel('Completion per day', { cls: 'span-8', hint: 'bars: PM dated that day · line: running total · dashed: target' }, cBurn),
       panel('By asset class', { cls: 'span-4' }, cClass, legend([{ label: 'Completed', color: 'var(--chart-3)' }, { label: 'Completed late', color: 'var(--chart-5)' }, { label: 'Scheduled', color: 'var(--chart-8)' }])),
       panel('By engineer', { cls: 'span-12' }, cEng), timeline);
     drawExtra(d);
     const days = d.burn.map((r) => date(r.day)); let run = 0;
     const cum = d.burn.map((r) => (run += r.n));
-    ch.burn = await charts.monthly(cBurn.querySelector('canvas'), days, [{ label: 'PM done that day', data: d.burn.map((r) => r.n), color: 2 }], { label: 'Running total', data: cum });
+    // Goal for the quarter: what is done in it plus what is still scheduled.
+    const goal = (x) => x.kpi.done + x.kpi.pending;
+    ch.burn = await charts.monthly(cBurn.querySelector('canvas'), days, [{ label: 'PM done that day', data: d.burn.map((r) => r.n), color: 2 }], { label: 'Running total', data: cum },
+      { target: { label: 'Target: all done', data: d.burn.map(() => goal(d)) } });
     const e = d.by_engineer;
     ch.eng = await charts.barH(cEng.querySelector('canvas'), e.map((r) => person(r.label)), [{ label: 'Completed', data: e.map((r) => r.done), color: 2 }, { label: 'Completed late', data: e.map((r) => r.stale), color: 4 }, { label: 'Scheduled', data: e.map((r) => r.pending), color: 7 }],
       { stacked: true, onPick: (i) => { location.hash = regHref('pm', { 'f.engineer_name': e[i].label, 'f.pm_status': '' }); } });
@@ -105,7 +108,7 @@ export function mountPmDash(root) {
       charts.refresh(ch.eng, e.map((r) => person(r.label)), [e.map((r) => r.done), e.map((r) => r.stale), e.map((r) => r.pending)]);
       charts.refresh(ch.cls, c.map((r) => r.label), [c.map((r) => r.done), c.map((r) => r.stale), c.map((r) => r.pending)]);
       let run = 0;
-      charts.refresh(ch.burn, d.burn.map((r) => date(r.day)), [d.burn.map((r) => r.n), d.burn.map((r) => (run += r.n))]);
+      charts.refresh(ch.burn, d.burn.map((r) => date(r.day)), [d.burn.map((r) => r.n), d.burn.map((r) => (run += r.n)), d.burn.map(() => d.kpi.done + d.kpi.pending)]);
     } catch (e) { if (!dead) { clear(body); body.append(h('div', { class: 'span-12' }, errorBlock(e, () => load(true)))); } }
   }
   load(true);

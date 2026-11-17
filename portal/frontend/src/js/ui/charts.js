@@ -69,7 +69,7 @@ export async function barH(canvas, labels, datasets, { stacked = false, onPick, 
 }
 
 /** Vertical stacked bars with an optional line on a second axis (monthly volume + average TAT). */
-export async function monthly(canvas, labels, bars, line, { onPick } = {}) {
+export async function monthly(canvas, labels, bars, line, { onPick, target } = {}) {
   const C = await Chart();
   const datasets = bars.map((d, i) => ({
     type: 'bar', label: String(d.label).toUpperCase(), data: d.data, borderWidth: 0, borderRadius: 3, borderSkipped: false, stack: 's', order: 2, barPercentage: 0.62, categoryPercentage: 0.8,
@@ -79,6 +79,13 @@ export async function monthly(canvas, labels, bars, line, { onPick } = {}) {
     datasets.push({
       type: 'line', label: String(line.label).toUpperCase(), data: line.data, yAxisID: 'y1', order: 1, tension: 0.35, pointRadius: 3, pointHoverRadius: 6, borderWidth: 2.5, borderCapStyle: 'round',
       borderColor: () => token('--c-text'), backgroundColor: () => token('--c-surface'), pointBorderColor: () => token('--c-text'), pointBackgroundColor: () => token('--c-surface'), pointBorderWidth: 2,
+    });
+  }
+  // Flat dashed goal line on the running-total axis; must stay the last dataset (refresh() fills by index).
+  if (target) {
+    datasets.push({
+      type: 'line', label: String(target.label).toUpperCase(), data: target.data, yAxisID: 'y1', order: 0, pointRadius: 0, pointHoverRadius: 0, borderWidth: 2, borderDash: [6, 4],
+      borderColor: () => token('--c-accent'), backgroundColor: () => token('--c-accent'),
     });
   }
   const chart = new C(canvas, {
