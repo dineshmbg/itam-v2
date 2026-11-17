@@ -2,38 +2,38 @@
    Contrast targets: body text >= 7:1, secondary >= 4.5:1, UI boundaries >= 3:1 (WCAG 2.2 AA). Status is never conveyed by colour alone (icon + label). */
 :root {
   color-scheme: light;
-  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-sans: "Fira Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-  --c-bg: #f1f3f5;
+  --c-bg: #f8fafc;
   --c-surface: #ffffff;
-  --c-surface-2: #f7f8f9;
-  --c-surface-3: #eceff2;
-  --c-border: #dde1e6;
-  --c-border-strong: #a9b3bf;
-  --c-text: #161a1f;
-  --c-text-2: #4b5563;
-  --c-text-3: #5f6b7a;
-  --c-accent: #0b5cad;
-  --c-accent-hover: #084a8c;
-  --c-accent-bg: #e6f0fa;
+  --c-surface-2: #f1f5f9;
+  --c-surface-3: #e9eef6;
+  --c-border: #dbe3ef;
+  --c-border-strong: #8393a8;
+  --c-text: #1e3a8a;
+  --c-text-2: #475569;
+  --c-text-3: #5b6b80;
+  --c-accent: #1e40af;
+  --c-accent-hover: #1e3a8a;
+  --c-accent-bg: #dbeafe;
   --c-on-accent: #ffffff;
-  --c-focus: #0b5cad;
+  --c-focus: #1e40af;
   --c-scrim: rgba(22, 26, 31, 0.45);
 
   --c-ok: #146c2e;    --c-ok-bg: #e3f4e8;
   --c-warn: #8a5a00;  --c-warn-bg: #fbf0d3;
   --c-bad: #b42318;   --c-bad-bg: #fbe4e1;
-  --c-info: #0b5cad;  --c-info-bg: #e6f0fa;
-  --c-mute: #4b5563;  --c-mute-bg: #eceff2;
+  --c-info: #1e40af;  --c-info-bg: #dbeafe;
+  --c-mute: #475569;  --c-mute-bg: #e9eef6;
 
-  --chart-1: #0b5cad; --chart-2: #c2410c; --chart-3: #0e7490; --chart-4: #a3195b;
+  --chart-1: #1e40af; --chart-2: #c2410c; --chart-3: #0e7490; --chart-4: #a3195b;
   --chart-5: #b45309; --chart-6: #6d28d9; --chart-7: #15803d; --chart-8: #9f1239;
   --chart-9: #4338ca; --chart-10: #0f766e;
   --chart-grid: #e3e7ec;
 
   /* module accents: one hue per area of the app, used sparingly (a nav icon, a KPI accent) - never the only signal for status */
-  --mod-assets: #0b5cad; --mod-calls: #c2410c; --mod-eng: #6d28d9; --mod-pm: #15803d;
+  --mod-assets: #1e40af; --mod-calls: #c2410c; --mod-eng: #6d28d9; --mod-pm: #15803d;
   --mod-rep: #4338ca; --mod-spr: #a3195b; --mod-adm: #92400e; --mod-data: #0e7490;
 
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
@@ -51,37 +51,40 @@
 }
 
 :root[data-theme="dark"] {
-  --c-bg: #0e1116; --c-surface: #151a21; --c-surface-2: #1a2028; --c-surface-3: #222a34;
-  --c-border: #27303b; --c-border-strong: #56626f;
-  --c-text: #e8ebef; --c-text-2: #b3bcc8; --c-text-3: #98a3b1;
-  --c-accent: #6cb0f7; --c-accent-hover: #8cc2fa; --c-accent-bg: #14263a; --c-on-accent: #0e1116; --c-focus: #8cc2fa;
+  --c-bg: #0b1220; --c-surface: #111a2e; --c-surface-2: #162036; --c-surface-3: #1d2a44;
+  --c-border: #26354f; --c-border-strong: #5d6f8c;
+  --c-text: #e6edf8; --c-text-2: #b6c3d9; --c-text-3: #98a8c2;
+  --c-accent: #60a5fa; --c-accent-hover: #93c5fd; --c-accent-bg: #172554; --c-on-accent: #0b1220; --c-focus: #93c5fd;
   --c-scrim: rgba(0, 0, 0, 0.6);
   --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
-  --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
-  --chart-1: #6cb0f7; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
+  --c-info: #60a5fa; --c-info-bg: #172554; --c-mute: #b6c3d9; --c-mute-bg: #1d2a44;
+  --chart-1: #60a5fa; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
   --chart-9: #a5b4fc; --chart-10: #2dd4bf;
-  --chart-grid: #26303b;
+  --chart-grid: #26354f;
   --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
   --shadow-float: 0 22px 56px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--c-border-strong);
-  --mod-assets: #6cb0f7; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
+  --mod-assets: #60a5fa; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
   --mod-rep: #a5b4fc; --mod-spr: #f472b6; --mod-adm: #d9a441; --mod-data: #22d3ee;
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme="auto"] {
-    --c-bg: #0e1116; --c-surface: #151a21; --c-surface-2: #1a2028; --c-surface-3: #222a34;
-    --c-border: #27303b; --c-border-strong: #56626f;
-    --c-text: #e8ebef; --c-text-2: #b3bcc8; --c-text-3: #98a3b1;
-    --c-accent: #6cb0f7; --c-accent-hover: #8cc2fa; --c-accent-bg: #14263a; --c-on-accent: #0e1116; --c-focus: #8cc2fa;
+    --c-bg: #0b1220; --c-surface: #111a2e; --c-surface-2: #162036; --c-surface-3: #1d2a44;
+    --c-border: #26354f; --c-border-strong: #5d6f8c;
+    --c-text: #e6edf8; --c-text-2: #b6c3d9; --c-text-3: #98a8c2;
+    --c-accent: #60a5fa; --c-accent-hover: #93c5fd; --c-accent-bg: #172554; --c-on-accent: #0b1220; --c-focus: #93c5fd;
     --c-scrim: rgba(0, 0, 0, 0.6);
     --c-ok: #5cc781; --c-ok-bg: #13291c; --c-warn: #e5b64a; --c-warn-bg: #2e2410; --c-bad: #f0827a; --c-bad-bg: #33181a;
-    --c-info: #6cb0f7; --c-info-bg: #14263a; --c-mute: #b3bcc8; --c-mute-bg: #222a34;
-    --chart-1: #6cb0f7; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
+    --c-info: #60a5fa; --c-info-bg: #172554; --c-mute: #b6c3d9; --c-mute-bg: #1d2a44;
+    --chart-1: #60a5fa; --chart-2: #fb923c; --chart-3: #22d3ee; --chart-4: #f472b6; --chart-5: #e5b64a; --chart-6: #c4b5fd; --chart-7: #4ade80; --chart-8: #fb7185;
     --chart-9: #a5b4fc; --chart-10: #2dd4bf;
-    --chart-grid: #26303b;
+    --chart-grid: #26354f;
     --shadow-pop: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--c-border);
   --shadow-float: 0 22px 56px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--c-border-strong);
-    --mod-assets: #6cb0f7; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
+    --mod-assets: #60a5fa; --mod-calls: #fb923c; --mod-eng: #c4b5fd; --mod-pm: #4ade80;
     --mod-rep: #a5b4fc; --mod-spr: #f472b6; --mod-adm: #d9a441; --mod-data: #22d3ee;
   }
 }
+
+/* UI/UX Pro Max "Enterprise" system: amber CTA accent (Pro Max accent #D97706 on black text, 6.9:1) - used for the single most important action on a page. */
+:root { --c-cta: #d97706; --c-on-cta: #000000; --c-cta-hover: #b45309; --c-on-cta-hover: #ffffff; }

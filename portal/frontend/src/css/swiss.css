@@ -1,0 +1,61 @@
+/* UI/UX Pro Max "Minimalism & Swiss Style" layer for a dense enterprise dashboard.
+   Loaded after modern.css and deliberately overrides it: flat surfaces, solid colour, 4px radii, one blue, no gradients, no glass, no looping motion.
+   modern.css is left intact so this layer can be dropped from main.css to roll the whole redesign back. */
+
+/* page titles: solid text, sentence case, no gradient clip */
+.page-head::after { display: none; }
+.page-head h1 { font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: 0; text-transform: none; background: none; color: var(--c-text); -webkit-text-fill-color: currentColor; }
+.page-head .sub { letter-spacing: 0; font-weight: 400; }
+
+/* buttons: rectangular, solid, 4px radius */
+.btn { border-radius: var(--r-2); padding: 0 12px; letter-spacing: 0; font-weight: 500; }
+.btn.icon { border-radius: var(--r-2); }
+.btn.primary { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); box-shadow: none; }
+.btn.primary:hover { background: var(--c-accent-hover); border-color: var(--c-accent-hover); box-shadow: none; }
+.btn.cta { background: var(--c-cta); border-color: var(--c-cta); color: var(--c-on-cta); }
+.btn.cta:hover { background: var(--c-cta-hover); border-color: var(--c-cta-hover); color: var(--c-on-cta-hover); }
+
+/* shell: flat header, nav, footer */
+.hdr::after, .app-foot::before { display: none; }
+.brand-mark, .btn.usr > .ico, .af-dot { background: var(--c-accent); box-shadow: none; }
+.brand-mark { border-radius: var(--r-2); }
+.nav, .facets-h, .more-row { background: var(--c-surface); }
+.nav a.nav-item:hover { transform: none; }
+.nav a.nav-item .ico { border-radius: var(--r-2); }
+.nav a.nav-item[aria-current="page"] { background: var(--c-accent-bg); box-shadow: inset 3px 0 0 var(--mod-c, var(--c-accent)); font-weight: 600; }
+
+/* cards and panels: flat, 1px border, a single 3px module accent, no lift on hover */
+.panel { background: var(--c-surface); box-shadow: inset 0 3px 0 var(--kc); }
+.panel:hover { transform: none; box-shadow: inset 0 3px 0 var(--kc); }
+.panel-h h2::after { display: none; }
+.kpi { background: var(--c-surface); }
+.kpi::before { background: var(--kc); height: 3px; }
+.kpi[data-tone="bad"]::before { background: var(--c-bad); } .kpi[data-tone="warn"]::before { background: var(--c-warn); } .kpi[data-tone="ok"]::before { background: var(--c-ok); }
+.kpi-v { font-weight: 500; letter-spacing: -0.02em; }
+.kpi-l .ico { border-radius: var(--r-2); }
+.bar-t > i { background: var(--kc, var(--chart-1)); }
+.chart-box { background-image: none; }
+.empty .ico { background: var(--c-surface-3); box-shadow: none; }
+.secret.big { background: var(--c-accent-bg); }
+
+/* modals and drawers: solid accent rule instead of a rainbow */
+.modal-h::before, .drawer-h::before { background: var(--c-accent); height: 3px; }
+.drawer-h { background: var(--c-surface); }
+
+/* sign-in: plain page, solid card, no glass, no animated sheen or hue cycling */
+.login-page { background: var(--c-bg); }
+.login-card { border-radius: 8px; border-color: var(--c-border); background: var(--c-surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--shadow-pop); }
+.login-card::before { background: var(--c-accent); height: 4px; }
+.login-title strong { background: none; color: var(--c-accent); -webkit-text-fill-color: currentColor; animation: none; letter-spacing: 0.06em; }
+.login-card .btn.block { border-radius: var(--r-2); background: var(--c-accent); border-color: var(--c-accent); box-shadow: none; letter-spacing: 0.02em; transition: background-color 150ms var(--ease); }
+.login-card .btn.block::after { display: none; }
+.login-card .btn.block:hover { background: var(--c-accent-hover); transform: none; box-shadow: none; filter: none; }
+.login-card .frow input { border-radius: var(--r-2); }
+
+/* skeleton shimmer: calm */
+.gt-row.skel .gt-td::before { background: var(--c-surface-3); animation: none; }
+
+/* sign-in: drop the animated blurred colour blobs */
+.login-page::before, .login-page::after { display: none; }
+.hdr, .app-foot { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--c-surface); }
+.frow::after { background: var(--c-accent); }

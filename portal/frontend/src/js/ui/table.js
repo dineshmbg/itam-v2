@@ -37,14 +37,14 @@ export function createTable({ columns, rowHeight = 30, pageSize = 100, fetchPage
   const fit = columns.map(() => 0);
   const measurer = document.createElement('canvas').getContext('2d');
   const textW = (txt, font, track) => { measurer.font = font; return measurer.measureText(String(txt).toUpperCase()).width + String(txt).length * track; };
-  function headW(c) { return Math.ceil(textW(c.label, '600 11px "IBM Plex Sans", sans-serif', 0.66)) + 14 + 4 + 20 + 6; }
+  function headW(c) { return Math.ceil(textW(c.label, '600 11px "Fira Sans", sans-serif', 0.66)) + 14 + 4 + 20 + 6; }
   function applyLongest(longest) {
     if (!longest) return;
     let changed = false;
     columns.forEach((c, i) => {
       if (c.kind !== 'text' && c.kind !== 'name' && c.kind !== 'mono') return;
       const v = longest[c.key] || (c.key === 'hostname' ? longest.asset_key : null);   // an empty hostname shows the asset number instead
-      const font = c.kind === 'mono' ? '500 12.5px "IBM Plex Mono", monospace' : '500 12.5px "IBM Plex Sans", sans-serif';
+      const font = c.kind === 'mono' ? '500 12.5px "Fira Code", monospace' : '500 12.5px "Fira Sans", sans-serif';
       const w = Math.min(MAX_FIT, Math.max(headW(c), v ? Math.ceil(textW(v, font, c.kind === 'mono' ? 0 : 0.15)) + 20 + 10 : 0, 64));
       if (w > fit[i]) { fit[i] = w; changed = true; }
     });

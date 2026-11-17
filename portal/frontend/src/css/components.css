@@ -304,3 +304,8 @@ kbd { font: 500 11px var(--font-mono); border: 1px solid var(--c-border-strong);
 .pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--c-accent-bg); border-bottom: 1px solid var(--c-border); }
 .pick-bar strong { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin-right: 4px; }
 .pick-bar .menu button { white-space: nowrap; }
+
+/* UI/UX Pro Max: amber call-to-action (one per page) and 44px touch targets on touch devices */
+.btn.cta { background: var(--c-cta); border-color: var(--c-cta); color: var(--c-on-cta); font-weight: 600; }
+.btn.cta:hover { background: var(--c-cta-hover); border-color: var(--c-cta-hover); color: var(--c-on-cta-hover); }
+@media (pointer: coarse) { .btn { min-height: 44px; } .btn.icon { min-width: 44px; } }

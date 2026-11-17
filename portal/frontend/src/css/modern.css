@@ -968,7 +968,7 @@ a.kpi { cursor: pointer; }
 .tbl tbody tr:nth-child(n) { animation-delay: 0ms; animation-duration: 200ms; }
 
 /* ---------- typography ----------
-   IBM Plex stays (house typeface, vendored for offline use). The 300 and 700 cuts are now loaded for real, so light KPI figures and bold
+   Fira Sans + Fira Code (UI/UX Pro Max dashboard pairing, vendored for offline use). The 300 and 700 cuts are now loaded for real, so light KPI figures and bold
    headings are drawn from the font instead of being synthesised by the browser. Figures are tabular, zero is slashed in code-like text. */
 html { font-synthesis: none; }
 body { font-size: 14px; line-height: 21px; letter-spacing: 0.01em; font-feature-settings: "tnum" 1, "kern" 1, "liga" 1; font-optical-sizing: auto; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
