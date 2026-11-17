@@ -73,3 +73,6 @@
 .drawer .dsec > h3, .drawer .eform .fgroup > h3, dialog.modal.large .eform .fgroup > h3 { background: var(--c-surface-3); color: var(--c-text); box-shadow: inset 3px 0 0 var(--hc); font-weight: 600; letter-spacing: 0.03em; }
 .drawer .dsec > h3::before, .drawer .eform .fgroup > h3::before, dialog.modal.large .eform .fgroup > h3::before { display: none; }
 .drawer.wide .eform .fgroup, dialog.modal.large .eform .fgroup { border-radius: var(--r-3); }
+
+/* phones: modern.css re-set the brand to min-width 188px after layout.css had released it, pushing the user menu off a 375px screen */
+@media (max-width: 900px) { .brand { min-width: 0; } }
