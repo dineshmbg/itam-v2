@@ -76,8 +76,11 @@ Converters in `tools/*.py` take a raw export **as received (not pre-cleaned)** a
 - **Everything must work fully offline** - no CDN, no external call at runtime, anywhere in this
   project. When a package or asset is needed, vendor it (see `portal/vendor/`) rather than fetching it
   live.
-- **The portal's design must not look AI-generated** - light/dark/automatic themes, IBM Plex
-  typography, Carbon icons, WCAG 2.2 AA.
+- **The portal's design must not look AI-generated** - light/dark/automatic themes, Fira Sans / Fira
+  Code typography (vendored, never a CDN), Carbon icons, WCAG 2.2 AA. The look is the UI/UX Pro Max
+  "Minimalism & Swiss Style" system (Nov 2026): flat surfaces, blue `#1E40AF` primary, amber CTA,
+  4-6px radii, no gradients/glass/looping motion. It lives in `portal/frontend/src/css/swiss.css`
+  (loaded last, overrides `modern.css`); don't revert to IBM Plex or re-add gradients.
 - **Before declaring a change done:** run the relevant tests, exercise the feature (in a browser for
   UI changes), and report exactly what was verified - not just what was implemented.
 - **Make reasonable calls instead of stopping to ask**, unless genuinely blocked by a decision only

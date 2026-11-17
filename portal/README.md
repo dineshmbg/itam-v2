@@ -4,7 +4,7 @@ Locally hosted, offline web portal over the PostgreSQL inventory (`ongc_ank`): l
 
 ## At a glance (updated 2026-10-05)
 
-**What it is.** ONGC Ankleshwar's IT asset management system: a login-protected, fully offline web app - Starlette API, vanilla-JavaScript front end bundled by esbuild (IBM Plex type, Carbon icons, light/dark/automatic themes) - over one PostgreSQL 18 database, `ongc_ank`. It holds the asset register (whole assets and component lines), service calls, spare-part Inward/Outward lines, OEM RMA cases, the CIPL engineers/roster, preventive maintenance (PM) and the audit trail. Python 3.14; packages are vendored in `vendor/wheels`, so nothing is ever downloaded at run time.
+**What it is.** ONGC Ankleshwar's IT asset management system: a login-protected, fully offline web app - Starlette API, vanilla-JavaScript front end bundled by esbuild (Fira type, Carbon icons, light/dark/automatic themes) - over one PostgreSQL 18 database, `ongc_ank`. It holds the asset register (whole assets and component lines), service calls, spare-part Inward/Outward lines, OEM RMA cases, the CIPL engineers/roster, preventive maintenance (PM) and the audit trail. Python 3.14; packages are vendored in `vendor/wheels`, so nothing is ever downloaded at run time.
 
 **Where it runs**
 
@@ -409,7 +409,7 @@ Financial-year quarters (Q1 APR-JUN ... Q4 JAN-MAR). The kick-off e-mail goes ou
 | `db/` | `setup.py` (idempotent schema/trigger/first-admin set-up, run at every start), `restore_drill.py` (real restore test), `reset_admin.py` (break-glass administrator recovery) |
 | `db/setup.py` | Idempotent, non-destructive: indexes, live-update triggers, upper-case trigger, tables, first administrator |
 | `frontend/` | Source + `build.mjs` (esbuild). `node build.mjs` rebuilds `static/` offline |
-| `static/` | Built site (hashed assets, IBM Plex fonts, Carbon icon sprite, ONGC logo) |
+| `static/` | Built site (hashed assets, Fira Sans/Code fonts, Carbon icon sprite, ONGC logo) |
 | `vendor/` | Offline Python wheels and the icon package |
 | `tests/` | `python -m pytest -q` - about 540 tests in 24 files, run against the real database inside rolled-back transactions |
 | `../tools/` | The converters (`inventory_to_master.py`, `hr_export_to_template.py`, `cipl_roster.py`, `call_tracking.py`, `sdwan_match.py`) and the shared rules (`itam_rules.py`, `itam_locks.py`, `master_db.py`), used both from the command line and by *Data import* |
@@ -441,7 +441,7 @@ no download needed on the production server itself.
   dependencies). `run_portal.ps1` already installs from this folder with `pip install --no-index --find-links vendor\wheels`
   - it never touches the internet. If `requirements.txt` ever changes, refresh this folder **on a machine that does have internet**
   with `python -m pip download -r requirements.txt -d vendor\wheels` before copying to production.
-- `static/` - the already-built front end (hashed JS/CSS, IBM Plex fonts, Carbon icons, the ONGC logo). Production never needs
+- `static/` - the already-built front end (hashed JS/CSS, Fira Sans/Code fonts, Carbon icons, the ONGC logo). Production never needs
   Node.js/npm at all unless someone wants to edit the front-end source there (`vendor/npm/` has the offline npm cache for that
   case too, but it is not needed just to run the portal).
 - `db/setup.py` - idempotent: creates every table/index/trigger/view it needs and is safe to run again later after an update.
