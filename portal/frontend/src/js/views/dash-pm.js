@@ -36,8 +36,9 @@ export function mountPmDash(root) {
       h('div', { class: 'cb-h' }, h('strong', null, c.label), h('span', { class: 'muted' }, `${date(c.start)} → ${date(c.end)} · ${kickTxt}`), c.overdue ? h('span', { class: 'badge bad' }, icon('warning--alt--filled'), 'Not closed yet') : h('span', { class: 'badge ' + (c.status === 'OPEN' ? 'info' : 'mute') }, c.status === 'OPEN' ? 'Open' : 'Closed')),
       c.overdue ? h('div', { class: 'cb-over' }, `These are still the ${c.label} figures. That quarter ended ${date(c.end)} but has not been closed, so ${c.calendar_label} has not started counting. `,
         h('a', { href: '#/pm/cycles' }, 'Close it under Cycles and snapshots'), ' to reset every asset to pending.') : null,
-      h('div', { class: 'cb-track' }, h('i', { class: 'cb-time', style: { width: k.expected_pct + '%' } }), h('i', { class: 'cb-done', style: { width: (k.pct_done || 0) + '%' } }), h('i', { class: 'cb-kick', style: { left: kick + '%' }, title: 'Kick-off' })),
-      h('div', { class: 'cb-l' }, h('span', null, h('i', { class: 'sw', style: { background: 'var(--chart-3)' } }), `Done ${pct(k.pct_done)}`), h('span', null, h('i', { class: 'sw', style: { background: 'var(--c-border-strong)' } }), `Time elapsed ${pct(k.expected_pct)}`)));
+      h('div', { class: 'cb-track' }, h('i', { class: 'cb-time', style: { width: k.expected_pct + '%' } }), h('i', { class: 'cb-done', style: { width: (k.pct_done || 0) + '%' } }), h('i', { class: 'cb-kick', style: { left: kick + '%' }, title: 'Kick-off' }), h('i', { class: 'cb-target', title: `Target: every PM completed by ${date(c.end)}` })),
+      h('div', { class: 'cb-l' }, h('span', null, h('i', { class: 'sw', style: { background: 'var(--chart-3)' } }), `Done ${pct(k.pct_done)}`), h('span', null, h('i', { class: 'sw', style: { background: 'var(--c-border-strong)' } }), `Time elapsed ${pct(k.expected_pct)}`),
+        h('span', { class: 'cb-goal' }, h('i', { class: 'sw tgt' }), `Target: all done by ${date(c.end)}` + (!k.pending ? ' · met' : c.overdue ? ` · missed, ${int(k.pending)} still open` : k.days_left > 0 ? ` · ${int(k.pending)} to go, about ${int(Math.ceil(k.pending / k.days_left))} a day` : ` · ${int(k.pending)} to go`))));
   }
 
   function engTable(d) {

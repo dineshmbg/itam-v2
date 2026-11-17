@@ -121,3 +121,9 @@
 /* dark mode: pull the brightest chart hues back so large bars stop glaring */
 :root[data-theme="dark"] { --chart-3: #3aa6bd; --chart-2: #e08a4a; --chart-5: #d1a84a; }
 @media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --chart-3: #3aa6bd; --chart-2: #e08a4a; --chart-5: #d1a84a; } }
+
+/* PM target: every PM completed by the quarter end. The right edge of the track is that goal. */
+.cb-track > .cb-target { left: auto; right: 0; width: 3px; background: var(--c-accent); animation: none; }
+.cb-l .sw.tgt { width: 3px; height: 12px; border-radius: 0; background: var(--c-accent); }
+.cb-l .cb-goal { margin-left: auto; color: var(--c-text); font-weight: 500; }
+.cb-l { flex-wrap: wrap; gap: 4px 16px; }
