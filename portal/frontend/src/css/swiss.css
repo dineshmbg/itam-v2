@@ -76,3 +76,10 @@
 
 /* phones: modern.css re-set the brand to min-width 188px after layout.css had released it, pushing the user menu off a 375px screen */
 @media (max-width: 900px) { .brand { min-width: 0; } }
+
+/* buttons: one typeface/size/weight everywhere, Proper Case (the page-wide all-caps rule no longer applies to them) */
+.btn, .link-btn, .modal-actions button, input[type="button"], input[type="submit"], input[type="reset"] {
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: capitalize; }
+.btn.primary, .btn.cta, .login-card .btn.block { font-weight: 600; letter-spacing: 0; }
+.login-card .btn.block { text-transform: capitalize; }
+.pill-toggle, .menu button, [role="menuitem"] { font-family: var(--font-sans); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: capitalize; }
