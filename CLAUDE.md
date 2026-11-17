@@ -78,9 +78,13 @@ Converters in `tools/*.py` take a raw export **as received (not pre-cleaned)** a
   live.
 - **The portal's design must not look AI-generated** - light/dark/automatic themes, Fira Sans / Fira
   Code typography (vendored, never a CDN), Carbon icons, WCAG 2.2 AA. The look is the UI/UX Pro Max
-  "Minimalism & Swiss Style" system (Nov 2026): flat surfaces, blue `#1E40AF` primary, amber CTA,
-  4-6px radii, no gradients/glass/looping motion. It lives in `portal/frontend/src/css/swiss.css`
-  (loaded last, overrides `modern.css`); don't revert to IBM Plex or re-add gradients.
+  "Minimalism & Swiss Style" system (Nov 2026) as the base (`swiss.css`: blue `#1E40AF` primary, amber
+  CTA, 4-6px radii), with a **vivid layer on top, requested by the user 11-17**: `vivid.css`
+  (loaded last) gives a navy branded header bar, the ITAM logo (layered-register mark, also
+  `favicon.svg`), module-coloured dashboard banners, a hue per KPI tile with hover lift and a pointer
+  glow, coloured panel strips. Dashboards are meant to be colourful and interactive; no looping motion.
+  Dropping the `vivid.css` import from `main.css` returns to the flat Swiss look. Don't revert to
+  IBM Plex. The footer/brand carry no personal name (removed at the user's request).
 - **Before declaring a change done:** run the relevant tests, exercise the feature (in a browser for
   UI changes), and report exactly what was verified - not just what was implemented.
 - **Make reasonable calls instead of stopping to ask**, unless genuinely blocked by a decision only

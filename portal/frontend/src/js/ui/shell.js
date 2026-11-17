@@ -89,7 +89,7 @@ export function buildShell(app) {
   const hdr = h('header', { class: 'hdr', role: 'banner' },
     menuBtn,
     h('a', { class: 'brand', href: '#/dashboard/calls', 'aria-label': 'ITAM Portal home' }, h('span', { class: 'brand-mark' }),
-      h('span', { class: 'brand-text' }, h('span', { class: 'brand-line' }, h('strong', null, 'ITAM'), h('span', { class: 'brand-sub' }, 'Portal')), h('span', { class: 'brand-sig' }, 'Dinesh Gadaria'))),
+      h('span', { class: 'brand-text' }, h('span', { class: 'brand-line' }, h('strong', null, 'ITAM'), h('span', { class: 'brand-sub' }, 'Portal')))),
     search.el, h('span', { class: 'hdr-spacer' }),
     h('div', { class: 'hdr-tools' }, liveDot, seg, helpBtn, h('div', { class: 'usr-wrap' }, userBtn, menu)));
   oldHdr.replaceWith(hdr);
@@ -104,12 +104,16 @@ export function buildShell(app) {
   nav.append(h('div', { class: 'nav-foot' }, h('div', null, 'Live view of the IT asset inventory.')));
 
   if (!shell.querySelector('.app-foot')) {
-    const sig = h('span', { class: 'af-sig', 'aria-hidden': 'true' }, 'Dinesh Gadaria');
     shell.append(h('footer', { class: 'app-foot', role: 'contentinfo' },
       h('span', { class: 'af-l' }, h('span', { class: 'af-dot' }), 'ITAM Portal', h('span', { class: 'af-sep' }, '·'), 'IT asset management · Ankleshwar Asset'),
-      h('span', { class: 'af-mid' }, sig),
       h('span', { class: 'af-r' }, 'Authorised users only · activity is recorded')));
-    scheduleSignatureSweep(sig);
+    // Dashboard tiles and panels glow where the pointer is (CSS reads --mx / --my).
+    shell.addEventListener('pointermove', (e) => {
+      const t = e.target.closest?.('.kpi, .panel');
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      t.style.setProperty('--mx', `${e.clientX - r.left}px`); t.style.setProperty('--my', `${e.clientY - r.top}px`);
+    }, { passive: true });
   }
 
   nav.addEventListener('click', () => shell.classList.remove('nav-open'));

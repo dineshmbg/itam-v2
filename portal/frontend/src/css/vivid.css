@@ -1,0 +1,145 @@
+/* Vivid layer: colourful, interactive dashboards, a branded header bar and the ITAM logo.
+   Loaded after swiss.css. Dropping its @import from main.css returns to the flat Swiss look. */
+
+:root {
+  --v1: #2563eb; --v2: #7c3aed; --v3: #0d9488; --v4: #ea580c; --v5: #db2777; --v6: #0891b2;
+  /* brighter chart hues (text never uses these, so contrast is not an issue) */
+  --chart-1: #2563eb; --chart-2: #f97316; --chart-3: #06b6d4; --chart-4: #ec4899; --chart-5: #eab308;
+  --chart-6: #8b5cf6; --chart-7: #22c55e; --chart-8: #ef4444; --chart-9: #6366f1; --chart-10: #14b8a6;
+  --hdr-a: #0b1a4a; --hdr-b: #1e3a8a; --hdr-c: #4338ca;
+}
+:root[data-theme="dark"] {
+  --v1: #60a5fa; --v2: #a78bfa; --v3: #2dd4bf; --v4: #fb923c; --v5: #f472b6; --v6: #22d3ee;
+  --hdr-a: #060b1c; --hdr-b: #102050; --hdr-c: #2e2a8a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --v1: #60a5fa; --v2: #a78bfa; --v3: #2dd4bf; --v4: #fb923c; --v5: #f472b6; --v6: #22d3ee;
+    --hdr-a: #060b1c; --hdr-b: #102050; --hdr-c: #2e2a8a;
+  }
+}
+
+/* ---- Logo: three stacked layers (an asset register) in a blue-violet tile ---- */
+.brand-mark {
+  width: 36px; height: 36px; border-radius: 10px; flex: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232563eb'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='12' fill='url(%23g)'/%3E%3Cpath d='M24 8 38 15 24 22 10 15Z' fill='%23fff'/%3E%3Cpath d='M10 24 24 31 38 24' fill='none' stroke='%2367e8f9' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M10 31 24 38 38 31' fill='none' stroke='%23fbbf24' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='24' cy='15' r='3' fill='%237c3aed'/%3E%3C/svg%3E") center / contain no-repeat;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  transition: transform 0.25s ease;
+}
+.brand-mark::before, .brand-mark::after { display: none; }
+.brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); }
+.brand-sig, .af-mid { display: none; }
+
+/* ---- Header bar ---- */
+.hdr { background: linear-gradient(100deg, var(--hdr-a), var(--hdr-b) 58%, var(--hdr-c)); box-shadow: none; position: relative; }
+.hdr::after { display: block; height: 3px; opacity: 1; background: linear-gradient(90deg, #06b6d4, #2563eb, #8b5cf6, #ec4899, #f97316, #eab308); }
+.hdr .brand, .hdr .brand strong { color: #fff; }
+.hdr .brand strong { font-size: 18px; font-weight: 700; letter-spacing: 0.1em; }
+.hdr .brand-sub { color: #67e8f9; font-weight: 600; letter-spacing: 0.14em; }
+.hdr .gsearch .field input { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.22); color: #fff; }
+.hdr .gsearch .field input::placeholder { color: rgba(255, 255, 255, 0.72); }
+.hdr .gsearch .field input:hover { background: rgba(255, 255, 255, 0.18); }
+.hdr .gsearch .field input:focus-visible { background: rgba(255, 255, 255, 0.24); border-color: #67e8f9; box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.3); }
+.hdr .field .ico, .hdr .field:focus-within .ico { color: rgba(255, 255, 255, 0.85); }
+.hdr .field .kbd { color: rgba(255, 255, 255, 0.85); border-color: rgba(255, 255, 255, 0.4); }
+.hdr .field .clear { color: #fff; }
+.hdr .hdr-tools .btn.ghost.icon, .hdr > .btn.ghost.icon { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.hdr .hdr-tools .btn.ghost.icon:hover, .hdr > .btn.ghost.icon:hover { background: rgba(255, 255, 255, 0.24); color: #fff; }
+.hdr .seg { background: rgba(255, 255, 255, 0.12); }
+.hdr .seg button { color: #fff; background: transparent; }
+.hdr .seg button:hover { background: rgba(255, 255, 255, 0.2); }
+.hdr .seg button[aria-checked="true"] { background: #fff; color: #1e3a8a; }
+.hdr .live { background: rgba(255, 255, 255, 0.12); box-shadow: none; color: #fff; }
+.hdr .btn.usr { background: rgba(255, 255, 255, 0.12); border-color: transparent; color: #fff; }
+.hdr .btn.usr:hover { background: rgba(255, 255, 255, 0.22); }
+.hdr .btn.usr .usr-r { color: rgba(255, 255, 255, 0.82); }
+.hdr .btn.usr > .ico { background: #fff; color: #1e3a8a; }
+.hdr .menu { color: var(--c-text); }
+
+/* ---- Dashboard banner: each module has its own colourway ---- */
+.page[data-mod] { --bm: #1e40af; --bm2: #0ea5e9; }
+.page[data-mod="calls"] { --bm: #9a3412; --bm2: #ea580c; }
+.page[data-mod="eng"] { --bm: #5b21b6; --bm2: #c026d3; }
+.page[data-mod="pm"] { --bm: #166534; --bm2: #0d9488; }
+.page[data-mod] > .page-head {
+  position: relative; overflow: hidden; border-radius: 14px; padding: 18px 22px; margin-bottom: 16px;
+  background: linear-gradient(120deg, var(--bm), var(--bm2)); color: #fff;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bm) 28%, transparent);
+}
+.page[data-mod] > .page-head::after {
+  display: block; content: ""; position: absolute; right: -50px; top: -70px; width: 220px; height: 220px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12); pointer-events: none; height: 220px;
+}
+.page[data-mod] > .page-head h1, .page[data-mod] > .page-head .sub, .page[data-mod] > .page-head .sub * { color: #fff; }
+.page[data-mod] > .page-head .sub { opacity: 0.9; }
+.page[data-mod] > .page-head .page-tools { position: relative; z-index: 1; }
+.page[data-mod] > .page-head .btn.primary { background: #fff; color: var(--bm); border-color: #fff; }
+.page[data-mod] > .page-head .btn.primary:hover { background: rgba(255, 255, 255, 0.88); }
+.page[data-mod] > .page-head .btn:not(.primary) { background: rgba(255, 255, 255, 0.16); color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.page[data-mod] > .page-head .btn:not(.primary):hover { background: rgba(255, 255, 255, 0.28); }
+
+/* ---- KPI tiles: a hue each, icon chip, lift and a light that follows the pointer ---- */
+.page .kpis > .kpi.kpi {
+  --kc: var(--v1); position: relative; overflow: hidden; border-radius: 12px; cursor: default;
+  border: 1px solid color-mix(in srgb, var(--kc) 30%, var(--c-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--kc) 14%, var(--c-surface)), var(--c-surface) 78%);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.page .kpis > a.kpi.kpi { cursor: pointer; }
+.page .kpis > .kpi.kpi:nth-child(6n+1) { --kc: var(--v1); }
+.page .kpis > .kpi.kpi:nth-child(6n+2) { --kc: var(--v2); }
+.page .kpis > .kpi.kpi:nth-child(6n+3) { --kc: var(--v3); }
+.page .kpis > .kpi.kpi:nth-child(6n+4) { --kc: var(--v4); }
+.page .kpis > .kpi.kpi:nth-child(6n+5) { --kc: var(--v5); }
+.page .kpis > .kpi.kpi:nth-child(6n+6) { --kc: var(--v6); }
+.page .kpis > .kpi.kpi::before { display: block; content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 4px; background: linear-gradient(90deg, var(--kc), color-mix(in srgb, var(--kc) 35%, #fff)); }
+.page .kpis > .kpi.kpi::after { display: block; content: ""; position: absolute; right: -26px; bottom: -34px; width: 112px; height: 112px; border-radius: 50%; background: color-mix(in srgb, var(--kc) 14%, transparent); pointer-events: none; transition: transform 0.3s ease; }
+.page .kpis > .kpi.kpi .kpi-v { color: var(--kc); }
+.page .kpis > .kpi.kpi .kpi-l .ico { box-sizing: content-box; padding: 5px; border-radius: 8px; background: color-mix(in srgb, var(--kc) 18%, transparent); color: var(--kc); }
+.page .kpis > .kpi.kpi:hover {
+  transform: translateY(-3px); border-color: var(--kc);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--kc) 24%, transparent);
+  background-image: radial-gradient(220px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--kc) 22%, transparent), transparent 70%), linear-gradient(135deg, color-mix(in srgb, var(--kc) 14%, var(--c-surface)), var(--c-surface) 78%);
+}
+.page .kpis > .kpi.kpi:hover::after { transform: scale(1.35); }
+.page .kpis > a.kpi.kpi:active { transform: translateY(-1px); }
+
+/* the headline tile is solid colour with white type */
+@media (min-width: 901px) {
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child {
+    background: linear-gradient(135deg, var(--bm, #1e40af), var(--bm2, #7c3aed)); border-color: transparent;
+  }
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child:hover { background-image: radial-gradient(240px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.28), transparent 70%), linear-gradient(135deg, var(--bm, #1e40af), var(--bm2, #7c3aed)); }
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child::before { background: rgba(255, 255, 255, 0.55); }
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child::after { background: rgba(255, 255, 255, 0.14); }
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child :is(.kpi-v, .kpi-l, .kpi-s) { color: #fff; }
+  .page .kpis:has(> .kpi:nth-child(6):last-child) > .kpi.kpi:first-child .kpi-l .ico { background: rgba(255, 255, 255, 0.2); color: #fff; }
+}
+
+/* ---- Panels: coloured top strip and title chip, glow on hover ---- */
+.page .panel.panel { --pc: var(--v1); position: relative; overflow: hidden; border-radius: 12px; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+.page .grid > .panel.panel:nth-child(6n+1) { --pc: var(--v1); }
+.page .grid > .panel.panel:nth-child(6n+2) { --pc: var(--v2); }
+.page .grid > .panel.panel:nth-child(6n+3) { --pc: var(--v3); }
+.page .grid > .panel.panel:nth-child(6n+4) { --pc: var(--v4); }
+.page .grid > .panel.panel:nth-child(6n+5) { --pc: var(--v5); }
+.page .grid > .panel.panel:nth-child(6n+6) { --pc: var(--v6); }
+.page .panel.panel::before { display: block; content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 3px; background: linear-gradient(90deg, var(--pc), color-mix(in srgb, var(--pc) 35%, #fff)); }
+.page .panel.panel .panel-h h2 { display: flex; align-items: center; gap: 8px; }
+.page .panel.panel .panel-h h2::before { content: ""; width: 10px; height: 10px; border-radius: 3px; flex: none; background: var(--pc); }
+.page .panel.panel:hover { border-color: color-mix(in srgb, var(--pc) 45%, var(--c-border)); box-shadow: 0 8px 24px color-mix(in srgb, var(--pc) 14%, transparent); }
+
+/* ---- Progress bar and bars get a gradient ---- */
+.cb-done { background: linear-gradient(90deg, var(--v3), var(--v1)); }
+.cb-track > .cb-target { background: var(--v5); }
+.cb-l .sw.tgt { background: var(--v5); }
+.page .cycle-bar { border-radius: 12px; border: 1px solid color-mix(in srgb, var(--v1) 25%, var(--c-border)); background: linear-gradient(135deg, color-mix(in srgb, var(--v1) 8%, var(--c-surface)), var(--c-surface) 70%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .page .kpis > .kpi.kpi, .page .kpis > .kpi.kpi::after, .brand-mark { transition: none; }
+  .page .kpis > .kpi.kpi:hover { transform: none; }
+  .brand:hover .brand-mark { transform: none; }
+}
+
+/* the older decorative dot and underline on panel titles are replaced by the coloured chip */
+.page .panel.panel .panel-h::before, .page .panel.panel .panel-h h2::after { display: none; }
